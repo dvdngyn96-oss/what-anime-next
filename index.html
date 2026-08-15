@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>whatanimeshouldiwatchnext</title>
+  <meta name="description" content="Type an anime you've already watched. Get the next one up the rankings that shares its genres.">
+  <!-- The ?v= markers below only help if this document is itself fresh, so
+       ask the browser not to serve a cached copy of it. -->
+  <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
+       change, otherwise a stale script keeps running against fresh data. -->
+  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍥</text></svg>">
+</head>
+<body>
+  <main id="app">
+    <!-- Landing / search view -->
+    <section id="search-view" class="view">
+      <h1 class="wordmark">
+        <span class="w-what">what</span><span class="w-anime">anime</span><span class="w-should">should</span><span class="w-i">i</span><span class="w-watch">watch</span><span class="w-next">next</span>
+      </h1>
+      <p class="tagline">Type an anime you've already watched. You'll get a TV series you can start from episode one.</p>
+
+      <div class="search-wrap">
+        <div class="search-box" id="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"/></svg>
+          <input
+            id="search-input"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="Tokyo Ravens"
+            aria-label="Anime you've already watched"
+            aria-autocomplete="list"
+            aria-controls="suggestions"
+          >
+          <button id="clear-btn" class="clear-btn" type="button" aria-label="Clear" hidden>&times;</button>
+        </div>
+        <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+      </div>
+
+      <div class="actions">
+        <button id="go-btn" class="btn" type="button">Recommend me one</button>
+        <button id="random-btn" class="btn btn-ghost" type="button">Surprise me</button>
+      </div>
+
+      <p class="credit">Rankings from <a href="https://myanimelist.net/topanime.php" target="_blank" rel="noopener">MyAnimeList</a> · genres from <a href="https://anilist.co" target="_blank" rel="noopener">AniList</a></p>
+    </section>
+
+    <!-- Results view -->
+    <section id="result-view" class="view" hidden>
+      <header class="result-header">
+        <button id="home-btn" class="wordmark wordmark-sm" type="button">
+          <span class="w-what">what</span><span class="w-anime">anime</span><span class="w-should">should</span><span class="w-i">i</span><span class="w-watch">watch</span><span class="w-next">next</span>
+        </button>
+        <div class="mini-search">
+          <input id="mini-input" type="text" autocomplete="off" spellcheck="false" placeholder="Another anime…" aria-label="Search another anime">
+          <ul id="mini-suggestions" class="suggestions suggestions-mini" role="listbox" hidden></ul>
+        </div>
+      </header>
+
+      <div id="result-body"></div>
+    </section>
+  </main>
+
+  <script src="app.js?v=16"></script>
+</body>
+</html>

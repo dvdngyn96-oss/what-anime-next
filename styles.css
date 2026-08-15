@@ -1,0 +1,763 @@
+:root {
+  --bg: #ffffff;
+  --fg: #202124;
+  --fg-dim: #5f6368;
+  --fg-faint: #9aa0a6;
+  --border: #dfe1e5;
+  --border-strong: #c4c7c9;
+  --surface: #ffffff;
+  --surface-2: #f8f9fa;
+  --hover: #f1f3f4;
+  --accent: #e5484d;
+  --accent-soft: rgba(229, 72, 77, 0.1);
+  --shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
+  --radius: 24px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181a;
+    --fg: #e8eaed;
+    --fg-dim: #9aa0a6;
+    --fg-faint: #72777d;
+    --border: #303134;
+    --border-strong: #3f4043;
+    --surface: #202124;
+    --surface-2: #27282b;
+    --hover: #303134;
+    --accent: #ff6b6b;
+    --accent-soft: rgba(255, 107, 107, 0.14);
+    --shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font-family: inherit; cursor: pointer; }
+a { color: inherit; }
+
+/* ---------- Landing view ---------- */
+
+#search-view {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px 80px;
+  text-align: center;
+}
+
+#search-view[hidden] { display: none; }
+#result-view[hidden] { display: none; }
+
+.wordmark {
+  font-size: clamp(28px, 7vw, 54px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 10px;
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.w-what   { color: #4285f4; }
+.w-anime  { color: var(--accent); }
+.w-should { color: #f5b301; }
+.w-i      { color: #4285f4; }
+.w-watch  { color: #34a853; }
+.w-next   { color: var(--accent); }
+
+.tagline {
+  color: var(--fg-dim);
+  font-size: 15px;
+  margin: 0 0 28px;
+}
+
+.search-wrap {
+  width: 100%;
+  max-width: 580px;
+  position: relative;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 50px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.search-box:hover,
+.search-box:focus-within {
+  box-shadow: var(--shadow);
+  border-color: transparent;
+}
+
+.search-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: var(--fg-faint);
+}
+
+#search-input,
+#mini-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 16px;
+  font-family: inherit;
+}
+
+#search-input::placeholder,
+#mini-input::placeholder { color: var(--fg-faint); }
+
+.clear-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 22px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.clear-btn:hover { color: var(--fg); }
+
+/* ---------- Suggestions ---------- */
+
+.suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  max-height: 340px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.suggestions[hidden] { display: none; }
+
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+}
+
+.suggestion:hover,
+.suggestion.active { background: var(--hover); }
+
+.suggestion img {
+  width: 34px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--surface-2);
+  flex: none;
+}
+
+.suggestion-text { min-width: 0; }
+
+.suggestion-title {
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestion-meta {
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin-top: 2px;
+}
+
+.suggestions-empty {
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--fg-dim);
+}
+
+/* ---------- Buttons ---------- */
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 30px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: 14px;
+  padding: 10px 18px;
+  border-radius: 6px;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.btn:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.btn-ghost { background: transparent; }
+
+.credit {
+  position: fixed;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin: 0;
+}
+.credit a { color: var(--fg-dim); }
+
+/* ---------- Result view ---------- */
+
+#result-view {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 20px 80px;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 0;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 26px;
+}
+
+.wordmark-sm {
+  font-size: 19px;
+  margin: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  flex: none;
+}
+
+.mini-search {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+#mini-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+#mini-input:focus { box-shadow: var(--shadow); border-color: transparent; }
+
+.because {
+  font-size: 14px;
+  color: var(--fg-dim);
+  margin: 0 0 6px;
+}
+.because strong { color: var(--fg); font-weight: 600; }
+
+.genre-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.tag {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.tag-plain {
+  background: var(--surface-2);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+}
+
+/* How far above or below par for its length, so long shows read fairly. */
+.resid {
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 4px;
+  vertical-align: 2px;
+}
+
+.resid-up { color: #1d7a37; }
+.resid-down { color: var(--accent); }
+
+@media (prefers-color-scheme: dark) {
+  .resid-up { color: #5cc873; }
+}
+
+/* Demographic — audience rather than subject matter, so it reads apart. */
+.tag-demo {
+  background: rgba(66, 133, 244, 0.14);
+  color: #2b62c4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag-demo { color: #7aa8f8; }
+}
+
+/* A theme the recommendation shares with what you watched. */
+.tag-shared {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid currentColor;
+  font-weight: 500;
+}
+
+/* Badges */
+
+.badge-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.badge-gem {
+  background: rgba(245, 179, 1, 0.16);
+  color: #8a6300;
+}
+
+.badge-airing {
+  background: rgba(52, 168, 83, 0.15);
+  color: #1d7a37;
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge-gem { color: #f5b301; }
+  .badge-airing { color: #5cc873; }
+}
+
+.mini-card .badge-row { margin: 6px 0 0; }
+.mini-card .badge { font-size: 10px; padding: 2px 7px; }
+
+/* Toggles */
+
+.controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.controls .direction { margin-bottom: 0; }
+
+.direction {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.direction button {
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 13px;
+  padding: 7px 14px;
+}
+
+.direction button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Hero card */
+
+/* The card takes its accent from the show's own cover art. --art-tint falls
+   back to the site accent when AniList has no colour for a title. */
+.hero {
+  --art-tint: var(--accent);
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  margin-bottom: 34px;
+  overflow: hidden;
+}
+
+.hero[style*="--art"] { --art-tint: var(--art-on-light); }
+
+@media (prefers-color-scheme: dark) {
+  .hero[style*="--art"] { --art-tint: var(--art-on-dark); }
+}
+
+.hero-banner {
+  height: 150px;
+  background-size: cover;
+  background-position: center 30%;
+  position: relative;
+}
+
+/* Fade the banner into the card so the title never sits on busy artwork. */
+.hero-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 20%, var(--surface) 100%);
+}
+
+/* The player takes the banner's place, so the card doesn't jump when it opens. */
+.hero-trailer {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  background: #000;
+}
+
+.btn-play {
+  border-color: color-mix(in srgb, var(--art-tint, var(--accent)) 45%, var(--border));
+  color: var(--art-tint, var(--accent));
+  font-weight: 600;
+}
+
+.hero-main {
+  display: flex;
+  gap: 22px;
+  padding: 20px;
+}
+
+/* With the player open the poster no longer overlaps — it would sit on video. */
+.hero-playing .hero-main { padding-top: 20px; }
+.hero-playing .hero-poster { margin-top: 0; }
+
+/* Lift the poster into the banner, the way cover art overlaps a header. */
+.hero-has-banner .hero-main { padding-top: 0; }
+.hero-has-banner .hero-poster {
+  margin-top: -70px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.hero-poster {
+  width: 170px;
+  height: 245px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--surface-2);
+  flex: none;
+  position: relative;
+}
+
+.hero-body { min-width: 0; flex: 1; }
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--art-tint, var(--accent));
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+/* Genre chips and the score pick up the show's colour too, so the whole card
+   reads as one piece rather than a red accent bolted onto someone's artwork. */
+.hero .tag:not(.tag-plain):not(.tag-demo) {
+  background: color-mix(in srgb, var(--art-tint, var(--accent)) 16%, transparent);
+  color: var(--art-tint, var(--accent));
+}
+
+.hero .stats div:first-child b { color: var(--art-tint, var(--accent)); }
+
+.hero-has-banner { border-color: color-mix(in srgb, var(--art-tint, var(--accent)) 28%, var(--border)); }
+
+.hero h2 {
+  font-size: 25px;
+  line-height: 1.2;
+  margin: 0 0 4px;
+  letter-spacing: -0.02em;
+}
+
+.alt-title {
+  font-size: 13px;
+  color: var(--fg-dim);
+  margin: 0 0 12px;
+}
+
+.stats {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+.stats b {
+  display: block;
+  font-size: 17px;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* Studio names run long — "Bones" and "Nippon Animation" share this row, so
+   let it shrink rather than push the other figures onto a second line. */
+.stat-studio { min-width: 0; }
+
+.stat-studio b {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 15ch;
+}
+
+.synopsis {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-dim);
+  margin: 12px 0 16px;
+}
+
+/* Waiting on the lazy AniList fetch — show a shimmer rather than a blank gap. */
+.synopsis-pending {
+  min-height: 3.2em;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--hover) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .synopsis-pending { animation: none; }
+}
+
+.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Where to watch */
+
+.watch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+
+.watch-label {
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  margin-right: 2px;
+}
+
+.service {
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--art-tint, var(--accent)) 14%, transparent);
+  color: var(--art-tint, var(--accent));
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* "We checked and it isn't there" reads differently from "we don't know". */
+.service-none {
+  background: var(--surface-2);
+  color: var(--fg-dim);
+  font-weight: 400;
+  border: 1px solid var(--border);
+}
+
+.watch-region {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.watch-region:hover { color: var(--fg); border-color: var(--border-strong); }
+
+.watch-more {
+  color: var(--fg-faint);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.watch-more:hover { color: var(--fg-dim); }
+
+/* More list */
+
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fg-faint);
+  margin: 0 0 14px;
+}
+
+.more-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.mini-card {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: left;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.mini-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.mini-card img {
+  width: 52px;
+  height: 74px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: var(--surface-2);
+  flex: none;
+}
+
+.mini-card-body { min-width: 0; }
+
+.mini-card-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  margin-bottom: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mini-card-meta { font-size: 12px; color: var(--fg-dim); }
+.mini-finished { color: var(--fg); }
+
+/* States */
+
+.state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--fg-dim);
+  font-size: 15px;
+}
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 14px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.note {
+  font-size: 13px;
+  color: var(--fg-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 620px) {
+  
+  .hero-poster { width: 100%; max-width: 200px; height: auto; aspect-ratio: 5 / 7; }
+  .hero-main { flex-direction: column; }
+  .hero-banner { height: 110px; }
+  .hero-has-banner .hero-poster { margin-top: -55px; }
+  .credit { position: static; margin-top: 40px; }
+
+  /* Four full-width buttons stacked is most of a phone screen. Two columns
+     keeps the whole card reachable without scrolling past the actions. */
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .hero-actions .btn {
+    padding: 10px 8px;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  /* Four actions in a 2x2. Spanning the link across the top instead leaves
+     the last button orphaned beside dead space. It stays visually primary
+     through its solid fill rather than through width. */
+  .hero-actions .btn { min-width: 0; }
+
+  .stats { gap: 14px; }
+  .more-grid { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,14 @@
+# Build-time credential — never ship this
+.mal-client-id
+.tmdb-key
+
+node_modules/
+
+# Machine-local Claude Code permissions, not project config
+.claude/settings.local.json
+
+# Catalogue build logs
+rebuild.log
+rebuild.err
+watch.log
+watch.err
