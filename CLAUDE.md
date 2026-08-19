@@ -282,10 +282,6 @@ to bucket on themes. Mostly idol franchises and 80s mecha, so low stakes.
 title no longer depends on a tall viewport, but no SE or Mini has actually
 loaded the site.
 
-**Untested on desktop since the mobile rework.** `display: contents` is scoped
-to the ≤620px breakpoint and desktop should be untouched, but that is reasoning,
-not observation.
-
 ---
 
 ## Settled
@@ -306,6 +302,9 @@ Kept short; the reasoning that still matters has moved into the sections above.
   rebuild also dropped 24 entries whose relation lookups had failed open.
 - **Small phone** — the guess was wrong: the toggles were fine, the key art was
   the problem. Fixed in build 17 by lifting the identity block above the art.
+- **Desktop after the mobile rework** — checked at build 19 and unchanged:
+  poster overlapping the banner, identity block beside it, actions in one row,
+  three-column grid. `display: contents` stays inside the ≤620px breakpoint.
 
 ---
 
