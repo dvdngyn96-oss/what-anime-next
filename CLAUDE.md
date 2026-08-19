@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 18.** `anime.json` holds **3,513 entries** (TV 2,642 · ONA 550 · OVA 321),
-about 1 MB. 89 checks pass via `npm test`.
+**Build 19.** `anime.json` holds **3,513 entries** (TV 2,642 · ONA 550 · OVA 321),
+about 1.15 MB. 89 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -20,6 +20,7 @@ about 1 MB. 89 checks pass via `npm test`.
 | Studio | 3,435 |
 | TMDB match | 3,118 |
 | US/CA streaming | 1,610 |
+| AniList tags | 3,239 (92%) |
 | No genres (never recommended) | 77 |
 
 **Live at https://what-anime-next.pages.dev** on Cloudflare Pages, deploying
@@ -87,14 +88,45 @@ MAL merges genres, themes and demographics into one field; the builder splits
 them. Matching happens on **genres**. Ordering then uses:
 
 ```
-affinity = shared themes + (same demographic ? 2 : 0)
+affinity = round(tagSimilarity × 6) + (same demographic ? 2 : 0)
 ```
+
+where `tagSimilarity` is cosine similarity over AniList's weighted tags, and
+entries without tags (8%) fall back to the old `shared themes` count.
 
 **Affinity only reorders within `AFFINITY_WINDOW` (5) neighbours.** Sorting a
 whole bucket by affinity let a distant match leapfrog everything nearer —
 walking down from FMA:B, Arslan Senki (1,592 places away) jumped ahead of
 Berserk (105 away). That one bug produced three separate symptoms before it was
 traced.
+
+### AniList tags, and why the score is rounded
+
+MAL gives three flat genres and a couple of themes. AniList gives ~8 usable
+community-voted tags with relevance weights — FMA:B is *Alchemy 90%, Military
+90%, War 90%, Politics 80%* where MAL offers only "Military". Stored as `tg`,
+one integer per tag (`tagIndex × 10 + weight`, weight 5-9), with names in their
+own `tagNames` table so a tag refresh can never shift a genre's index.
+
+Similarity is **cosine**, not raw overlap: popular shows carry three or four
+times as many tags as obscure ones, so an unnormalised sum ranks by fame.
+
+**The rounding is load-bearing, not cosmetic.** Under the old theme count most
+candidates scored 0, so `preferLocally` was nearly a no-op and proximity
+survived by stable sort. A continuous score gives everyone a distinct value, so
+every window reorders — and monotonicity turns each reorder into a *deferral*,
+because putting a distant match first stops the nearer ones advancing. Shipped
+unrounded, Steins;Gate lost Evangelion, Shinsekai yori and Serial Experiments
+Lain from its chain in one stroke. Rounding restores ties, and ties preserve
+proximity.
+
+Scaled by 6 because similarity runs about 0.1-0.6, landing on 1-4 — the range
+the theme count occupied, which is what the window and the demographic bonus
+were tuned against.
+
+The gain is real: walking down from FMA:B now reaches Berserk (#109) and
+Mo Dao Zu Shi (#195), both nearer and closer in kind than the old first result
+at #385. Roughly half the known-anchor walk lines changed.
 
 ### Kids is demoted
 
@@ -162,6 +194,7 @@ To add one without a 60-minute rebuild: add the ID, then
 | --- | --- | --- |
 | `npm run build` | once a season | ~60 min |
 | `node add-watch-providers.mjs` | whenever listings feel stale | ~20 min |
+| `node add-anilist-tags.mjs` | rarely — tags drift slowly | ~3 min |
 
 They're separate on purpose: TMDB ids never change, but streaming availability
 moves constantly, so refreshing listings shouldn't cost another hour of
@@ -198,9 +231,17 @@ scripts and `test/` are publicly fetchable. No secrets in them, but worth
 knowing. Requests for `/.mal-client-id` return `index.html` — the SPA
 fallback, not the file, which is absent from the repo.
 
-**AniList tags.** The largest available upgrade to recommendation quality:
-*Exorcism 79%*, *Reincarnation 70%* with relevance weights, against MAL's three
-flat genres. Needs a second harvest and a matcher rework.
+~~**AniList tags.**~~ Landed in build 19, and it needed no second harvest —
+the builder's existing `idMal_in` art query returns tags in the same request,
+so a rebuild collects them for free. `add-anilist-tags.mjs` exists to retrofit
+or refresh without a rebuild.
+
+Deliberately scoped to **affinity only**: genres still decide match quality and
+direction still beats affinity, so all three competing rules are untouched.
+The unexplored half is letting tags widen `AFFINITY_WINDOW` adaptively, so a
+0.9-similar title 20 places away could outrank a 0.3-similar one 3 places away.
+That is the shape of the old Arslan Senki bug, so it wants care — but it is
+where the remaining value is.
 
 **The voting system.** "Have you watched it" → "would you recommend it", a
 % recommend rating, and MAL XML list import. The only part of the original idea

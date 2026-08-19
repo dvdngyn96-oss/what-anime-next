@@ -12,3 +12,6 @@ rebuild.log
 rebuild.err
 watch.log
 watch.err
+tags.log
+tags.err
+anime.json.tmp

@@ -301,11 +301,30 @@ const entries = firstSeasons
  * Matched on MAL ID, ~54 requests.
  * ---------------------------------------------------------------- */
 
+/* Tags ride along with the art rather than costing a second harvest: the same
+ * idMal_in page can return them, so a rebuild gets weighted tags for free.
+ * add-anilist-tags.mjs exists for retrofitting an existing catalogue; this is
+ * what keeps a rebuild from dropping them the way it drops tm/wp. */
 const ART_QUERY = `query ($ids: [Int]) {
   Page(page: 1, perPage: 50) {
-    media(idMal_in: $ids, type: ANIME) { idMal coverImage { color } bannerImage }
+    media(idMal_in: $ids, type: ANIME) {
+      idMal coverImage { color } bannerImage
+      tags { name rank isGeneralSpoiler isMediaSpoiler isAdult }
+    }
   }
 }`;
+
+const MIN_TAG_RANK = 50;        // below this the tag is noise, not signal
+const tagNames = [];
+const indexOfTag = new Map();
+
+function tagIndex(name) {
+  if (!indexOfTag.has(name)) {
+    indexOfTag.set(name, tagNames.length);
+    tagNames.push(name);
+  }
+  return indexOfTag.get(name);
+}
 
 async function attachArt(rows) {
   const byMal = new Map(rows.map((r) => [r.i, r]));
@@ -314,6 +333,7 @@ async function attachArt(rows) {
 
   let colours = 0;
   let banners = 0;
+  let tagged = 0;
 
   for (const [n, chunk] of chunks.entries()) {
     for (let attempt = 0; attempt < 6; attempt++) {
@@ -337,15 +357,26 @@ async function attachArt(rows) {
         if (colour) { row.cl = colour.replace('#', ''); colours++; }
         const banner = /banner\/(.+)$/.exec(media.bannerImage || '')?.[1];
         if (banner) { row.bn = banner; banners++; }
+
+        // One integer per tag: index * 10 + weight, weight = floor(rank/10)
+        // clamped to 5..9. Only tags at MIN_TAG_RANK or better are kept, so
+        // the units digit is never 0 and the pair always decodes cleanly.
+        const tags = (media.tags ?? [])
+          .filter((t) => !t.isGeneralSpoiler && !t.isMediaSpoiler && !t.isAdult && t.rank >= MIN_TAG_RANK)
+          .sort((a, b) => b.rank - a.rank);
+        if (tags.length) {
+          row.tg = tags.map((t) => tagIndex(t.name) * 10 + Math.min(9, Math.floor(t.rank / 10)));
+          tagged++;
+        }
       }
       break;
     }
     if (n % 10 === 0 || n === chunks.length - 1) {
-      console.log(`  art batch ${n + 1}/${chunks.length} -> ${colours} colours, ${banners} banners`);
+      console.log(`  art batch ${n + 1}/${chunks.length} -> ${colours} colours, ${banners} banners, ${tagged} tagged`);
     }
     await sleep(1200);
   }
-  return { colours, banners };
+  return { colours, banners, tagged };
 }
 
 console.log('\nFetching key-art colour and banners from AniList…');
@@ -358,6 +389,9 @@ const catalogue = {
   scanned,
   names: nameIndex,
   studios: studioIndex,
+  // Kept apart from `names`: g/th/d index into that one, and a separate
+  // vocabulary means a tag refresh can never shift a genre's index.
+  tagNames,
   anime: entries,
 };
 
@@ -371,6 +405,7 @@ console.log(`  dropped ${droppedByRelation} with a prequel, ${droppedByTitle} by
 console.log(`  ${unchecked} kept unverified (lookup failed)`);
 console.log(`  ${entries.filter((e) => !e.g.length).length} without genres`);
 console.log(`  ${art.colours} with a key-art colour, ${art.banners} with a banner`);
+console.log(`  ${art.tagged} with AniList tags, ${tagNames.length} distinct tag names`);
 
 const kept = {};
 for (const e of entries) kept[e.ty] = (kept[e.ty] ?? 0) + 1;

@@ -20,7 +20,7 @@ const AFFINITY_WINDOW = 5;   // how far a better thematic match may jump ahead
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 18;
+const BUILD = 19;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -74,6 +74,49 @@ const positionOf = (anime) => (
   axis === 'completion' && byCompletion.length ? anime.completionPos : (anime.rankPos ?? null)
 );
 
+/**
+ * AniList tags, unpacked from `index * 10 + weight`.
+ *
+ * Weight is floor(rank/10) clamped to 5..9, and only tags at 50% or better are
+ * stored, so the units digit is never 0 and the pair always separates cleanly.
+ * The norm is precomputed because every candidate in a walk is compared
+ * against the same source, and recomputing it per comparison showed up.
+ */
+function unpackTags(packed) {
+  if (!packed?.length) return null;
+  const weights = new Map();
+  let sumSquares = 0;
+  for (const n of packed) {
+    const w = n % 10;
+    weights.set((n - w) / 10, w);
+    sumSquares += w * w;
+  }
+  return { weights, norm: Math.sqrt(sumSquares) };
+}
+
+/**
+ * Cosine similarity between two tag vectors, 0..1, or null if either side has
+ * no tags.
+ *
+ * Cosine rather than raw overlap on purpose. Popular shows carry three or four
+ * times as many tags as obscure ones — Fullmetal Alchemist: Brotherhood has 37
+ * usable, a quiet 2013 OVA has 4 — so an unnormalised sum would rank by fame,
+ * which is the same failure the affinity window already exists to prevent.
+ */
+function tagSimilarity(a, b) {
+  if (!a?.tags || !b?.tags) return null;
+  const [small, large] = a.tags.weights.size <= b.tags.weights.size
+    ? [a.tags, b.tags]
+    : [b.tags, a.tags];
+
+  let dot = 0;
+  for (const [idx, weight] of small.weights) {
+    const other = large.weights.get(idx);
+    if (other) dot += weight * other;
+  }
+  return dot / (a.tags.norm * b.tags.norm);
+}
+
 /** Compact catalogue rows -> the shape the rest of the app works with. */
 function expand(row, names) {
   return {
@@ -94,6 +137,7 @@ function expand(row, names) {
     themes: (row.th || []).map((i) => names[i]).filter(Boolean),
     demographic: (row.d || []).map((i) => names[i]).filter(Boolean)[0] || null,
     stats: row.stats || null,
+    tags: unpackTags(row.tg),
     tmdb: row.tm || null,
     watch: row.wp || null,
     studios: (row.su || []).map((i) => studioNames[i]).filter(Boolean),
@@ -384,7 +428,33 @@ function collectTiers(source, direction, exclude) {
     candidate.sharedDemographic = Boolean(
       wantDemographic && candidate.demographic === wantDemographic
     );
-    candidate.affinity = candidate.sharedThemes.length + (candidate.sharedDemographic ? 2 : 0);
+
+    /* AniList's weighted tags are a far better similarity signal than MAL's
+     * handful of flat themes — "Alchemy 90%, Military 90%, War 90%" against
+     * plain "Military" — so when both sides have them, cosine similarity
+     * replaces the theme count.
+     *
+     * **Rounded, and that rounding is load-bearing.** Under the old signal
+     * most candidates shared no themes at all, so affinity was 0 for nearly
+     * everyone and preferLocally was almost a no-op — proximity survived by
+     * stable sort. A continuous score gives every candidate a distinct value,
+     * so every window reorders, and the walk's monotonicity rule turns each
+     * reorder into a deferral: put a distant match first and the nearer ones
+     * stop "advancing" and get held. Unrounded, that cost Steins;Gate its
+     * documented chain to Evangelion, Shinsekai yori and Serial Experiments
+     * Lain in one go. Rounding restores the ties, and with them proximity.
+     *
+     * Scaled by 6 because similarity runs about 0.1-0.6 in practice, which
+     * lands on 1-4 — the range the theme count occupied, and what the
+     * affinity window and the demographic bonus of 2 were tuned against.
+     *
+     * 8% of entries have no usable tags; those fall back to themes. The two
+     * scales are close enough that a fallback candidate isn't systematically
+     * advantaged inside the window. */
+    const similarity = tagSimilarity(source, candidate);
+    candidate.tagSimilarity = similarity;
+    candidate.affinity = (similarity == null ? candidate.sharedThemes.length : Math.round(similarity * 6))
+      + (candidate.sharedDemographic ? 2 : 0);
 
     /* Kids is the one demographic that marks a different audience rather than
      * a different tone — Shounen, Seinen, Shoujo and Josei all sit on a
