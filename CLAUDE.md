@@ -242,6 +242,11 @@ release-ready between the two, and they must never run concurrently: both
 rewrite `anime.json` in place, and the providers pass holds the whole catalogue
 in memory, so it will overwrite anything edited while it runs.
 
+Streaming is the *only* follow-up. AniList tags and genre backfill both happen
+inside the builder's art pass, so a rebuild carries them already —
+`add-anilist-tags.mjs` and `backfill-genres.mjs` exist for fixing an existing
+catalogue without paying the 60 minutes.
+
 **Long builds must run detached**, or a Claude Code crash takes them with it:
 
 ```bash
@@ -255,48 +260,52 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-~~**Deployment.**~~ Done — see Current state. Build settings are framework
-preset **None**, build command **empty**, output directory **`/`**. The build
-command matters: Cloudflare's Workers import flow prefills `npm run build`,
-which here is the 60-minute catalogue rebuild, not a site build.
-
-Cloudflare serves the whole repo root, so `package.json`, the `.mjs` build
-scripts and `test/` are publicly fetchable. No secrets in them, but worth
-knowing. Requests for `/.mal-client-id` return `index.html` — the SPA
-fallback, not the file, which is absent from the repo.
-
-~~**AniList tags.**~~ Landed in build 19, and it needed no second harvest —
-the builder's existing `idMal_in` art query returns tags in the same request,
-so a rebuild collects them for free. `add-anilist-tags.mjs` exists to retrofit
-or refresh without a rebuild.
-
-Deliberately scoped to **affinity only**: genres still decide match quality and
-direction still beats affinity, so all three competing rules are untouched.
-The unexplored half is letting tags widen `AFFINITY_WINDOW` adaptively, so a
-0.9-similar title 20 places away could outrank a 0.3-similar one 3 places away.
-That is the shape of the old Arslan Senki bug, so it wants care — but it is
-where the remaining value is.
-
 **The voting system.** "Have you watched it" → "would you recommend it", a
 % recommend rating, and MAL XML list import. The only part of the original idea
 still missing, and the only part needing a backend. Roughly 177,000 votes would
 be needed for meaningful per-title percentages, which is why list import
 matters — a few hundred uploads does what millions of pageviews would.
 
-~~**43 entries kept unverified.**~~ Settled by the build-16 rebuild: the
-four-times retry worked and the count is **0**. That rebuild also dropped 24
-entries whose relation lookups had previously failed open and which do in fact
-have a prequel.
+**Adaptive affinity window.** The unexplored half of the tags work. Today tag
+similarity only reorders within `AFFINITY_WINDOW` (5); letting a very high
+similarity earn a longer jump would mean a 0.9-similar title 20 places away
+could outrank a 0.3-similar one 3 places away. That is where the remaining
+recommendation quality is — and it is exactly the shape of the Arslan Senki
+bug, so it needs bounding and a close read of `npm run walks`.
 
-~~**Never seen on a small phone.**~~ Checked on a 14 Pro Max at build 16, and
-the guess was wrong about the cause. The toggles were fine; the *key art* was
-the problem — ~500px of preamble plus ~335px of banner and poster put the
-title about 120px below the fold on the largest iPhone made.
+**31 entries still have no genres** and so can never be recommended. Their only
+AniList genre is Mahou Shoujo, Mecha, Music or Psychological — MAL themes, not
+genres. Filling them means either fabricating a genre or teaching the matcher
+to bucket on themes. Mostly idol franchises and 80s mecha, so low stakes.
 
-Build 17 lifted the identity block (eyebrow, title, badges, stats) above the
-art on screens under 620px, via a `.hero-head` wrapper and `display: contents`
-on `.hero-main`/`.hero-body`. Desktop is untouched. Still unverified on an
-actual SE or Mini, but the title no longer depends on the viewport being tall.
+**Small phones remain unverified below 390px.** Build 17's reorder means the
+title no longer depends on a tall viewport, but no SE or Mini has actually
+loaded the site.
+
+**Untested on desktop since the mobile rework.** `display: contents` is scoped
+to the ≤620px breakpoint and desktop should be untouched, but that is reasoning,
+not observation.
+
+---
+
+## Settled
+
+Kept short; the reasoning that still matters has moved into the sections above.
+
+- **Deployment** — live on Cloudflare Pages, auto-deploying from `main`.
+  Build settings: preset **None**, build command **empty**, output `/`. The
+  build command matters — Cloudflare's Workers import flow prefills
+  `npm run build`, which here is the 60-minute catalogue rebuild.
+  Cloudflare serves the whole repo root, so `package.json`, the `.mjs` scripts
+  and `test/` are publicly fetchable; no secrets in them. `/.mal-client-id`
+  returns `index.html` (the SPA fallback), not the file — it is not in the repo.
+- **AniList tags** — landed build 19, affinity only. Needed no second harvest.
+- **Genre backfill** — 43 of 74 recovered from AniList.
+- **Recaps** — 23 dropped; `looksLikeRecap` keeps them out of future builds.
+- **43 unverified entries** — settled by the build-16 rebuild, now 0. That
+  rebuild also dropped 24 entries whose relation lookups had failed open.
+- **Small phone** — the guess was wrong: the toggles were fine, the key art was
+  the problem. Fixed in build 17 by lifting the identity block above the art.
 
 ---
 
@@ -305,7 +314,22 @@ actual SE or Mini, but the title no longer depends on the viewport being tall.
 - Verify against data rather than assuming. Several "obvious" fixes in this
   project made things measurably worse and were reverted — check known-good
   walks (`npm run walks`) *before* declaring a change good, not after.
+- **Capture a walks baseline before touching the matcher, and diff.** For a
+  change meant to preserve behaviour, byte-identical output is the proof. For a
+  change meant to improve it, the diff is the only evidence there is — read it
+  anchor by anchor. The tags work looked finished and was silently dropping
+  Steins;Gate's three nearest matches; only the diff showed it.
+- **Dry-run any rule that deletes entries.** The recap patterns matched two
+  real series (Special A, A Returner's Magic Should Be Special) on the first
+  draft. A report-only mode costs nothing and caught it.
+- **Write-then-rename when a long job checkpoints.** A plain `writeFileSync`
+  onto `anime.json` died mid-run with UNKNOWN (errno -4094) — Windows had it
+  briefly locked. Renaming a temp file over it is atomic.
 - The user finds real bugs by clicking through the live site. Screenshots have
   caught things the test suite structurally could not.
-- `positionOf()` returns rank or completion position depending on the active
+- `positionOf()` returns `rankPos` or `completionPos` depending on the active
   axis. Anything touching ordering must go through it, not `anime.rank`.
+- Three things a change here can quietly break, in the order they bite:
+  match quality, then direction, then monotonicity. A reorder that looks local
+  becomes a *deletion* through the monotonicity rule, because a candidate that
+  no longer advances gets deferred out of sight.
