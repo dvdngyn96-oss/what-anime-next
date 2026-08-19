@@ -20,7 +20,7 @@ const AFFINITY_WINDOW = 5;   // how far a better thematic match may jump ahead
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 16;
+const BUILD = 17;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -1119,6 +1119,10 @@ function renderResult() {
       <div class="hero-main">
       <img class="hero-poster" src="${esc(hero.image)}" alt="${esc(hero.title)} poster">
       <div class="hero-body">
+        <!-- Grouped so the phone layout can lift the whole identity block above
+             the artwork. On a 14 Pro Max the key art alone is ~335px, which put
+             the title roughly 120px below the fold. -->
+        <div class="hero-head">
         <p class="eyebrow">${improved ? 'Watch this next' : 'Closest match'}</p>
         <h2>${esc(hero.title)}</h2>
         ${badges(hero) ? `<div class="badge-row">${badges(hero)}</div>` : ''}
@@ -1130,6 +1134,7 @@ function renderResult() {
           <div><b>${esc(hero.type ?? '—')}</b>${esc(hero.year ?? '')}</div>
           ${completionStat(hero)}
           ${hero.studios.length ? `<div class="stat-studio" title="Animation studio"><b>${esc(hero.studios[0])}</b>studio</div>` : ''}
+        </div>
         </div>
         <div class="genre-row">
           ${hero.genres.map((g) => `<span class="tag">${esc(g)}</span>`).join('')}

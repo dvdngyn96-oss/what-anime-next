@@ -732,9 +732,39 @@ a { color: inherit; }
 }
 
 @media (max-width: 620px) {
-  
-  .hero-poster { width: 100%; max-width: 200px; height: auto; aspect-ratio: 5 / 7; }
-  .hero-main { flex-direction: column; }
+
+  /* Identity first, art second.
+   *
+   * On a phone the preamble — search box, source line, both toggle rows, the
+   * explanation note — costs about 500px before the card even starts, and the
+   * key art is another ~335px on top. Measured on a 14 Pro Max, that left the
+   * title roughly 120px below the fold: you scrolled a full screen of artwork
+   * before learning what was being recommended.
+   *
+   * `display: contents` dissolves .hero-main and .hero-body so their children
+   * become flex items of .hero itself, which is what makes the head orderable
+   * against the banner without restructuring the markup for desktop. Only two
+   * order values are needed — everything else keeps source order at 0, which
+   * already reads poster, genres, synopsis, watch, actions.
+   */
+  .hero { display: flex; flex-direction: column; }
+  .hero-main, .hero-body { display: contents; }
+  .hero-head { order: -2; padding: 20px 20px 0; }
+  .hero-banner, .hero-trailer { order: -1; }
+
+  /* .hero keeps zero padding so the banner stays full-bleed; the text blocks
+     that used to inherit .hero-main's padding now carry their own. */
+  .genre-row, .synopsis, .watch, .hero-actions { padding-inline: 20px; }
+  .hero-actions { padding-bottom: 20px; }
+
+  .hero-poster {
+    width: 100%;
+    max-width: 160px;
+    height: auto;
+    aspect-ratio: 5 / 7;
+    align-self: flex-start;
+    margin-inline: 20px;
+  }
   .hero-banner { height: 110px; }
   .hero-has-banner .hero-poster { margin-top: -55px; }
   .credit { position: static; margin-top: 40px; }
