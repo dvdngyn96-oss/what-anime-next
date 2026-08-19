@@ -10,18 +10,18 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 19.** `anime.json` holds **3,513 entries** (TV 2,642 · ONA 550 · OVA 321),
+**Build 19.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
 about 1.15 MB. 89 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
-| Key-art colour | 3,261 |
-| Banner image | 2,324 |
-| Studio | 3,435 |
-| TMDB match | 3,118 |
+| Key-art colour | 3,254 |
+| Banner image | 2,321 |
+| Studio | 3,412 |
+| TMDB match | 3,116 |
 | US/CA streaming | 1,610 |
-| AniList tags | 3,239 (92%) |
-| No genres (never recommended) | 77 |
+| AniList tags | 3,230 (93%) |
+| No genres (never recommended) | 74 |
 
 **Live at https://what-anime-next.pages.dev** on Cloudflare Pages, deploying
 from `main` on GitHub (`dvdngyn96-oss/what-anime-next`). Every push redeploys
@@ -172,6 +172,18 @@ Only things you can start watching cold:
 
 - **TV, OVA and ONA.** No films, specials or recaps.
 - **No prequel, no parent story.** Anything with either is dropped.
+
+**Recaps need their own title rule.** Excluding MAL's `special` media_type is
+not enough — plenty of recaps are typed OVA or ONA and sail through. Chainsaw
+Man Recap sat at #1207 through four builds. `looksLikeRecap` in
+`build-catalogue.mjs` catches *recap, digest, compilation, soushuuhen* and
+*special edition/anime/animation* anywhere in either title.
+
+"Special" alone is unusable as a word match: **Special A** is a real 24-episode
+TV series and **A Returner's Magic Should Be Special** a real 12-episode one.
+It only signals a recap as a *trailing* word, and only on OVA/ONA. The single
+TV compilation, Gundam IBO Tokubetsu-hen, is caught by "Special Edition" in its
+English title instead. Build 19 pruned 23 entries this way.
 
 `STANDS_ALONE_ANYWAY` in `build-catalogue.mjs` is a hand-curated allowlist,
 **deliberately not a heuristic**. MAL's relation data cannot separate Hellsing

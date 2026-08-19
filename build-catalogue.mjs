@@ -115,6 +115,35 @@ const SEQUEL_PATTERNS = [
 
 const looksLikeSequel = (title) => SEQUEL_PATTERNS.some((re) => re.test(title));
 
+/**
+ * Recaps, digests and compilation episodes.
+ *
+ * The catalogue rule is "no films, specials or recaps", and MAL's `special`
+ * media_type is already excluded — but plenty of recaps are typed OVA or ONA
+ * and sail straight through. Chainsaw Man Recap sat at #1207 for four builds.
+ *
+ * "Special" on its own is unusable as a word match: Special A is a real
+ * 24-episode TV series, and A Returner's Magic Should Be Special is a real
+ * 12-episode one. It only signals a recap as a *trailing* word, and only on
+ * OVA/ONA — the one TV compilation in the catalogue, Gundam IBO
+ * Tokubetsu-hen, is caught by "Special Edition" in its English title instead.
+ */
+const RECAP_PATTERNS = [
+  /\brecaps?\b/i,
+  /\bdigests?\b/i,
+  /\bcompilation\b/i,
+  /\bsoushuuhen\b/i,
+  /\bspecial\s+(?:edition|anime|animation)\b/i,
+];
+
+const TRAILING_SPECIAL = /\bspecials?\b\s*[!！?？.]*$/i;
+
+function looksLikeRecap(node) {
+  const titles = [node.title, node.alternative_titles?.en].filter(Boolean);
+  const isTv = node.media_type === 'tv';
+  return titles.some((t) => RECAP_PATTERNS.some((re) => re.test(t)) || (!isTv && TRAILING_SPECIAL.test(t)));
+}
+
 async function malFetch(url, tries = 4) {
   for (let attempt = 0; attempt < tries; attempt++) {
     let res;
@@ -187,10 +216,15 @@ const firstSeasons = [];
 const allowlistCandidates = [];
 let droppedByRelation = 0;
 let droppedByTitle = 0;
+let droppedByRecap = 0;
 let unchecked = 0;
 
 for (const [n, node] of tvSeries.entries()) {
-  if (looksLikeSequel(node.title)) {
+  if (looksLikeRecap(node)) {
+    // Checked before the sequel patterns and before the detail request: a
+    // recap is never worth a lookup, whatever its relations say.
+    droppedByRecap++;
+  } else if (looksLikeSequel(node.title)) {
     droppedByTitle++;
   } else {
     // `statistics` rides along free — it's detail-only, and we're already
@@ -402,6 +436,7 @@ console.log(`\nWrote anime.json`);
 console.log(`  ${entries.length} TV first seasons, ${Math.round(json.length / 1024)} KB`);
 console.log(`  from ${scanned} ranked entries -> ${tvSeries.length} TV -> ${entries.length} kept`);
 console.log(`  dropped ${droppedByRelation} with a prequel, ${droppedByTitle} by title pattern`);
+console.log(`  dropped ${droppedByRecap} recaps, digests and compilations`);
 console.log(`  ${unchecked} kept unverified (lookup failed)`);
 console.log(`  ${entries.filter((e) => !e.g.length).length} without genres`);
 console.log(`  ${art.colours} with a key-art colour, ${art.banners} with a banner`);
