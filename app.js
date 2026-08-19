@@ -20,7 +20,7 @@ const AFFINITY_WINDOW = 5;   // how far a better thematic match may jump ahead
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 17;
+const BUILD = 18;
 
 /* ------------------------------------------------------------------ *
  * Catalogue

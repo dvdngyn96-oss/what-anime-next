@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 16.** `anime.json` holds **3,513 entries** (TV 2,642 · ONA 550 · OVA 321),
+**Build 18.** `anime.json` holds **3,513 entries** (TV 2,642 · ONA 550 · OVA 321),
 about 1 MB. 89 checks pass via `npm test`.
 
 | Data | Coverage |
@@ -22,7 +22,15 @@ about 1 MB. 89 checks pass via `npm test`.
 | US/CA streaming | 1,610 |
 | No genres (never recommended) | 77 |
 
-Never deployed — localhost only.
+**Live at https://what-anime-next.pages.dev** on Cloudflare Pages, deploying
+from `main` on GitHub (`dvdngyn96-oss/what-anime-next`). Every push redeploys
+automatically, in about 40 seconds.
+
+**Use the bare hostname.** Each deploy also gets a pinned URL like
+`1da78362.what-anime-next.pages.dev`, which serves that build *forever* —
+Cloudflare hands you one in the "Deployment URL" line after a build, and it
+looks like the site's address. Chasing a stale build number on one of those
+wasted a session's worth of confusion once already.
 
 ---
 
@@ -180,9 +188,15 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**Deployment.** Still localhost. Six static files to Cloudflare Pages.
-**Push via Git, not drag-and-drop** — `.gitignore` protects both API keys, but
-only if Git is the mechanism carrying the files.
+~~**Deployment.**~~ Done — see Current state. Build settings are framework
+preset **None**, build command **empty**, output directory **`/`**. The build
+command matters: Cloudflare's Workers import flow prefills `npm run build`,
+which here is the 60-minute catalogue rebuild, not a site build.
+
+Cloudflare serves the whole repo root, so `package.json`, the `.mjs` build
+scripts and `test/` are publicly fetchable. No secrets in them, but worth
+knowing. Requests for `/.mal-client-id` return `index.html` — the SPA
+fallback, not the file, which is absent from the repo.
 
 **AniList tags.** The largest available upgrade to recommendation quality:
 *Exorcism 79%*, *Reincarnation 70%* with relevance weights, against MAL's three
@@ -199,8 +213,15 @@ four-times retry worked and the count is **0**. That rebuild also dropped 24
 entries whose relation lookups had previously failed open and which do in fact
 have a prequel.
 
-**Never seen on a small phone.** XR and Pro Max are fine; an SE or Mini would
-likely push the card below the fold given the toggles.
+~~**Never seen on a small phone.**~~ Checked on a 14 Pro Max at build 16, and
+the guess was wrong about the cause. The toggles were fine; the *key art* was
+the problem — ~500px of preamble plus ~335px of banner and poster put the
+title about 120px below the fold on the largest iPhone made.
+
+Build 17 lifted the identity block (eyebrow, title, badges, stats) above the
+art on screens under 620px, via a `.hero-head` wrapper and `display: contents`
+on `.hero-main`/`.hero-body`. Desktop is untouched. Still unverified on an
+actual SE or Mini, but the title no longer depends on the viewport being tall.
 
 ---
 

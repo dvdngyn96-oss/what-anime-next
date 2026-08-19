@@ -764,9 +764,25 @@ a { color: inherit; }
     aspect-ratio: 5 / 7;
     align-self: flex-start;
     margin-inline: 20px;
+    /* Stacked above the tags now rather than beside the text, so its bottom
+       edge needs clearance it never needed in the side-by-side layout. */
+    margin-bottom: 14px;
   }
   .hero-banner { height: 110px; }
   .hero-has-banner .hero-poster { margin-top: -55px; }
+
+  /* The banner sits mid-card here, with the stats block above it, so a
+     one-way fade leaves a hard cut across the artwork's top edge. Fade into
+     the card on both sides instead. */
+  .hero-banner::after {
+    background: linear-gradient(
+      to bottom,
+      var(--surface) 0%,
+      transparent 35%,
+      transparent 55%,
+      var(--surface) 100%
+    );
+  }
   .credit { position: static; margin-top: 40px; }
 
   /* Four full-width buttons stacked is most of a phone screen. Two columns
