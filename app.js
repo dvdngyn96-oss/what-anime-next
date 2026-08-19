@@ -15,12 +15,17 @@ const MAX_RESULTS = 12;      // shown in the "others" grid
  * also doing accidental duty keeping candidates local, but the affinity window
  * below now handles that directly, so it can be generous. */
 const MAX_PER_TIER = 60;
-const AFFINITY_WINDOW = 5;   // how far a better thematic match may jump ahead
+const AFFINITY_WINDOW = 5;   // how far a *slightly* better thematic match may jump
+/* Ranking positions of extra distance a candidate earns per point of affinity.
+ * Measured in positions rather than bucket slots on purpose: a bucket holds
+ * only genre-sharing candidates, so ten bucket slots can span 1,500 places. */
+const AFFINITY_REACH = 30;
+const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 19;
+const BUILD = 20;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -477,10 +482,48 @@ function collectTiers(source, direction, exclude) {
    * of Berserk 105 places away. The premise is "the next one along", so
    * proximity leads and affinity only reorders within a short window of it.
    */
+  /* The jump a candidate may make scales with how much better it is.
+   *
+   * A fixed window of 5 treats "one point better" and "four points better"
+   * alike, and being chunk-aligned it also refuses jumps across a boundary —
+   * position 5 could never overtake position 4 however good it was. This walks
+   * the bucket instead, and at each step lets a candidate come forward by
+   * AFFINITY_WINDOW positions per point of affinity it beats the nearest
+   * candidate by, capped at MAX_LOOKAHEAD.
+   *
+   * The cap is the whole safety argument. Sorting a bucket outright once let
+   * Arslan Senki, 1,592 places from Fullmetal Alchemist: Brotherhood, leapfrog
+   * Berserk at 105 — a candidate that far away sits well beyond any lookahead
+   * and can no longer do that. The premise is still "the next one along". */
+  const sourcePosition = positionOf(source) ?? 0;
+  const distanceOf = (a) => Math.abs((positionOf(a) ?? sourcePosition) - sourcePosition);
+
   const preferLocally = (bucket) => {
+    const remaining = bucket.slice();
     const out = [];
-    for (let i = 0; i < bucket.length; i += AFFINITY_WINDOW) {
-      out.push(...bucket.slice(i, i + AFFINITY_WINDOW).sort((a, b) => b.affinity - a.affinity));
+
+    while (remaining.length) {
+      const nearest = remaining[0];
+      const nearestDistance = distanceOf(nearest);
+      let pick = 0;
+      let bestAffinity = nearest.affinity;
+      const limit = Math.min(remaining.length, MAX_LOOKAHEAD);
+
+      for (let i = 1; i < limit; i++) {
+        const candidate = remaining[i];
+        if (candidate.affinity <= bestAffinity) continue;
+
+        // A better match may sit further away, in proportion to how much
+        // better it is — but measured in ranking positions, so it can never
+        // come from the far end of the list.
+        const earned = AFFINITY_REACH * (candidate.affinity - nearest.affinity);
+        if (distanceOf(candidate) - nearestDistance <= earned) {
+          pick = i;
+          bestAffinity = candidate.affinity;
+        }
+      }
+
+      out.push(...remaining.splice(pick, 1));
     }
     return out;
   };

@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 19.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+**Build 20.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
 about 1.15 MB. 89 checks pass via `npm test`.
 
 | Data | Coverage |
@@ -41,7 +41,7 @@ wasted a session's worth of confusion once already.
 ```bash
 npm run serve     # python -m http.server 8777
 npm test          # 89 checks, jsdom against the real app.js and anime.json
-npm run walks     # prints recommendation chains for known anchors
+npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
 
@@ -95,11 +95,19 @@ affinity = round(tagSimilarity × 6) + (same demographic ? 2 : 0)
 where `tagSimilarity` is cosine similarity over AniList's weighted tags, and
 entries without tags (8%) fall back to the old `shared themes` count.
 
-**Affinity only reorders within `AFFINITY_WINDOW` (5) neighbours.** Sorting a
-whole bucket by affinity let a distant match leapfrog everything nearer —
-walking down from FMA:B, Arslan Senki (1,592 places away) jumped ahead of
+**A better match earns a longer jump, measured in ranking positions.** Each
+point of affinity buys `AFFINITY_REACH` (30) positions of extra distance over
+the nearest candidate; `MAX_LOOKAHEAD` (30) bounds the scan for cost. Sorting a
+whole bucket by affinity instead let a distant match leapfrog everything nearer
+— walking down from FMA:B, Arslan Senki (1,592 places away) jumped ahead of
 Berserk (105 away). That one bug produced three separate symptoms before it was
 traced.
+
+**Positions, not bucket slots — this is the whole safety argument.** A bucket
+holds only genre-sharing candidates, so ten bucket slots can span 1,500 ranking
+places. Build 20 first bounded the jump by bucket index and immediately
+reproduced the Arslan Senki bug: Arslan led FMA:B's chain and Berserk fell to a
+backtrack. Distance has to be measured in the units proximity actually means.
 
 ### AniList tags, and why the score is rounded
 
@@ -266,12 +274,10 @@ still missing, and the only part needing a backend. Roughly 177,000 votes would
 be needed for meaningful per-title percentages, which is why list import
 matters — a few hundred uploads does what millions of pageviews would.
 
-**Adaptive affinity window.** The unexplored half of the tags work. Today tag
-similarity only reorders within `AFFINITY_WINDOW` (5); letting a very high
-similarity earn a longer jump would mean a 0.9-similar title 20 places away
-could outrank a 0.3-similar one 3 places away. That is where the remaining
-recommendation quality is — and it is exactly the shape of the Arslan Senki
-bug, so it needs bounding and a close read of `npm run walks`.
+**Tune `AFFINITY_REACH` against real taste.** Build 20 shipped 30 positions per
+affinity point, chosen because it gave the fewest backtracks (14, against 21
+before) while keeping every known-good chain. 60 was also defensible. Nothing
+here is ground truth — it wants a human deciding whether the chains read well.
 
 **31 entries still have no genres** and so can never be recommended. Their only
 AniList genre is Mahou Shoujo, Mecha, Music or Psychological — MAL themes, not

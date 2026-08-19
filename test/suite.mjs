@@ -365,24 +365,42 @@ console.log('\n--- proximity beats distant affinity ---');
   // near neighbour that shares the genres. This is the Fullmetal Alchemist:
   // Brotherhood -> Arslan Senki case: 1,592 places away beat 105 away.
   const NAMES = ['Action', 'Fantasy', 'Military', 'Shounen'];
-  const mk = (r, i, t, th, d) => ({
-    r, i, t, th, d, s: 8, g: [0, 1], ty: 'TV', e: 24, y: 2013,
+  const mk = (r, i, t, th, d, g = [0, 1]) => ({
+    r, i, t, th, d, s: 8, g, ty: 'TV', e: 24, y: 2013,
     m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
   });
 
-  const NEAR = {
-    built: '2026-07-25', count: 8, names: NAMES,
-    anime: [
-      mk(1, 800, 'Source Show', [2], [3]),          // Military + Shounen
-      mk(2, 801, 'Near Neighbour', [], []),         // genres only, 1 place away
-      mk(3, 802, 'Filler A', [], []),
-      mk(4, 803, 'Filler B', [], []),
-      mk(5, 804, 'Filler C', [], []),
-      mk(6, 805, 'Filler D', [], []),
-      mk(7, 806, 'Filler E', [], []),
-      mk(8, 807, 'Distant Perfect Match', [2], [3]), // both, but 7 places away
-    ],
-  };
+  /* The distant match has to be *genuinely* distant.
+   *
+   * This fixture used to be eight entries, with the perfect match seven places
+   * down. That was a fair stand-in while the affinity window was measured in
+   * bucket slots — seven slots was outside a window of five. The window is
+   * measured in ranking positions now, and seven positions is a near
+   * neighbour by any reading, so the short fixture stopped modelling the case
+   * it names. Distance here goes through positionOf, which returns rankPos —
+   * an ordinal over the catalogue — so the only way to be 200 places away is
+   * to have 200 entries in between.
+   *
+   * The filler carries **no genres**, so it never enters the candidate bucket
+   * and cannot be what holds the distant match back. Give the filler genres
+   * instead and MAX_LOOKAHEAD does the blocking, which makes the test pass
+   * for the wrong reason — verified by raising AFFINITY_REACH to 1000 and
+   * watching it stay green.
+   */
+  const anime = [
+    mk(1, 800, 'Source Show', [2], [3]),            // Military + Shounen
+    mk(2, 801, 'Near Neighbour', [], []),           // genres only, 1 place away
+    mk(3, 802, 'Filler A', [], []),                 // genre matches, near
+    mk(4, 803, 'Filler B', [], []),
+    mk(5, 804, 'Filler C', [], []),
+    mk(6, 805, 'Filler D', [], []),
+    mk(7, 806, 'Filler E', [], []),
+  ];
+  // Spacing only — no genres, so these never become candidates.
+  for (let n = 0; n < 200; n++) anime.push(mk(8 + n, 807 + n, `Gap ${n}`, [], [], []));
+  anime.push(mk(208, 1007, 'Distant Perfect Match', [2], [3]));   // 207 places away
+
+  const NEAR = { built: '2026-07-25', count: anime.length, names: NAMES, anime };
 
   const dom = makeDom(NEAR);
   await sleep(200);

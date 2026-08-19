@@ -47,3 +47,22 @@ await walk('Tokyo Ravens','up');
 await walk('Sasaki to Pii-chan','up');
 await walk('Toradora!','up');
 await walk('Steins;Gate','up',5);
+
+/* Added for the affinity-window work. Chosen for shape, not for fame:
+ *
+ *   Yuru Camp and Haikyuu!! have a *single* genre, so their buckets are huge
+ *   and every candidate is a full match — the most sensitive case for any
+ *   change to how far a candidate may jump.
+ *   Berserk and Cowboy Bebop are dense, high-rank, heavily tagged.
+ *   Mushishi is episodic, which the completion axis is known to penalise.
+ *   Hyouge Mono is a canary: its genres came from the AniList backfill.
+ *   Gakkougurashi! mixes Horror with Slice of Life, an unusual pairing.
+ */
+await walk('Mushishi','down');
+await walk('Cowboy Bebop','down');
+await walk('Kenpuu Denki Berserk','down');
+await walk('Chihayafuru','up');
+await walk('Yuru Camp△','up');
+await walk('Haikyuu!!','up');
+await walk('Gakkougurashi!','up');
+await walk('Hyouge Mono','up');
