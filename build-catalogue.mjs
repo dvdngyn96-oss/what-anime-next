@@ -342,13 +342,51 @@ const entries = firstSeasons
 const ART_QUERY = `query ($ids: [Int]) {
   Page(page: 1, perPage: 50) {
     media(idMal_in: $ids, type: ANIME) {
-      idMal coverImage { color } bannerImage
+      idMal coverImage { color } bannerImage genres
       tags { name rank isGeneralSpoiler isMediaSpoiler isAdult }
     }
   }
 }`;
 
 const MIN_TAG_RANK = 50;        // below this the tag is noise, not signal
+
+/**
+ * AniList genre -> MAL vocabulary, for backfilling entries MAL left blank.
+ *
+ * MAL's genre data thins out badly for pre-1990 TV and for merchandise-driven
+ * shows: 74 entries had no genres at all, which means the walk can never match
+ * them. Hyouge Mono sits at #704 and was unreachable. AniList has genres for
+ * nearly all of them.
+ *
+ * Only ever used where MAL supplied *nothing* — this never overrides MAL.
+ *
+ * Four AniList genres are MAL *themes*, not genres, so they go to `th`.
+ * Putting them in `g` would invent genre values the bucketing logic has never
+ * seen and let "Mecha" alone count as a full genre match.
+ */
+const ANILIST_GENRE_TO_MAL = {
+  Action: 'Action',
+  Adventure: 'Adventure',
+  Comedy: 'Comedy',
+  Drama: 'Drama',
+  Ecchi: 'Ecchi',
+  Fantasy: 'Fantasy',
+  Horror: 'Horror',
+  Mystery: 'Mystery',
+  Romance: 'Romance',
+  'Sci-Fi': 'Sci-Fi',
+  'Slice of Life': 'Slice of Life',
+  Sports: 'Sports',
+  Supernatural: 'Supernatural',
+  Thriller: 'Suspense',          // MAL's name for the same thing
+};
+
+const ANILIST_GENRE_TO_MAL_THEME = {
+  'Mahou Shoujo': 'Mahou Shoujo',
+  Mecha: 'Mecha',
+  Music: 'Music',
+  Psychological: 'Psychological',
+};
 const tagNames = [];
 const indexOfTag = new Map();
 
@@ -368,6 +406,7 @@ async function attachArt(rows) {
   let colours = 0;
   let banners = 0;
   let tagged = 0;
+  let backfilled = 0;
 
   for (const [n, chunk] of chunks.entries()) {
     for (let attempt = 0; attempt < 6; attempt++) {
@@ -402,6 +441,24 @@ async function attachArt(rows) {
           row.tg = tags.map((t) => tagIndex(t.name) * 10 + Math.min(9, Math.floor(t.rank / 10)));
           tagged++;
         }
+
+        // Backfill only. An entry MAL gave genres to keeps exactly those.
+        if (!row.g?.length) {
+          const genres = [];
+          const themes = new Set(row.th ?? []);
+          for (const name of media.genres ?? []) {
+            const asGenre = ANILIST_GENRE_TO_MAL[name];
+            if (asGenre) { genres.push(nameId(asGenre)); continue; }
+            const asTheme = ANILIST_GENRE_TO_MAL_THEME[name];
+            if (asTheme) themes.add(nameId(asTheme));
+          }
+          if (genres.length) {
+            row.g = genres;
+            row.gs = 1;              // genres came from AniList, not MAL
+            if (themes.size) row.th = [...themes];
+            backfilled++;
+          }
+        }
       }
       break;
     }
@@ -410,7 +467,7 @@ async function attachArt(rows) {
     }
     await sleep(1200);
   }
-  return { colours, banners, tagged };
+  return { colours, banners, tagged, backfilled };
 }
 
 console.log('\nFetching key-art colour and banners from AniList…');
@@ -441,6 +498,7 @@ console.log(`  ${unchecked} kept unverified (lookup failed)`);
 console.log(`  ${entries.filter((e) => !e.g.length).length} without genres`);
 console.log(`  ${art.colours} with a key-art colour, ${art.banners} with a banner`);
 console.log(`  ${art.tagged} with AniList tags, ${tagNames.length} distinct tag names`);
+console.log(`  ${art.backfilled} had genres backfilled from AniList`);
 
 const kept = {};
 for (const e of entries) kept[e.ty] = (kept[e.ty] ?? 0) + 1;

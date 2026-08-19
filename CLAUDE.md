@@ -21,7 +21,8 @@ about 1.15 MB. 89 checks pass via `npm test`.
 | TMDB match | 3,116 |
 | US/CA streaming | 1,610 |
 | AniList tags | 3,230 (93%) |
-| No genres (never recommended) | 74 |
+| Genres backfilled from AniList (`gs`) | 43 |
+| No genres (never recommended) | 31 |
 
 **Live at https://what-anime-next.pages.dev** on Cloudflare Pages, deploying
 from `main` on GitHub (`dvdngyn96-oss/what-anime-next`). Every push redeploys
@@ -128,6 +129,26 @@ The gain is real: walking down from FMA:B now reaches Berserk (#109) and
 Mo Dao Zu Shi (#195), both nearer and closer in kind than the old first result
 at #385. Roughly half the known-anchor walk lines changed.
 
+### Genres backfilled from AniList
+
+**An entry with no genres can never be matched** — the walk skips it, so it is
+invisible rather than merely unlikely. MAL's genre data thins out badly for
+pre-1990 TV and merchandise-driven shows, and 74 entries had none at all.
+Hyouge Mono (#704, 39 episodes, well regarded) was among them.
+
+`backfill-genres.mjs` fills those from AniList, and the builder does the same
+in its art pass. It **only ever fills where MAL supplied nothing** — it never
+overrides MAL — and sets `gs: 1` to record the provenance. 43 filled.
+
+Four AniList "genres" are MAL *themes* — Mahou Shoujo, Mecha, Music,
+Psychological — so they go to `th`, not `g`. Putting them in `g` would invent
+genre values the bucketing logic has never seen and let "Mecha" alone count as
+a full genre match.
+
+That mapping is why **31 entries still have no genres**: their only AniList
+genre is one of those four. They are mostly idol franchises and 80s mecha.
+Filling them would mean fabricating a genre, so they stay unreachable.
+
 ### Kids is demoted
 
 `Kids` is the one demographic marking a different *audience* rather than a
@@ -207,6 +228,7 @@ To add one without a 60-minute rebuild: add the ID, then
 | `npm run build` | once a season | ~60 min |
 | `node add-watch-providers.mjs` | whenever listings feel stale | ~20 min |
 | `node add-anilist-tags.mjs` | rarely — tags drift slowly | ~3 min |
+| `node backfill-genres.mjs` | after a rebuild only if it reports blanks | ~10 s |
 
 They're separate on purpose: TMDB ids never change, but streaming availability
 moves constantly, so refreshing listings shouldn't cost another hour of
