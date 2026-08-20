@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 24;
+const BUILD = 25;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -1278,9 +1278,6 @@ function renderResult() {
     : '';
 
   resultBody.innerHTML = `${because}
-    ${axisNote ? `<div class="note">${axisNote}</div>` : ''}
-    ${outsideNote ? `<div class="note">${outsideNote}</div>` : ''}
-    ${relaxNote ? `<div class="note">${esc(relaxNote)}</div>` : ''}
 
     <!-- hero-has-banner is unconditional: a third of entries have no banner
          image, and letting the card be 150px shorter for those made the
@@ -1339,6 +1336,17 @@ function renderResult() {
       </div>
       </div>
     </article>
+
+    <!-- Below the card, not above it.
+         These three are all conditional, and sitting between the toggles and
+         the card meant their presence or absence moved the card and every
+         button in it — the same jitter as the banner and the trailer slot, but
+         worse, because a note appears exactly when the result changed in a way
+         worth reading. Under the card they explain the result you have just
+         been shown without ever moving it. -->
+    ${axisNote ? `<div class="note">${axisNote}</div>` : ''}
+    ${outsideNote ? `<div class="note">${outsideNote}</div>` : ''}
+    ${relaxNote ? `<div class="note">${esc(relaxNote)}</div>` : ''}
 
     ${more.length ? `
       <p class="section-title">Others further ${shown === 'up' ? 'up' : 'down'} the list</p>

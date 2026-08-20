@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 24.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 106 checks pass via `npm test`.
+**Build 25.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+about 1.15 MB. 107 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -40,7 +40,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 106 checks, jsdom against the real app.js and anime.json
+npm test          # 107 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -160,7 +160,7 @@ Filling them would mean fabricating a genre, so they stay unreachable.
 ### The card is a constant height on purpose
 
 Clicking "show me another" repeatedly is the main way this gets used, and it
-only feels right if the buttons don't move. Two things used to move them:
+only feels right if the buttons don't move. Four things used to move them:
 
 - **1,169 entries have no banner image**, so their cards were 150px shorter.
   The strip is now unconditional — filled with a gradient from the show's own
@@ -178,10 +178,18 @@ only feels right if the buttons don't move. Two things used to move them:
   slot is always rendered, hidden via `.btn-reserved` until there is something
   to play. Hidden rather than removed when the video starts, too.
 
-Every conditional block in the card is now unconditional. The "card keeps its
-shape" checks in `test/suite.mjs` render a sparse entry and a rich one and
-assert both produce the same skeleton — jsdom has no layout, so it guards the
-structure, which is enough to catch a conditional render creeping back.
+**The explanatory notes moved below the card.** `matchNote`, the outside-the-
+catalogue warning and the axis-fallback warning are all conditional, and above
+the card their appearing and disappearing moved the card and every button in
+it — worst of the four, because a note shows up exactly when the result changed
+in a way worth reading about. Under the card they explain what you were just
+shown without ever moving it. A check asserts they never render above `.hero`.
+
+Every conditional block in the card is now unconditional, and the conditional
+ones outside it sit below. The "card keeps its shape" checks in
+`test/suite.mjs` render a sparse entry and a rich one and assert both produce
+the same skeleton — jsdom has no layout, so it guards the structure, which is
+enough to catch a conditional render creeping back.
 
 Left alone: long titles and genre lists still wrap to a second line.
 

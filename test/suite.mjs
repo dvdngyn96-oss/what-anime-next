@@ -807,6 +807,20 @@ try {
     check('every change of heading is explained',
       unexplained.length === 0, unexplained.map((s) => s.note.slice(0, 80)).join(' | '));
 
+    /* Notes sit *below* the card. They are conditional, and above the card
+       their appearing and disappearing moved the card and every button in it
+       between results — which happened precisely when the result had changed
+       in a way worth reading about. */
+    {
+      const card = body.querySelector('.hero');
+      const notes = [...body.querySelectorAll('.note')];
+      const above = notes.filter((n) =>
+        card && (card.compareDocumentPosition(n) & 2) === 2);   // 2 = PRECEDING
+      check('explanatory notes sit below the card, never above it',
+        notes.length > 0 && above.length === 0,
+        `${notes.length} notes, ${above.length} above the card`);
+    }
+
     // "Show me another" must keep producing new titles, not cycle a short list.
     const w2 = dom.window;
     const shuffled = [];
