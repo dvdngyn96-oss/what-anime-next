@@ -388,8 +388,8 @@ by matching on themes in a tier below every genre match. Three have no genre,
 theme or tag at all — Psychic Hero, Enter The Garden, Porte — and stay
 unreachable, which is the honest end state rather than a gap.
 
-~~**Small phones unverified below 390px.**~~ Checked at 360px in build 30 and
-it was bad. Sub-390 is not an edge case: 360px is the most common Android
+~~**Small phones unverified below 390px.**~~ Checked at 360px, found bad, and
+fixed and re-checked good in build 30. Sub-390 is not an edge case: 360px is the most common Android
 width and the 12/13 mini, 375px the whole iPhone SE line.
 
 Two things were wrong. The **source's chip row shared the `.genre-row` class**
