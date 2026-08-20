@@ -1,4 +1,9 @@
 :root {
+  /* Chip geometry, so the genre row can reserve an exact number of rows:
+     12px text at line-height 1.25 is 15px, plus 3px padding top and bottom. */
+  --chip-h: 21px;
+  --chip-gap: 6px;
+
   --bg: #ffffff;
   --fg: #202124;
   --fg-dim: #5f6368;
@@ -293,15 +298,32 @@ a { color: inherit; }
 }
 .because strong { color: var(--fg); font-weight: 600; }
 
+/* Two rows' worth of space, like the title above it.
+ *
+ * Chip counts run from 1 to 10, median 4, and the row wraps on roughly a tenth
+ * of cards at this width — but they cluster: a chain of dark psychological
+ * shows all carry long genre lists, so in practice you meet it within a few
+ * clicks rather than one card in ten. align-content keeps a single row at the
+ * top instead of centring it in the reserved space.
+ *
+ * Clipped rather than capped at a chip count on purpose: a chip can be the
+ * shared theme the note is explaining ("...share the Isekai theme"), and
+ * dropping it would remove the reason the result was chosen. Overflow past two
+ * rows only affects the handful of entries with nine or ten.
+ */
 .genre-row {
   display: flex;
-  gap: 6px;
+  gap: var(--chip-gap);
   flex-wrap: wrap;
+  align-content: flex-start;
+  height: calc(2 * var(--chip-h) + var(--chip-gap));
+  overflow: hidden;
   margin-bottom: 22px;
 }
 
 .tag {
   font-size: 12px;
+  line-height: 1.25;          /* fixed, so the reserved height is exact */
   padding: 3px 10px;
   border-radius: 999px;
   background: var(--accent-soft);
@@ -350,6 +372,11 @@ a { color: inherit; }
 
 /* Badges */
 
+/* Always rendered, even with nothing in it. Badges land on about a tenth of
+ * cards — 8% hidden gems, 2% airing — and letting the row appear and vanish
+ * moved everything below it by ~26px. In the hero it holds its height empty;
+ * in a mini-card it can still collapse, since those sit in a grid and their
+ * buttons are not what anyone is clicking repeatedly. */
 .badge-row {
   display: flex;
   gap: 6px;
@@ -357,9 +384,16 @@ a { color: inherit; }
   margin: 8px 0 4px;
 }
 
+.hero .badge-row {
+  height: calc(11px * 1.25 + 6px);
+  align-content: flex-start;
+  overflow: hidden;
+}
+
 .badge {
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.25;          /* fixed, so the reserved height is exact */
   letter-spacing: 0.02em;
   padding: 3px 9px;
   border-radius: 4px;
@@ -853,6 +887,12 @@ a { color: inherit; }
     height: calc(3 * 1.2em);
     -webkit-line-clamp: 3;
     line-clamp: 3;
+  }
+
+  /* And three rows of chips, for the same reason — the column is roughly half
+     as wide, so a set that fits one row on a desktop takes two or three. */
+  .genre-row {
+    height: calc(3 * var(--chip-h) + 2 * var(--chip-gap));
   }
 
   /* The banner sits mid-card here, with the stats block above it, so a

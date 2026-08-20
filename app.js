@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 26;
+const BUILD = 27;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -1297,7 +1297,9 @@ function renderResult() {
         <div class="hero-head">
         <p class="eyebrow">${improved ? 'Watch this next' : 'Closest match'}</p>
         <h2>${esc(hero.title)}</h2>
-        ${badges(hero) ? `<div class="badge-row">${badges(hero)}</div>` : ''}
+        <!-- Rendered even when empty: badges hit about a tenth of cards, and
+             letting the row come and go moved every button below it. -->
+        <div class="badge-row">${badges(hero)}</div>
         ${climbed ? `<p class="alt-title">${climbed} ${climbed === 1 ? 'place' : 'places'} ${shown === 'up' ? 'higher' : 'lower'} ${axisWord}</p>` : ''}
         <div class="stats">
           <div><b>${esc(hero.score ?? '—')}</b>score</div>
