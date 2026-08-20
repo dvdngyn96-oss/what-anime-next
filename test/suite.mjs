@@ -509,8 +509,12 @@ console.log('\n--- trailers ---');
       !body.querySelector('.hero-banner'), 'banner still present');
     check('the card knows it is playing',
       body.querySelector('.hero')?.classList.contains('hero-playing'));
+    // Hidden rather than removed: emptying the slot pulled the remaining
+    // buttons leftwards the moment the video started. visibility:hidden is
+    // unclickable and out of the tab order, so it is still not on offer.
     check('the button is consumed once used',
-      !body.querySelector('[data-action="trailer"]'));
+      body.querySelector('[data-action="trailer"]')?.classList.contains('btn-reserved'),
+      body.querySelector('[data-action="trailer"]')?.className);
   }
 
   // without one
@@ -519,8 +523,11 @@ console.log('\n--- trailers ---');
     await sleep(200);
     const body = await pickAndRecommend(dom, 'Source Show');
     await sleep(400);
+    // The slot is always rendered so the row keeps its width; what matters is
+    // that nothing playable is offered.
     check('no button when the show has no trailer',
-      !body.querySelector('[data-action="trailer"]'));
+      body.querySelector('[data-action="trailer"]')?.classList.contains('btn-reserved'),
+      body.querySelector('[data-action="trailer"]')?.className);
     check('nothing is embedded unasked',
       !body.querySelector('iframe'));
   }
@@ -820,6 +827,65 @@ try {
   }
 } catch (e) {
   check('real catalogue test', false, e.message);
+}
+
+console.log('\n--- the card keeps its shape ---');
+{
+  /* Clicking "show me another" repeatedly is the main way this is used, and it
+   * only feels right if the buttons stay put. Every block that used to appear
+   * conditionally — banner, streaming row, trailer button — must be present
+   * either way, so a sparse entry and a rich one produce the same skeleton.
+   * jsdom has no layout, so this checks structure rather than pixels; it is
+   * still enough to catch someone reinstating a conditional render. */
+  const NAMES = ['Action', 'Fantasy'];
+  const mk = (r, i, t, extra) => ({
+    r, i, t, ty: 'TV', th: [], d: [], s: 8, g: [0, 1], e: 12, y: 2020,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+    ...extra,
+  });
+
+  const shapeOf = async (extra, label) => {
+    const cat = {
+      built: '2026-08-19', count: 2, names: NAMES,
+      anime: [mk(1, 700, 'Shape Source', {}), mk(2, 701, 'Shape Target', extra)],
+    };
+    const dom = makeDom(cat);
+    await sleep(200);
+    const body = await pickAndRecommend(dom, 'Shape Source');
+    dom.window.document.querySelector('[data-action="direction"][data-value="down"]')
+      ?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await sleep(400);
+    return {
+      label,
+      banner: !!body.querySelector('.hero-banner'),
+      watch: !!body.querySelector('.watch'),
+      trailer: !!body.querySelector('[data-action="trailer"]'),
+      synopsis: !!body.querySelector('.synopsis'),
+    };
+  };
+
+  const rich = await shapeOf({ bn: 'a/b.jpg', tm: 1234, wp: { u: [0] } }, 'rich');
+  const bare = await shapeOf({}, 'bare');
+
+  for (const part of ['banner', 'watch', 'trailer', 'synopsis']) {
+    check(`the ${part} block is present with artwork and data`, rich[part], JSON.stringify(rich));
+    check(`the ${part} block is present without them`, bare[part], JSON.stringify(bare));
+  }
+
+  check('the blank banner is the one that fills in for a missing image',
+    !!(await (async () => {
+      const cat = {
+        built: '2026-08-19', count: 2, names: NAMES,
+        anime: [mk(1, 700, 'Shape Source', {}), mk(2, 701, 'Shape Target', {})],
+      };
+      const dom = makeDom(cat);
+      await sleep(200);
+      const body = await pickAndRecommend(dom, 'Shape Source');
+      dom.window.document.querySelector('[data-action="direction"][data-value="down"]')
+        ?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      await sleep(300);
+      return body.querySelector('.hero-banner-blank');
+    })()));
 }
 
 console.log('\n--- the format filter ---');

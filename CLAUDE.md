@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 23.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 97 checks pass via `npm test`.
+**Build 24.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+about 1.15 MB. 106 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -40,7 +40,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 97 checks, jsdom against the real app.js and anime.json
+npm test          # 106 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -170,8 +170,20 @@ only feels right if the buttons don't move. Two things used to move them:
   five-line height, not a minimum, matching the 340-character cap applied
   upstream. Nothing reflows when the fetch lands.
 
-Still varying, both single lines and unfixed: the streaming row is absent for
-374 entries with no TMDB match, and long titles or genre lists wrap.
+- **The streaming row was absent** for the 374 entries with no TMDB match. It
+  now always renders, saying "No listing found" — honest, and the same line
+  either way.
+- **The Trailer button was injected after the fetch**, shifting every button
+  beside it sideways, and was missing entirely on the 11% with no trailer. The
+  slot is always rendered, hidden via `.btn-reserved` until there is something
+  to play. Hidden rather than removed when the video starts, too.
+
+Every conditional block in the card is now unconditional. The "card keeps its
+shape" checks in `test/suite.mjs` render a sparse entry and a rich one and
+assert both produce the same skeleton — jsdom has no layout, so it guards the
+structure, which is enough to catch a conditional render creeping back.
+
+Left alone: long titles and genre lists still wrap to a second line.
 
 ### The format filter
 

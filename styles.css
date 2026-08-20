@@ -639,6 +639,12 @@ a { color: inherit; }
 
 .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
+/* Holds its space without being visible or focusable. Used for the Trailer
+ * button, which is only known to exist after an async fetch — injecting it
+ * late shifted every button beside it. `visibility: hidden` keeps the box and
+ * takes it out of the tab order, which `opacity: 0` would not. */
+.btn-reserved { visibility: hidden; }
+
 /* Where to watch */
 
 .watch {

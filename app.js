@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 23;
+const BUILD = 24;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -832,7 +832,16 @@ function heroTint(anime) {
  * since "we don't know" and "not streaming" are different answers.
  */
 function watchRow(anime) {
-  if (!anime.tmdb) return '';
+  /* 374 entries never matched to TMDB, so there is nothing to look up. Say so
+   * rather than omitting the row: dropping it moved every button below it,
+   * and "we don't know" is honest and takes the same line either way. */
+  if (!anime.tmdb) {
+    return `
+    <div class="watch">
+      <span class="watch-label">Watch on</span>
+      <span class="service service-none">No listing found</span>
+    </div>`;
+  }
 
   const codes = anime.watch?.[region] ?? [];
   const services = codes.map((i) => providerNames[i]).filter(Boolean);
@@ -1313,7 +1322,15 @@ function renderResult() {
         <p class="synopsis${hero.synopsis ? '' : ' synopsis-pending'}" id="hero-synopsis">${esc(trimSynopsis(hero.synopsis))}</p>
         ${watchRow(hero)}
         <div class="hero-actions">
-          <span id="trailer-slot">${hero.trailer ? '<button class="btn btn-play" type="button" data-action="trailer">▶ Trailer</button>' : ''}</span>
+          <!-- Always rendered, hidden until a trailer is known. It used to be
+               injected when the AniList fetch returned, which shifted every
+               other button sideways a moment after the card appeared — and
+               left the row 93px narrower on the 11% of entries with no
+               trailer at all. Reserving the slot costs nothing and the row
+               never moves. -->
+          <span id="trailer-slot"><button
+            class="btn btn-play${hero.trailer ? '' : ' btn-reserved'}"
+            type="button" data-action="trailer">▶ Trailer</button></span>
           <a class="btn" href="${esc(hero.url)}" target="_blank" rel="noopener">Open on MyAnimeList</a>
           <button class="btn btn-ghost" type="button" data-action="shuffle">Show me another</button>
           <button class="btn btn-ghost" type="button" data-action="seen" data-id="${esc(hero.id)}">Seen it too — drop it</button>
@@ -1350,17 +1367,15 @@ function renderResult() {
       const el = $('hero-synopsis');
       if (el) {
         el.classList.remove('synopsis-pending');
-        // Nothing came back — collapse the gap rather than leaving a blank.
-        if (synopsis) el.textContent = trimSynopsis(synopsis);
-        else el.remove();
+        // Keep the element even when nothing came back. Removing it collapsed
+        // the reserved height and pulled every button below it upwards, which
+        // is the jump this layout exists to avoid.
+        el.textContent = synopsis ? trimSynopsis(synopsis) : '';
       }
 
-      // The button only appears once we know there's something to play.
-      const slot = $('trailer-slot');
-      if (slot && trailer) {
-        slot.innerHTML = `<button class="btn btn-play" type="button" data-action="trailer">▶ Trailer</button>`;
-        slot.querySelector('button').addEventListener('click', playTrailer);
-      }
+      // The slot is already there holding its width; this only reveals it.
+      const button = $('trailer-slot')?.querySelector('button');
+      if (button && trailer) button.classList.remove('btn-reserved');
     });
   }
 }
@@ -1384,7 +1399,9 @@ function playTrailer() {
     card.insertAdjacentHTML('afterbegin', trailerEmbed(hero.trailer));
   }
   card.classList.add('hero-playing');
-  $('trailer-slot')?.replaceChildren();
+  // Hide rather than remove: emptying the slot pulled the remaining buttons
+  // leftwards the moment the video started.
+  $('trailer-slot')?.querySelector('button')?.classList.add('btn-reserved');
 }
 
 function wireResultControls() {
