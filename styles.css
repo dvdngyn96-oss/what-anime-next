@@ -427,15 +427,18 @@ a { color: inherit; }
   letter-spacing: 0.04em;
 }
 
+/* On is the default for all three, so it has to be the quiet state —
+ * tinting them made the row read as a solid accent block competing with the
+ * two controls that actually matter. Only switching something *off* should
+ * draw the eye, because that is the only choice being expressed. */
 .formats button[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-  font-weight: 600;
+  background: transparent;
+  color: var(--fg);
 }
 
 .formats button[aria-pressed="false"] {
   color: var(--fg-dim);
-  opacity: 0.55;
+  opacity: 0.5;
   text-decoration: line-through;
   text-decoration-thickness: 1px;
 }
