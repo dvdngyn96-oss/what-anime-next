@@ -470,6 +470,20 @@ a { color: inherit; }
   position: relative;
 }
 
+/* No banner image: fill the same strip with the show's own key-art colour, so
+ * every card is the same height and the buttons stay put between results.
+ * --art comes from the poster, and the card already tints itself from it, so
+ * this reads as part of the design rather than as a missing image. Entries
+ * with no colour either (101 of them) fall back to the plain surface. */
+.hero-banner-blank {
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--art, var(--surface-2)) 55%, var(--surface)) 0%,
+    color-mix(in srgb, var(--art, var(--surface-2)) 22%, var(--surface)) 55%,
+    var(--surface) 100%
+  );
+}
+
 /* Fade the banner into the card so the title never sits on busy artwork. */
 .hero-banner::after {
   content: "";
@@ -583,16 +597,31 @@ a { color: inherit; }
   max-width: 15ch;
 }
 
+/* Fixed height, not just a minimum.
+ *
+ * The synopsis arrives from AniList after the card has already rendered, so
+ * the card grew under the cursor a moment after every result — the same
+ * complaint as the missing banner, just smaller and more often. Text is capped
+ * at 340 characters upstream, which is at most five lines here, so five lines
+ * of reserved space fits every case and the block never resizes: not when the
+ * fetch lands, not between a wordy show and a terse one.
+ */
 .synopsis {
   font-size: 14px;
   line-height: 1.55;
   color: var(--fg-dim);
   margin: 12px 0 16px;
+  height: calc(5 * 1.55em);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
 }
 
-/* Waiting on the lazy AniList fetch — show a shimmer rather than a blank gap. */
+/* Waiting on the lazy AniList fetch — show a shimmer rather than a blank gap.
+   Same height as the settled state, so the swap costs no reflow. */
 .synopsis-pending {
-  min-height: 3.2em;
   border-radius: 6px;
   background: linear-gradient(90deg, var(--surface-2) 25%, var(--hover) 50%, var(--surface-2) 75%);
   background-size: 200% 100%;

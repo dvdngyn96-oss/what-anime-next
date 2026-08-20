@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 22.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 96 checks pass via `npm test`.
+**Build 23.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+about 1.15 MB. 97 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -40,7 +40,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 96 checks, jsdom against the real app.js and anime.json
+npm test          # 97 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -156,6 +156,22 @@ a full genre match.
 That mapping is why **31 entries still have no genres**: their only AniList
 genre is one of those four. They are mostly idol franchises and 80s mecha.
 Filling them would mean fabricating a genre, so they stay unreachable.
+
+### The card is a constant height on purpose
+
+Clicking "show me another" repeatedly is the main way this gets used, and it
+only feels right if the buttons don't move. Two things used to move them:
+
+- **1,169 entries have no banner image**, so their cards were 150px shorter.
+  The strip is now unconditional — filled with a gradient from the show's own
+  key-art colour when there's no image. `hero-has-banner` is unconditional too,
+  so the poster keeps its overlap and the geometry matches either way.
+- **The synopsis arrives after render**, from AniList. `.synopsis` has a fixed
+  five-line height, not a minimum, matching the 340-character cap applied
+  upstream. Nothing reflows when the fetch lands.
+
+Still varying, both single lines and unfixed: the streaming row is absent for
+374 entries with no TMDB match, and long titles or genre lists wrap.
 
 ### The format filter
 

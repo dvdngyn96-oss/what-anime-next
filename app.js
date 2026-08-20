@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 22;
+const BUILD = 23;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -1273,8 +1273,15 @@ function renderResult() {
     ${outsideNote ? `<div class="note">${outsideNote}</div>` : ''}
     ${relaxNote ? `<div class="note">${esc(relaxNote)}</div>` : ''}
 
-    <article class="hero${hero.banner ? ' hero-has-banner' : ''}"${heroTint(hero)}>
-      ${hero.banner ? `<div class="hero-banner" style="background-image:url('${esc(hero.banner)}')" role="presentation"></div>` : ''}
+    <!-- hero-has-banner is unconditional: a third of entries have no banner
+         image, and letting the card be 150px shorter for those made the
+         action buttons jump between results, which is felt most when clicking
+         "show me another" repeatedly. There is always a banner strip now —
+         the show's own key-art colour when there is no image for it. -->
+    <article class="hero hero-has-banner"${heroTint(hero)}>
+      ${hero.banner
+        ? `<div class="hero-banner" style="background-image:url('${esc(hero.banner)}')" role="presentation"></div>`
+        : `<div class="hero-banner hero-banner-blank" role="presentation"></div>`}
       <div class="hero-main">
       <img class="hero-poster" src="${esc(hero.image)}" alt="${esc(hero.title)} poster">
       <div class="hero-body">

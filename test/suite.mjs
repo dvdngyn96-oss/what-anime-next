@@ -614,9 +614,18 @@ console.log('\n--- key-art theming ---');
 
   await advance();
   check('a show without a banner still gets its colour',
-    !hero()?.classList.contains('hero-has-banner')
-      && /--art:#1a3a8f/.test(hero()?.getAttribute('style') || ''),
+    /--art:#1a3a8f/.test(hero()?.getAttribute('style') || ''),
     hero()?.getAttribute('style'));
+
+  /* Used to also assert the card did *not* carry hero-has-banner. That class
+     is unconditional now: a third of entries have no banner image, and letting
+     their cards be 150px shorter made the action buttons jump between results.
+     What matters instead is that the strip is still there to hold the height,
+     rendered from the show's own colour. */
+  check('a show without a banner still reserves the strip',
+    !!hero()?.querySelector('.hero-banner.hero-banner-blank')
+      && hero()?.classList.contains('hero-has-banner'),
+    hero()?.querySelector('.hero-banner')?.className);
 
   await advance();
   check('the card carries the cover colour as a custom property',
