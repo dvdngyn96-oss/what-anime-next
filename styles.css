@@ -556,11 +556,26 @@ a { color: inherit; }
 
 .hero-has-banner { border-color: color-mix(in srgb, var(--art-tint, var(--accent)) 28%, var(--border)); }
 
+/* Two lines' worth of space whether the title needs it or not.
+ *
+ * 85% of titles fit one line at this width and 14% take two, so the block was
+ * changing height between results and taking every button below it along. The
+ * blank line under a short title reads as padding; a button that moves does
+ * not. Beyond two lines it clamps — that is 1% of the catalogue, the worst of
+ * them being 127 characters. Mobile gets three, since the narrower column
+ * pushes 31% onto a second line and 4% onto a third.
+ */
 .hero h2 {
   font-size: 25px;
   line-height: 1.2;
   margin: 0 0 4px;
   letter-spacing: -0.02em;
+  height: calc(2 * 1.2em);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .alt-title {
@@ -831,6 +846,14 @@ a { color: inherit; }
   }
   .hero-banner { height: 110px; }
   .hero-has-banner .hero-poster { margin-top: -55px; }
+
+  /* Three lines here: the narrower column puts 31% of titles onto a second
+     line and 4% onto a third. */
+  .hero h2 {
+    height: calc(3 * 1.2em);
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
 
   /* The banner sits mid-card here, with the stats block above it, so a
      one-way fade leaves a hard cut across the artwork's top edge. Fade into

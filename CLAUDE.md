@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 25.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+**Build 26.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
 about 1.15 MB. 107 checks pass via `npm test`.
 
 | Data | Coverage |
@@ -160,7 +160,7 @@ Filling them would mean fabricating a genre, so they stay unreachable.
 ### The card is a constant height on purpose
 
 Clicking "show me another" repeatedly is the main way this gets used, and it
-only feels right if the buttons don't move. Four things used to move them:
+only feels right if the buttons don't move. Five things used to move them:
 
 - **1,169 entries have no banner image**, so their cards were 150px shorter.
   The strip is now unconditional — filled with a gradient from the show's own
@@ -191,7 +191,14 @@ ones outside it sit below. The "card keeps its shape" checks in
 the same skeleton — jsdom has no layout, so it guards the structure, which is
 enough to catch a conditional render creeping back.
 
-Left alone: long titles and genre lists still wrap to a second line.
+- **The title wrapped** on 14% of desktop cards and 31% of mobile ones. It now
+  reserves two lines (three on mobile) and clamps beyond that — 1% of titles,
+  the worst being 127 characters. The blank line under a short title reads as
+  padding; a button that moves does not.
+
+Left alone: the genre row still wraps on roughly 10% of desktop cards. Median
+is 4 chips and the 90th percentile is 7, so reserving a second line there would
+cost blank space on 90% of cards to fix 10% — a worse trade than the title.
 
 ### The format filter
 
