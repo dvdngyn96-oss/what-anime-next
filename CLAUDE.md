@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 28.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 109 checks pass via `npm test`.
+**Build 29.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+about 1.15 MB. 112 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -22,7 +22,7 @@ about 1.15 MB. 109 checks pass via `npm test`.
 | US/CA streaming | 1,610 |
 | AniList tags | 3,230 (93%) |
 | Genres backfilled from AniList (`gs`) | 43 |
-| No genres (never recommended) | 31 |
+| No genres (matched on themes only) | 31 |
 
 **Live at https://what-anime-next.pages.dev** on Cloudflare Pages, deploying
 from `main` on GitHub (`dvdngyn96-oss/what-anime-next`). Every push redeploys
@@ -40,7 +40,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 109 checks, jsdom against the real app.js and anime.json
+npm test          # 112 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -155,7 +155,25 @@ a full genre match.
 
 That mapping is why **31 entries still have no genres**: their only AniList
 genre is one of those four. They are mostly idol franchises and 80s mecha.
-Filling them would mean fabricating a genre, so they stay unreachable.
+
+### Genre-less entries match on themes, last
+
+An entry with no genres can never share one, so those 31 were unreachable.
+Rather than fabricate a genre for them, build 29 lets them match on a shared
+**theme** instead — placed in `buckets[0]`, below every genre match in both
+directions, so they surface only once real matches are exhausted.
+
+Scoped to entries with *no* genres. Something that has genres and shares none
+of yours is a miss, not a fallback; giving it a second route would change
+matching for the whole catalogue rather than for 31 entries.
+
+28 of the 31 have a theme and are now reachable. The remaining three — Psychic
+Hero, Enter The Garden, Porte — have neither genre nor theme nor tag, and
+nothing short of inventing data will reach them.
+
+`matchNote` special-cases this tier: "widened to 0 of 3 genres (0%)" is true
+and useless, so it says the entry has no genres on record and names the theme
+that brought it in.
 
 ### The card is a constant height on purpose
 
@@ -365,10 +383,10 @@ than the test output. There is no ground truth here, so that verdict *is* the
 evidence. Don't re-tune it without a reason and a fresh read of the walks;
 60 was the other defensible value if one is ever wanted.
 
-**31 entries still have no genres** and so can never be recommended. Their only
-AniList genre is Mahou Shoujo, Mecha, Music or Psychological — MAL themes, not
-genres. Filling them means either fabricating a genre or teaching the matcher
-to bucket on themes. Mostly idol franchises and 80s mecha, so low stakes.
+~~**31 entries can never be recommended.**~~ Build 29 made 28 of them reachable
+by matching on themes in a tier below every genre match. Three have no genre,
+theme or tag at all — Psychic Hero, Enter The Garden, Porte — and stay
+unreachable, which is the honest end state rather than a gap.
 
 **Small phones remain unverified below 390px.** Build 17's reorder means the
 title no longer depends on a tall viewport, but no SE or Mini has actually

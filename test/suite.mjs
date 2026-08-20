@@ -843,6 +843,58 @@ try {
   check('real catalogue test', false, e.message);
 }
 
+console.log('\n--- genre-less entries match on themes, last ---');
+{
+  /* 31 catalogue entries have no genres at all, so they could never share one
+   * and the walk could never reach them. They can still match on a theme, but
+   * that is a weaker signal than a genre, so they sit in a tier below every
+   * genre match rather than competing with them. */
+  const NAMES = ['Action', 'Fantasy', 'Space'];
+  const mk = (r, i, t, g, th) => ({
+    r, i, t, g, th, d: [], ty: 'TV', s: 8, e: 12, y: 2020,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+
+  const cat = {
+    built: '2026-08-19', count: 4, names: NAMES,
+    anime: [
+      mk(1, 500, 'Themed Source', [0, 1], [2]),      // Action+Fantasy, Space theme
+      mk(2, 501, 'Genre Match', [0, 1], []),         // shares both genres
+      mk(3, 502, 'Weak Genre Match', [0], []),       // shares one
+      mk(4, 503, 'No Genres At All', [], [2]),       // no genres, shares the theme
+    ],
+  };
+
+  const dom = makeDom(cat);
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Themed Source');
+  const w = dom.window;
+  body.querySelector('[data-action="direction"][data-value="down"]')
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(300);
+
+  const seen = [];
+  for (let i = 0; i < 3; i++) {
+    seen.push(body.querySelector('.hero h2')?.textContent);
+    body.querySelector('.hero [data-action="shuffle"]')?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(80);
+  }
+
+  check('a genre-less entry is reachable at all',
+    seen.includes('No Genres At All'), seen.join(' -> '));
+  check('it comes after every genre match',
+    seen.indexOf('No Genres At All') === seen.length - 1, seen.join(' -> '));
+  // Cycle back round to it, so the note being read belongs to that card.
+  for (let i = 0; i < 4 && body.querySelector('.hero h2')?.textContent !== 'No Genres At All'; i++) {
+    body.querySelector('.hero [data-action="shuffle"]')?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(80);
+  }
+  const notes = [...body.querySelectorAll('.note')].map((n) => n.textContent).join(' ');
+  check('the note explains it has no genres rather than claiming 0%',
+    body.querySelector('.hero h2')?.textContent === 'No Genres At All' && /no genres listed/i.test(notes),
+    `${body.querySelector('.hero h2')?.textContent}: ${notes.slice(0, 90)}`);
+}
+
 console.log('\n--- a failed synopsis fetch is not cached ---');
 {
   /* AniList rate-limits, and clicking through quickly fires a request per

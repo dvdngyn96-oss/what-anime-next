@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 28;
+const BUILD = 29;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -452,7 +452,7 @@ function collectTiers(source, direction, exclude) {
     // The catalogue is TV first seasons only. Entries pulled in live are
     // whatever the user searched — fine as a starting point, but they haven't
     // been checked for being a film or a sequel, so never recommend them.
-    if (!candidate.local || !candidate.genres.length) continue;
+    if (!candidate.local) continue;
     // Belt and braces: the catalogue only holds standalone TV/OVA/ONA, but a
     // live-fetched entry could be anything.
     if (candidate.type && !ALL_FORMATS.includes(candidate.type)) continue;
@@ -463,7 +463,21 @@ function collectTiers(source, direction, exclude) {
     if (sameFranchise(candidate, source)) continue;
 
     const shared = candidate.genres.filter((g) => want.has(g)).length;
-    if (!shared) continue;
+
+    /* 31 entries have no genres at all — MyAnimeList's data thins out for
+     * pre-1990 TV and merchandise-driven shows, and the AniList backfill could
+     * not help because their only AniList genre is one of the four that are
+     * MAL *themes*. With no genres they can never share one, so the walk could
+     * never reach them: invisible rather than unlikely.
+     *
+     * They can still match on themes. That signal is weaker than a genre, so
+     * they go to bucket 0, below every genre match, and surface only once real
+     * matches are exhausted. Scoped to entries with *no* genres: something
+     * that has genres and simply shares none of yours is a miss, not a
+     * fallback, and giving it a second route would change matching for the
+     * whole catalogue. */
+    const themeOnly = !candidate.genres.length;
+    if (!shared && !themeOnly) continue;
 
     // Themes (School, Urban Fantasy, Isekai…) don't decide whether something
     // matches, but among equals they're the difference between "same genres"
@@ -509,6 +523,12 @@ function collectTiers(source, direction, exclude) {
      * episodes, same three genres, 48 places away, so proximity hands it the
      * top spot. It affects 54 anchors. Demoted a tier rather than excluded,
      * so it can still surface once closer matches run out. */
+    // A genre-less entry earns its place only if a theme actually matches.
+    if (themeOnly) {
+      if (candidate.sharedThemes.length) buckets[0].push(candidate);
+      continue;
+    }
+
     const audienceClash = candidate.demographic === 'Kids' && source.demographic !== 'Kids';
     buckets[audienceClash ? Math.max(1, shared - 1) : shared].push(candidate);
 
@@ -610,6 +630,11 @@ function walkRankings(source, direction, exclude = new Set()) {
   run(secondary, otherDirection, total, floor);
   run(primary, null, floor - 1, 1);
   run(secondary, otherDirection, floor - 1, 1);
+  // Bucket 0 is the theme-only tier: entries MyAnimeList gave no genres at
+  // all, matched on a shared theme instead. Dead last, after every genre
+  // match in both directions has been offered.
+  run(primary, null, 0, 0);
+  run(secondary, otherDirection, 0, 0);
 
   /* Three things compete, and they rank in this order:
    *
@@ -1153,6 +1178,16 @@ function matchNote(hero, source, direction) {
   const flipped = hero.matchFlipped;
   const sourceThemes = source.themes || [];
   const where = direction === 'up' ? 'higher up' : 'further down';
+
+  /* The theme-only tier. Saying "widened to 0 of 3 genres (0%)" would be
+     technically true and useless; the honest version is that this entry has no
+     genres on record and got here on a theme. */
+  if (shared === 0 && !hero.genres.length) {
+    const common = hero.sharedThemes?.length ? hero.sharedThemes : (hero.themes || []);
+    const via = common.length ? ` It shares the ${listWords(common)} theme${common.length > 1 ? 's' : ''}.` : '';
+    return `${hero.title} has no genres listed on MyAnimeList, so nothing ${where}`
+      + ` could match on them.${via}`;
+  }
 
   const relaxedGenres = shared < total;
   const lostThemes = sourceThemes.length > 0 && themeCount === 0;
