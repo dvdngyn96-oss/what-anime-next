@@ -388,13 +388,14 @@ by matching on themes in a tier below every genre match. Three have no genre,
 theme or tag at all — Psychic Hero, Enter The Garden, Porte — and stay
 unreachable, which is the honest end state rather than a gap.
 
-~~**Small phones unverified below 390px.**~~ Checked at 360px, found bad, and
-fixed and re-checked good in build 30. Sub-390 is not an edge case: 360px is the most common Android
-width and the 12/13 mini, 375px the whole iPhone SE line.
+~~**Small phones unverified below 390px.**~~ Checked at 360px, found bad, then
+fixed and re-checked good in build 30. Sub-390 is not an edge case: 360px is
+the most common Android width and the 12/13 mini, 375px the whole iPhone SE
+line.
 
 Two things were wrong. The **source's chip row shared the `.genre-row` class**
 with the card, so it inherited the reserved rows despite changing only when
-you search - the reservation is now scoped to `.hero .genre-row`. And the
+you search — the reservation is now scoped to `.hero .genre-row`. And the
 mobile reservations, sized against a 430px Pro Max, were far too generous:
 three title lines plus three chip rows plus three toggle rows put the card most
 of a screen down. Both are two now, which covers 95% of titles at that width.
