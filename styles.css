@@ -315,10 +315,16 @@ a { color: inherit; }
   display: flex;
   gap: var(--chip-gap);
   flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+/* Only inside the card. The "Because you watched" line uses the same class,
+   and reserving rows there padded it for nothing — that row changes when you
+   search, not when you click through, so its height was never the problem. */
+.hero .genre-row {
   align-content: flex-start;
   height: calc(2 * var(--chip-h) + var(--chip-gap));
   overflow: hidden;
-  margin-bottom: 22px;
 }
 
 .tag {
@@ -888,18 +894,21 @@ a { color: inherit; }
   .hero-banner { height: 110px; }
   .hero-has-banner .hero-poster { margin-top: -55px; }
 
-  /* Three lines here: the narrower column puts 31% of titles onto a second
-     line and 4% onto a third. */
+  /* Two lines, not three.
+   *
+   * Three was sized against a 430px Pro Max and is far too generous where it
+   * matters: at 360px — the most common Android width, and the 12/13 mini —
+   * three reserved title lines plus three chip rows plus three toggle rows ate
+   * most of the screen before the card began. Two covers 95% of titles at this
+   * width; the rest clamp, which costs an ellipsis rather than a screenful. */
   .hero h2 {
-    height: calc(3 * 1.2em);
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+    height: calc(2 * 1.2em);
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
-  /* And three rows of chips, for the same reason — the column is roughly half
-     as wide, so a set that fits one row on a desktop takes two or three. */
-  .genre-row {
-    height: calc(3 * var(--chip-h) + 2 * var(--chip-gap));
+  .hero .genre-row {
+    height: calc(2 * var(--chip-h) + var(--chip-gap));
   }
 
   /* The banner sits mid-card here, with the stats block above it, so a
@@ -937,4 +946,32 @@ a { color: inherit; }
 
   .stats { gap: 14px; }
   .more-grid { grid-template-columns: 1fr; }
+}
+
+/* Narrow phones — 360px is the most common Android width and the 12/13 mini,
+ * 375px the iPhone SE line. Everything above was sized against a 430px Pro
+ * Max, and at 360 the preamble had grown to three toggle rows plus reserved
+ * space and pushed the card most of a screen down. This trims the chrome
+ * rather than the content: smaller toggle chips so the axis and format rows
+ * can share a line, and a smaller action label so "Open on MyAnimeList" stops
+ * wrapping to two lines and making its button taller than its neighbour. */
+@media (max-width: 400px) {
+  .direction button {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  .formats button {
+    font-size: 11px;
+    padding: 6px 9px;
+  }
+
+  .controls { gap: 8px; margin-bottom: 18px; }
+
+  .hero-actions .btn {
+    font-size: 12px;
+    padding: 9px 6px;
+  }
+
+  .note { font-size: 12px; padding: 8px 12px; }
 }

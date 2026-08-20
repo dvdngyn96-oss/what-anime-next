@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 29.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+**Build 30.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
 about 1.15 MB. 112 checks pass via `npm test`.
 
 | Data | Coverage |
@@ -388,9 +388,21 @@ by matching on themes in a tier below every genre match. Three have no genre,
 theme or tag at all — Psychic Hero, Enter The Garden, Porte — and stay
 unreachable, which is the honest end state rather than a gap.
 
-**Small phones remain unverified below 390px.** Build 17's reorder means the
-title no longer depends on a tall viewport, but no SE or Mini has actually
-loaded the site.
+~~**Small phones unverified below 390px.**~~ Checked at 360px in build 30 and
+it was bad. Sub-390 is not an edge case: 360px is the most common Android
+width and the 12/13 mini, 375px the whole iPhone SE line.
+
+Two things were wrong. The **source's chip row shared the `.genre-row` class**
+with the card, so it inherited the reserved rows despite changing only when
+you search - the reservation is now scoped to `.hero .genre-row`. And the
+mobile reservations, sized against a 430px Pro Max, were far too generous:
+three title lines plus three chip rows plus three toggle rows put the card most
+of a screen down. Both are two now, which covers 95% of titles at that width.
+
+A `max-width: 400px` block trims chrome rather than content - smaller toggle
+chips so the axis and format rows can share a line, smaller action labels so
+"Open on MyAnimeList" stops wrapping and making its button taller than its
+neighbour.
 
 ---
 
