@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 20.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 89 checks pass via `npm test`.
+**Build 21.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+about 1.15 MB. 96 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -40,7 +40,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 89 checks, jsdom against the real app.js and anime.json
+npm test          # 96 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -156,6 +156,24 @@ a full genre match.
 That mapping is why **31 entries still have no genres**: their only AniList
 genre is one of those four. They are mostly idol franchises and 80s mecha.
 Filling them would mean fabricating a genre, so they stay unreachable.
+
+### The format filter
+
+Three chips — **TV / ONA / OVA** — in a third toggle row, each independently
+on or off, defaulting to all on and remembered in `localStorage`.
+
+It exists because ONA is the mixed bag: Cyberpunk: Edgerunners and Takopi's
+Original Sin sit alongside a long tail of donghua that crowds the isekai range
+around #4000-5000. A single "TV only" switch would have taken OVA with it, and
+OVA holds Hellsing Ultimate and FLCL.
+
+**It filters candidates, not anchors.** Whatever you searched for stays usable
+as a starting point — refusing the show someone just typed would be baffling.
+"Surprise me" does respect it, though, because being handed a donghua straight
+after switching ONA off reads as the toggle being broken.
+
+The last format on cannot be switched off; otherwise the card empties itself
+with no way back but a reload.
 
 ### Kids is demoted
 
@@ -274,10 +292,11 @@ still missing, and the only part needing a backend. Roughly 177,000 votes would
 be needed for meaningful per-title percentages, which is why list import
 matters — a few hundred uploads does what millions of pageviews would.
 
-**Tune `AFFINITY_REACH` against real taste.** Build 20 shipped 30 positions per
-affinity point, chosen because it gave the fewest backtracks (14, against 21
-before) while keeping every known-good chain. 60 was also defensible. Nothing
-here is ground truth — it wants a human deciding whether the chains read well.
+~~**Tune `AFFINITY_REACH` against real taste.**~~ Judged good as shipped —
+30 positions per affinity point, 2026-08-19, by reading the live chains rather
+than the test output. There is no ground truth here, so that verdict *is* the
+evidence. Don't re-tune it without a reason and a fresh read of the walks;
+60 was the other defensible value if one is ever wanted.
 
 **31 entries still have no genres** and so can never be recommended. Their only
 AniList genre is Mahou Shoujo, Mecha, Music or Psychological — MAL themes, not

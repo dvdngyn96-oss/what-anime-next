@@ -813,5 +813,73 @@ try {
   check('real catalogue test', false, e.message);
 }
 
+console.log('\n--- the format filter ---');
+{
+  const NAMES = ['Action', 'Fantasy'];
+  const mk = (r, i, t, ty) => ({
+    r, i, t, ty, th: [], d: [], s: 8, g: [0, 1], e: 12, y: 2020,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+
+  const MIXED = {
+    built: '2026-08-19', count: 7, names: NAMES,
+    anime: [
+      mk(1, 900, 'Source Show', 'TV'),
+      mk(2, 901, 'A Web Release', 'ONA'),
+      mk(3, 902, 'A Tape Release', 'OVA'),
+      mk(4, 903, 'A Series', 'TV'),
+      mk(5, 904, 'Another Web Release', 'ONA'),
+      mk(6, 905, 'Another Tape Release', 'OVA'),
+      mk(7, 906, 'Another Series', 'TV'),
+    ],
+  };
+
+  const dom = makeDom(MIXED);
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Source Show');
+  const w = dom.window;
+
+  const press = (value) => {
+    body.querySelector(`[data-action="format"][data-value="${value}"]`)
+      ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  };
+  const shown = () => {
+    const out = [];
+    for (const el of body.querySelectorAll('.mini-card-title, .hero h2')) out.push(el.textContent);
+    return out.join(' | ');
+  };
+
+  body.querySelector('[data-action="direction"][data-value="down"]')
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(200);
+
+  check('all three formats are offered by default', shown().includes('Web Release')
+    && shown().includes('Tape Release'), shown());
+
+  press('ONA');
+  await sleep(200);
+  check('switching ONA off drops web releases', !shown().includes('Web Release'), shown());
+  check('switching ONA off keeps the others', shown().includes('Tape Release'), shown());
+
+  press('OVA');
+  await sleep(200);
+  check('switching OVA off too leaves only TV',
+    !shown().includes('Tape Release') && shown().includes('Series'), shown());
+
+  // The last format on must stay on — otherwise there is nothing to recommend
+  // and the card would empty itself with no way back except a page reload.
+  press('TV');
+  await sleep(200);
+  check('the last remaining format cannot be switched off',
+    shown().includes('Series'), shown());
+
+  const saved = JSON.parse(w.localStorage.getItem('wanx:formats') || '[]');
+  check('the choice is remembered', saved.length === 1 && saved[0] === 'TV', JSON.stringify(saved));
+
+  press('ONA');
+  await sleep(200);
+  check('switching a format back on restores it', shown().includes('Web Release'), shown());
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);

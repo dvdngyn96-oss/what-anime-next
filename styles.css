@@ -417,6 +417,29 @@ a { color: inherit; }
   color: #fff;
 }
 
+/* Formats are a filter, not a mode: direction and axis each pick one of two,
+ * this picks any of three. Rendering it as filled accent chips would make it
+ * compete with those two for attention, and it is the lesser control — so it
+ * reads as an outline, and "off" is visibly off rather than merely unlit. */
+.formats button {
+  font-size: 12px;
+  padding: 7px 12px;
+  letter-spacing: 0.04em;
+}
+
+.formats button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.formats button[aria-pressed="false"] {
+  color: var(--fg-dim);
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
 /* Hero card */
 
 /* The card takes its accent from the show's own cover art. --art-tint falls

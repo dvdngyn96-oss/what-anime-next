@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 20;
+const BUILD = 21;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -54,6 +54,37 @@ let region = (() => {
   } catch { /* private browsing */ }
   return /-CA\b/i.test(navigator.language || '') ? 'c' : 'u';
 })();
+
+/**
+ * Which formats may be *recommended*.
+ *
+ * The catalogue is 2,641 TV, 540 ONA, 309 OVA. ONA is the mixed bag: it holds
+ * Cyberpunk: Edgerunners and Takopi's Original Sin alongside a long tail of
+ * donghua that crowds the isekai range, so "all or nothing" is the wrong
+ * control — this is per format.
+ *
+ * It filters candidates only. Whatever you searched for stays usable as an
+ * anchor, because refusing to accept the show someone just typed would be
+ * baffling.
+ */
+const FORMATS_KEY = 'wanx:formats';
+const ALL_FORMATS = ['TV', 'ONA', 'OVA'];
+
+let formats = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FORMATS_KEY) || 'null');
+    if (Array.isArray(saved) && saved.length && saved.every((f) => ALL_FORMATS.includes(f))) {
+      return new Set(saved);
+    }
+  } catch { /* private browsing, or someone edited it by hand */ }
+  return new Set(ALL_FORMATS);
+})();
+
+function saveFormats() {
+  try {
+    localStorage.setItem(FORMATS_KEY, JSON.stringify([...formats]));
+  } catch { /* not worth failing over */ }
+}
 
 /**
  * Which ordering the walk climbs: MyAnimeList's score ranking, or how well a
@@ -417,7 +448,10 @@ function collectTiers(source, direction, exclude) {
     if (!candidate.local || !candidate.genres.length) continue;
     // Belt and braces: the catalogue only holds standalone TV/OVA/ONA, but a
     // live-fetched entry could be anything.
-    if (candidate.type && !['TV', 'OVA', 'ONA'].includes(candidate.type)) continue;
+    if (candidate.type && !ALL_FORMATS.includes(candidate.type)) continue;
+    // The viewer's format filter. Entries with no type recorded are kept —
+    // that is a data gap, not a format they chose to exclude.
+    if (candidate.type && !formats.has(candidate.type)) continue;
     if (exclude.has(candidate.id)) continue;                   // already seen this chain
     if (sameFranchise(candidate, source)) continue;
 
@@ -1146,6 +1180,12 @@ function matchNote(hero, source, direction) {
   return `${parts.join(' ')}.`;
 }
 
+const FORMAT_HINTS = {
+  TV: 'Television series',
+  ONA: 'Web release — includes most donghua',
+  OVA: 'Direct-to-video',
+};
+
 function directionToggle(direction) {
   return `
     <div class="controls">
@@ -1158,6 +1198,12 @@ function directionToggle(direction) {
           title="MyAnimeList's score ranking">MAL rank</button>
         <button type="button" data-action="axis" data-value="completion" aria-pressed="${axis === 'completion'}"
           title="How well a show holds the people who start it, corrected for length">Kept watching</button>
+      </div>
+      <div class="direction formats" role="group" aria-label="Formats to recommend">
+        ${ALL_FORMATS.map((f) => `
+          <button type="button" data-action="format" data-value="${f}"
+            aria-pressed="${formats.has(f)}"
+            title="${FORMAT_HINTS[f]}">${f}</button>`).join('')}
       </div>
     </div>`;
 }
@@ -1362,6 +1408,18 @@ function wireResultControls() {
         return;
       }
 
+      if (action === 'format') {
+        const format = el.dataset.value;
+        // Turning the last one off would leave nothing to recommend, so the
+        // final format stays on rather than silently emptying the results.
+        if (formats.has(format) && formats.size === 1) return;
+        if (formats.has(format)) formats.delete(format);
+        else formats.add(format);
+        saveFormats();
+        recommendFor(state.source, state.direction, { chain: true });
+        return;
+      }
+
       if (action === 'shuffle') {
         if (state.list.length < 2) return;
         state.index = (state.index + 1) % state.list.length;
@@ -1473,7 +1531,11 @@ $('clear-btn').addEventListener('click', () => {
 $('random-btn').addEventListener('click', async () => {
   showLoading('Rolling the dice…');
   await loadCatalogue();
-  const pick = ranked[Math.floor(Math.random() * ranked.length)];
+  // Respect the format filter here even though it is an anchor, not a
+  // recommendation: being handed a donghua right after switching ONA off
+  // would read as the toggle not working.
+  const pool = ranked.filter((a) => !a.type || formats.has(a.type));
+  const pick = (pool.length ? pool : ranked)[Math.floor(Math.random() * (pool.length || ranked.length))];
   recommendFor(pick, state.direction);
 });
 
