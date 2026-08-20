@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 21.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+**Build 22.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
 about 1.15 MB. 96 checks pass via `npm test`.
 
 | Data | Coverage |
