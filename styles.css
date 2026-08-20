@@ -668,6 +668,13 @@ a { color: inherit; }
   line-clamp: 5;
 }
 
+/* Nothing came back. The space stays reserved either way, so say which kind of
+   nothing it is rather than leaving five blank lines that read as a bug. */
+.synopsis-none {
+  font-style: italic;
+  color: var(--fg-faint);
+}
+
 /* Waiting on the lazy AniList fetch — show a shimmer rather than a blank gap.
    Same height as the settled state, so the swap costs no reflow. */
 .synopsis-pending {

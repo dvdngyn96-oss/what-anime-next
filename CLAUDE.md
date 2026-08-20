@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 27.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 107 checks pass via `npm test`.
+**Build 28.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+about 1.15 MB. 109 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -40,7 +40,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 107 checks, jsdom against the real app.js and anime.json
+npm test          # 109 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -206,6 +206,19 @@ chain of dark psychological shows all carry long genre lists — Texhnolyze has
 eight chips against Kubikiri Cycle'''s four, and they turned up within five
 clicks of each other. Frequency across the catalogue is the wrong measure;
 frequency *along a walk* is what you feel.
+
+**A failed synopsis fetch is never cached.** AniList rate-limits, and clicking
+through quickly fires one request per card, so bursts produce failures. Caching
+them stored "no synopsis" for the rest of the session, and because the block is
+now a reserved five lines, that read as a broken card rather than as nothing.
+Failures are left uncached so the next visit retries, the fetch waits 220ms so
+a card you skim past costs no request at all, and an empty block says which
+kind of empty it is — "Synopsis unavailable just now" against "No synopsis on
+record".
+
+The Trailer button sits **last** in the action row. Its slot is always rendered
+to hold the row width, and reserved space at the front left a visible hole
+before the first button; at the end it falls where the row already runs out.
 
 Chips are clipped rather than capped at a count: a chip can be the shared theme
 the note is explaining, and dropping it would remove the reason the result was

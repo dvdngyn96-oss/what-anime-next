@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 27;
+const BUILD = 28;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -377,21 +377,28 @@ const detailCache = new Map();
 async function fetchDetails(anime) {
   if (detailCache.has(anime.id)) return detailCache.get(anime.id);
 
-  let details = { synopsis: '', trailer: null };
   try {
     const data = await anilist(DETAIL_QUERY, { idMal: anime.id });
     const raw = data.Media?.trailer;
-    details = {
+    const details = {
       synopsis: (data.Media?.description || '').replace(/<[^>]+>/g, '').trim(),
       // Only these two embed cleanly; anything else is treated as absent.
       trailer: raw?.id && ['youtube', 'dailymotion'].includes(raw.site)
         ? { id: raw.id, site: raw.site }
         : null,
     };
-  } catch { /* leave it empty; the card copes */ }
-
-  detailCache.set(anime.id, details);
-  return details;
+    detailCache.set(anime.id, details);
+    return details;
+  } catch {
+    /* Deliberately *not* cached.
+     *
+     * AniList rate-limits, and clicking "show me another" quickly fires one
+     * request per card, so a burst produces failures. Caching those stored
+     * "no synopsis" permanently for the session — and since the card now
+     * reserves five lines for it, that showed as a hole rather than as
+     * nothing. Leaving it uncached means the next visit tries again. */
+    return { synopsis: '', trailer: undefined, failed: true };
+  }
 }
 
 /** Privacy-preserving embed, only built once someone asks to watch. */
@@ -1321,19 +1328,18 @@ function renderResult() {
         <p class="synopsis${hero.synopsis ? '' : ' synopsis-pending'}" id="hero-synopsis">${esc(trimSynopsis(hero.synopsis))}</p>
         ${watchRow(hero)}
         <div class="hero-actions">
-          <!-- Always rendered, hidden until a trailer is known. It used to be
-               injected when the AniList fetch returned, which shifted every
-               other button sideways a moment after the card appeared — and
-               left the row 93px narrower on the 11% of entries with no
-               trailer at all. Reserving the slot costs nothing and the row
-               never moves. -->
-          <span id="trailer-slot"><button
-            class="btn btn-play${hero.trailer ? '' : ' btn-reserved'}"
-            type="button" data-action="trailer">▶ Trailer</button></span>
           <a class="btn" href="${esc(hero.url)}" target="_blank" rel="noopener">Open on MyAnimeList</a>
           <button class="btn btn-ghost" type="button" data-action="shuffle">Show me another</button>
           <button class="btn btn-ghost" type="button" data-action="seen" data-id="${esc(hero.id)}">Seen it too — drop it</button>
           <button class="btn btn-ghost" type="button" data-action="anchor" data-id="${esc(hero.id)}">Start from this instead</button>
+          <!-- Last on purpose. The slot is always rendered so the row keeps its
+               width — it used to be injected when the AniList fetch returned,
+               shifting every button sideways — but reserved space at the front
+               leaves a hole before the first button. At the end it falls where
+               the row already runs out. -->
+          <span id="trailer-slot"><button
+            class="btn btn-play${hero.trailer ? '' : ' btn-reserved'}"
+            type="button" data-action="trailer">▶ Trailer</button></span>
         </div>
       </div>
       </div>
@@ -1367,26 +1373,37 @@ function renderResult() {
 
   wireResultControls();
 
-  // Synopses aren't in the catalogue; pull just this one, lazily.
+  /* Synopses aren't in the catalogue; pull just this one, lazily — but not
+   * instantly. Clicking through quickly used to fire an AniList request per
+   * card, several a second, which is how the rate limiting starts. Waiting a
+   * moment first means a card you skimmed past never costs a request, and the
+   * ones you actually stop on still fill in imperceptibly. */
   if (!hero.synopsis || hero.trailer === undefined) {
-    fetchDetails(hero).then(({ synopsis, trailer }) => {
+    setTimeout(() => {
       if (state.list[state.index]?.id !== hero.id) return;   // moved on already
-      hero.synopsis = synopsis;
-      hero.trailer = trailer;
 
-      const el = $('hero-synopsis');
-      if (el) {
-        el.classList.remove('synopsis-pending');
-        // Keep the element even when nothing came back. Removing it collapsed
-        // the reserved height and pulled every button below it upwards, which
-        // is the jump this layout exists to avoid.
-        el.textContent = synopsis ? trimSynopsis(synopsis) : '';
-      }
+      fetchDetails(hero).then(({ synopsis, trailer, failed }) => {
+        if (state.list[state.index]?.id !== hero.id) return;
+        hero.synopsis = synopsis;
+        hero.trailer = trailer;
 
-      // The slot is already there holding its width; this only reveals it.
-      const button = $('trailer-slot')?.querySelector('button');
-      if (button && trailer) button.classList.remove('btn-reserved');
-    });
+        const el = $('hero-synopsis');
+        if (el) {
+          el.classList.remove('synopsis-pending');
+          /* Keep the element even when nothing came back — removing it
+             collapsed the reserved height and pulled every button up. Say
+             which kind of nothing it is, so five blank lines don't read as a
+             broken card. */
+          el.classList.toggle('synopsis-none', !synopsis);
+          if (synopsis) el.textContent = trimSynopsis(synopsis);
+          else el.textContent = failed ? 'Synopsis unavailable just now.' : 'No synopsis on record.';
+        }
+
+        // The slot is already there holding its width; this only reveals it.
+        const button = $('trailer-slot')?.querySelector('button');
+        if (button && trailer) button.classList.remove('btn-reserved');
+      });
+    }, 220);
   }
 }
 

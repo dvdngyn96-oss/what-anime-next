@@ -843,6 +843,52 @@ try {
   check('real catalogue test', false, e.message);
 }
 
+console.log('\n--- a failed synopsis fetch is not cached ---');
+{
+  /* AniList rate-limits, and clicking through quickly fires a request per
+   * card, so bursts produce failures. Caching those stored "no synopsis" for
+   * the rest of the session — and since the card reserves five lines for it,
+   * that showed as a hole rather than as nothing. */
+  const NAMES = ['Action', 'Fantasy'];
+  const mk = (r, i, t) => ({
+    r, i, t, ty: 'TV', th: [], d: [], s: 8, g: [0, 1], e: 12, y: 2020,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+  const cat = {
+    built: '2026-08-19', count: 2, names: NAMES,
+    anime: [mk(1, 600, 'Cache Source'), mk(2, 601, 'Cache Target')],
+  };
+
+  // Same object each call, so removing `errors` later turns failure into
+  // success — the app's anilist() throws whenever errors are present.
+  const payload = {
+    errors: [{ message: 'Too Many Requests' }],
+    data: { Media: { description: 'It arrived on the retry.', trailer: null } },
+  };
+
+  const dom = makeDom(cat, { anilist: payload, detail: payload });
+  await sleep(200);
+  let body = await pickAndRecommend(dom, 'Cache Source');
+  dom.window.document.querySelector('[data-action="direction"][data-value="down"]')
+    ?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await sleep(700);
+
+  const failedText = body.querySelector('.synopsis')?.textContent || '';
+  check('a failed fetch says so rather than leaving a blank block',
+    /unavailable/i.test(failedText), failedText.slice(0, 60));
+
+  delete payload.errors;                       // the rate limit passes
+
+  body = await pickAndRecommend(dom, 'Cache Source');
+  dom.window.document.querySelector('[data-action="direction"][data-value="down"]')
+    ?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await sleep(700);
+
+  check('the next visit retries instead of serving the cached failure',
+    /arrived on the retry/i.test(body.querySelector('.synopsis')?.textContent || ''),
+    body.querySelector('.synopsis')?.textContent?.slice(0, 60));
+}
+
 console.log('\n--- the card keeps its shape ---');
 {
   /* Clicking "show me another" repeatedly is the main way this is used, and it
