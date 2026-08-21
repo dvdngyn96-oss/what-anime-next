@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
-const ROOT = 'C:/Users/David/Downloads/what-anime-next';
+import { fileURLToPath } from 'node:url';
+const ROOT = fileURLToPath(new URL('..', import.meta.url)).slice(0, -1);
 const html = readFileSync(`${ROOT}/index.html`,'utf8').replace(/<script src="app\.js[^"]*"><\/script>/, '');
 const app  = readFileSync(`${ROOT}/app.js`,'utf8');
 const real = JSON.parse(readFileSync(`${ROOT}/anime.json`,'utf8'));

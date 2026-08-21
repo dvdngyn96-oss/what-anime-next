@@ -473,7 +473,7 @@ catalogue without paying the 60 minutes.
 **Long builds must run detached**, or a Claude Code crash takes them with it:
 
 ```bash
-powershell -c "Start-Process node -ArgumentList 'build-catalogue.mjs','--depth','8000' -WorkingDirectory 'C:\Users\David\Downloads\what-anime-next' -RedirectStandardOutput 'rebuild.log' -WindowStyle Hidden"
+powershell -c "Start-Process node -ArgumentList 'build-catalogue.mjs','--depth','8000' -WorkingDirectory $PWD -RedirectStandardOutput 'rebuild.log' -WindowStyle Hidden"
 ```
 
 The builder only writes at the very end, so an interrupted run loses progress

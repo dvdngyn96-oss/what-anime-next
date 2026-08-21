@@ -1,7 +1,12 @@
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = 'C:/Users/David/Downloads/what-anime-next';
+/* Derived from this file's own location rather than hard-coded, so the suite
+   runs from any checkout and any working directory -- and so the repo, which
+   Cloudflare serves publicly from the Pages root, carries nobody's home
+   directory. */
+const ROOT = fileURLToPath(new URL('..', import.meta.url)).slice(0, -1);
 const html = readFileSync(`${ROOT}/index.html`, 'utf8').replace(/<script src="app\.js[^"]*"><\/script>/, '');
 const appSource = readFileSync(`${ROOT}/app.js`, 'utf8');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
