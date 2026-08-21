@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 31.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 142 checks pass via `npm test`.
+**Build 32.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
+about 1.15 MB. 157 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,7 +44,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 142 checks, jsdom against the real app.js and anime.json
+npm test          # 157 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -403,6 +403,46 @@ byte-identical HTML, so listing them would hand a crawler thousands of URLs with
 the same markup — which is what duplicate content means. The root is the only
 distinct document the site has.
 
+### The watched list
+
+Shows you have already seen, so they stop being recommended. This is **stage
+one of the voting system**, and the only stage that needs no server at all.
+
+It lives in your browser's local storage under `wanx:watched:v1` and nowhere
+else. No account, no sign-up, no upload. A MyAnimeList export is read on your
+own machine; the file never leaves it.
+
+The honest cost of that: the list does not follow you to another device, and
+clearing your browsing data clears it. Both are the price of not holding
+anyone's data, and worth paying — accounts would mean storing other people's
+email addresses and passwords, which is a legal and security responsibility
+this project has no reason to take on.
+
+**It filters candidates, not anchors** — the same rule as the format filter.
+Searching something you have watched is *the normal way to use this site*: "I
+watched this, what next". Refusing the show someone just typed would break the
+one thing it is for.
+
+**"Seen it too — drop it" is now permanent.** It used to last only for the
+current chain, so a fresh search brought the show back. The button says you
+have seen it, so it is taken at its word. "Show me another" is still there for
+"not this one" — the two intents were always separate controls, and only one of
+them was ever about having watched something.
+
+**Plan-to-watch is deliberately excluded on import.** It is usually the largest
+section of a MyAnimeList export, and you have not seen any of it — treating it
+as watched would hide exactly the shows someone most wants recommended.
+Completed, Watching, On-Hold and Dropped all count as seen.
+
+MyAnimeList hands you a **`.xml.gz`**, so the importer sniffs the first two
+bytes for the gzip marker (`1f 8b`) rather than trusting the file name, and
+unzips it in the browser with `DecompressionStream`. A plain `.xml` works too.
+
+**An emptied walk has to say which filter emptied it.** If the watched list
+removed every candidate, the old message — "nothing shares these genres" — is
+false, and reads as the matcher being broken. `watchedSkipped` counts what the
+list removed so the message can name the real reason and point at Clear.
+
 ### When anime.json does not load
 
 Everything on the page waits on one promise. Before build 31, a failed
@@ -483,11 +523,25 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**The voting system.** "Have you watched it" → "would you recommend it", a
-% recommend rating, and MAL XML list import. The only part of the original idea
-still missing, and the only part needing a backend. Roughly 177,000 votes would
-be needed for meaningful per-title percentages, which is why list import
-matters — a few hundred uploads does what millions of pageviews would.
+**The voting system — stage one shipped, two and three to go.** "Have you
+watched it" → "would you recommend it", a % recommend rating, and MAL XML list
+import. Still the only part of the original idea needing a backend.
+
+- ~~**Stage 1: remember what you have watched.**~~ Shipped in build 32. Local
+  only, no server. See "The watched list" above.
+- **Stage 2: the votes themselves.** Anonymous — a random id in local storage,
+  no accounts. Ratings need votes, not identities, and holding strangers'
+  credentials is a responsibility this project should not take on. Cloudflare
+  already hosts the site, so Pages Functions plus D1 keeps it on one platform.
+- **Stage 3: imported lists feeding the ratings**, behind a clear opt-in. This
+  is the part that makes the numbers real: roughly 177,000 votes are needed for
+  meaningful per-title percentages, which is why list import matters — a few
+  hundred uploads does what millions of pageviews would.
+
+**A percentage needs a floor before it is shown.** "100% would recommend" from
+one vote is worse than no number at all. Nothing should display a percentage
+until it has real support behind it — around 30 votes — and should say plainly
+that it does not yet, rather than showing a figure that looks like data.
 
 ~~**Tune `AFFINITY_REACH` against real taste.**~~ Judged good as shipped —
 30 positions per affinity point, 2026-08-19, by reading the live chains rather
@@ -523,6 +577,14 @@ neighbour.
 
 Kept short; the reasoning that still matters has moved into the sections above.
 
+- **Commit identity** — commits are authored with the GitHub noreply address
+  `318438975+dvdngyn96-oss@users.noreply.github.com`, and both GitHub email
+  settings are on: *Keep my email addresses private* and *Block command line
+  pushes that expose my email*. History was rewritten once to remove a personal
+  address, and GitHub Support ran a server-side garbage collection so the old
+  objects are gone rather than merely unreachable. **Do not set `user.email` in
+  this repo to a personal address** — the push will be rejected, and that
+  rejection is the safety net doing its job, not a fault to work around.
 - **Domain** — `whatanimeshouldiwatchnext.com`, registered through Cloudflare
   Registrar and attached to the Pages project as a custom domain. It is the
   canonical address and what all ten absolute URLs in the repo point at.
@@ -574,6 +636,29 @@ Kept short; the reasoning that still matters has moved into the sections above.
   three-column grid. `display: contents` stays inside the ≤620px breakpoint.
 
 ---
+
+## Explain things plainly
+
+The person who owns this project is not a deeply technical developer. Write for
+that, in the chat *and* in this file.
+
+- **Say what a thing does before naming it.** "A redirect rule, which sends
+  anyone typing the www address over to the real one" beats "a dynamic redirect
+  on `http.host`".
+- **Spell out the consequence, not just the mechanism.** "PNG can't compress a
+  radial gradient" means nothing on its own; "that glow was three quarters of
+  the file size" does.
+- **Jargon is fine once it has been explained once.** The goal is not to avoid
+  technical words, it is to avoid unexplained ones. This file is full of them
+  deliberately — every one gets defined where it first matters.
+- **Give the recommendation, then the reasoning.** Not a survey of five options
+  weighted equally. Say which one and why, and note what would change the answer.
+- **When something cannot be done, say so in one sentence** and give the thing
+  that can be done instead. Blocked tool calls, GitHub settings, purchases and
+  anything needing a login all fall here.
+- Screenshots are how bugs and dashboard confusion get reported here, and they
+  work well. Assume the dashboard has been redesigned since training and check
+  the actual state before giving directions through a UI.
 
 ## Working notes
 

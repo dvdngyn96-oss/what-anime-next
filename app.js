@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 31;
+const BUILD = 32;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -85,6 +85,55 @@ function saveFormats() {
     localStorage.setItem(FORMATS_KEY, JSON.stringify([...formats]));
   } catch { /* not worth failing over */ }
 }
+
+/**
+ * Shows you have already watched, so they stop being recommended.
+ *
+ * Same rule as the format filter: this filters candidates, never the anchor.
+ * Searching something you have seen is the normal way to use this site — "I
+ * watched this, what next" — so whatever you type is always accepted.
+ *
+ * It lives in this browser and nowhere else. There is no account and no server:
+ * a MyAnimeList export is read on your own machine and never uploaded. The
+ * flip side is that it does not follow you to another device, and clearing your
+ * browsing data clears it. Both are the price of not holding anyone's data.
+ */
+const WATCHED_KEY = 'wanx:watched:v1';
+
+let watched = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WATCHED_KEY) || 'null');
+    if (Array.isArray(saved)) return new Set(saved.filter((id) => Number.isFinite(id)));
+  } catch { /* private browsing, or someone edited it by hand */ }
+  return new Set();
+})();
+
+function saveWatched() {
+  try {
+    localStorage.setItem(WATCHED_KEY, JSON.stringify([...watched]));
+  } catch { /* not worth failing over */ }
+}
+
+/** Returns how many were genuinely new, so the import can report a real number. */
+function markWatched(ids) {
+  let added = 0;
+  for (const raw of ids) {
+    const id = Number(raw);
+    if (Number.isFinite(id) && id > 0 && !watched.has(id)) { watched.add(id); added += 1; }
+  }
+  if (added) saveWatched();
+  return added;
+}
+
+function clearWatched() {
+  watched = new Set();
+  saveWatched();
+}
+
+/* How many candidates the watched list removed from the last walk. Without
+   this, a walk emptied by the watched list would report "nothing shares these
+   genres", which is false and would read as the matcher being broken. */
+let watchedSkipped = 0;
 
 /**
  * Which ordering the walk climbs: MyAnimeList's score ranking, or how well a
@@ -496,6 +545,9 @@ function collectTiers(source, direction, exclude) {
     // that is a data gap, not a format they chose to exclude.
     if (candidate.type && !formats.has(candidate.type)) continue;
     if (exclude.has(candidate.id)) continue;                   // already seen this chain
+    // Shows you have marked as watched. Counted rather than silently skipped,
+    // so an emptied walk can say why it is empty.
+    if (watched.has(candidate.id)) { watchedSkipped += 1; continue; }
     if (sameFranchise(candidate, source)) continue;
 
     const shared = candidate.genres.filter((g) => want.has(g)).length;
@@ -647,6 +699,7 @@ function collectTiers(source, direction, exclude) {
  * to a recommendation that barely resembles what you watched.
  */
 function walkRankings(source, direction, exclude = new Set()) {
+  watchedSkipped = 0;
   const otherDirection = direction === 'up' ? 'down' : 'up';
   const total = source.genres.length;
   const primary = collectTiers(source, direction, exclude);
@@ -1348,8 +1401,11 @@ function renderResult() {
     ${directionToggle(direction)}`;
 
   if (!hero) {
-    resultBody.innerHTML = `${because}
-      <div class="state">Nothing ${direction === 'up' ? 'higher up' : 'further down'} the rankings shares these genres. Try the other direction.</div>`;
+    const where = direction === 'up' ? 'higher up' : 'further down';
+    const why = watchedSkipped
+      ? `Everything ${where} the rankings that shares these genres is already on your watched list — ${watchedSkipped} of them. Try the other direction, or clear the list from the home page.`
+      : `Nothing ${where} the rankings shares these genres. Try the other direction.`;
+    resultBody.innerHTML = `${because}<div class="state">${esc(why)}</div>`;
     wireResultControls();
     return;
   }
@@ -1591,9 +1647,14 @@ function wireResultControls() {
         return;
       }
 
-      // Drop this one and re-walk from the same anchor.
+      // Drop this one and re-walk from the same anchor. The button says "seen
+      // it", so it is taken at its word and remembered for good rather than
+      // just for this chain.
       if (action === 'seen') {
-        chainHistory.add(Number(el.dataset.id));
+        const id = Number(el.dataset.id);
+        chainHistory.add(id);
+        markWatched([id]);
+        renderWatchedBar();
         refreshFromAnchor();
         return;
       }
@@ -1667,6 +1728,99 @@ function goHome() {
   showSearchView();
 }
 
+/* ------------------------------------------------------------------ *
+ * The watched list: import, count, clear
+ * ------------------------------------------------------------------ */
+
+/* Statuses that mean you have already met the show. "Plan to Watch" is
+   deliberately not among them — you have not seen it, so it should still be
+   recommendable, and for most lists it is the largest category by far. */
+const WATCHED_STATUSES = new Set(['Completed', 'Watching', 'On-Hold', 'Dropped']);
+
+/** MyAnimeList hands you a .xml.gz, so sniff the bytes rather than the name. */
+async function readExportFile(file) {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    if (typeof DecompressionStream !== 'function') {
+      throw new Error('This browser cannot unzip the file. Unzip it yourself and pick the .xml.');
+    }
+    const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).text();
+  }
+  return new TextDecoder().decode(buffer);
+}
+
+function parseExport(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) {
+    throw new Error("That file couldn't be read as a MyAnimeList export.");
+  }
+  const entries = doc.querySelectorAll('anime');
+  if (!entries.length) throw new Error('No anime entries found in that file.');
+
+  const ids = [];
+  let planned = 0;
+  for (const node of entries) {
+    const id = Number(node.querySelector('series_animedb_id')?.textContent);
+    const status = node.querySelector('my_status')?.textContent?.trim();
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (status && !WATCHED_STATUSES.has(status)) { planned += 1; continue; }
+    ids.push(id);
+  }
+  return { ids, planned };
+}
+
+function watchedSummary() {
+  const n = watched.size;
+  if (!n) return 'Nothing marked as watched yet';
+  return `${n.toLocaleString()} title${n === 1 ? '' : 's'} marked as watched`;
+}
+
+function renderWatchedBar() {
+  const label = document.getElementById('watched-count');
+  const clear = document.getElementById('clear-watched-btn');
+  if (label) label.textContent = watchedSummary();
+  if (clear) clear.hidden = watched.size === 0;
+}
+
+function wireWatchedBar() {
+  const input = document.getElementById('import-input');
+  const importBtn = document.getElementById('import-btn');
+  const clearBtn = document.getElementById('clear-watched-btn');
+  const label = document.getElementById('watched-count');
+  if (!input || !importBtn || !clearBtn || !label) return;
+
+  importBtn.addEventListener('click', () => input.click());
+
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    label.textContent = 'Reading your list…';
+    try {
+      const { ids, planned } = parseExport(await readExportFile(file));
+      const added = markWatched(ids);
+      const skipped = ids.length - added;
+      label.textContent = `Added ${added.toLocaleString()} title${added === 1 ? '' : 's'}`
+        + (skipped ? `, ${skipped.toLocaleString()} already on the list` : '')
+        + (planned ? `. ${planned.toLocaleString()} plan-to-watch left out` : '.');
+      clearBtn.hidden = watched.size === 0;
+    } catch (error) {
+      label.textContent = error.message;
+    } finally {
+      // Let the same file be picked again after a failed read.
+      input.value = '';
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    clearWatched();
+    renderWatchedBar();
+  });
+
+  renderWatchedBar();
+}
+
 /* Wire up */
 
 const mainAutocomplete = attachAutocomplete(searchInput, $('suggestions'), (a) => recommendFor(a, state.direction));
@@ -1727,6 +1881,8 @@ async function routeFromUrl() {
   }
   recommendFor(source, dir, { push: false });
 }
+
+wireWatchedBar();
 
 // Stamp the running build onto the page and the console.
 const creditLine = document.querySelector('.credit');

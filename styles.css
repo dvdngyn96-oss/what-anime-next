@@ -840,6 +840,32 @@ a { color: inherit; }
   line-height: 1.45;
 }
 
+/* The watched-list line on the landing page. Deliberately quiet: it is
+   housekeeping, and should not compete with the search box. */
+.watched-bar {
+  color: var(--fg-faint);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.linkish {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.linkish:hover { opacity: 0.75; }
+
 .state {
   text-align: center;
   padding: 60px 20px;

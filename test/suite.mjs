@@ -185,17 +185,32 @@ console.log('\n--- pivot chains do not loop ---');
     /Because you watched Gamma Show/.test(body.textContent.replace(/\s+/g, ' ')),
     body.textContent.replace(/\s+/g, ' ').slice(0, 120));
 
-  // A brand new search must forget the dismissals.
+  // "Seen it too" is taken at its word: it means it for good, not just for this
+  // chain, so a fresh search must NOT bring the dismissed show back. Getting it
+  // back is what the Clear button is for.
   const input = w.document.getElementById('search-input');
+  const research = async () => {
+    w.document.getElementById('home-btn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(80);
+    input.value = 'Beta Show';
+    input.dispatchEvent(new w.Event('input', { bubbles: true }));
+    await sleep(400);
+    w.document.querySelector('#suggestions .suggestion')?.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
+    await sleep(200);
+    return body.querySelector('.hero h2')?.textContent;
+  };
+
+  check('a show marked seen stays gone after a fresh search',
+    (await research()) !== 'Alpha Show', body.querySelector('.hero h2')?.textContent);
+
+  const stored = JSON.parse(w.localStorage.getItem('wanx:watched:v1') || '[]');
+  check('marking it seen wrote it to the watched list', stored.length > 0, JSON.stringify(stored));
+
   w.document.getElementById('home-btn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   await sleep(80);
-  input.value = 'Beta Show';
-  input.dispatchEvent(new w.Event('input', { bubbles: true }));
-  await sleep(400);
-  w.document.querySelector('#suggestions .suggestion').dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
-  await sleep(200);
-  check('a fresh search resets the history',
-    body.querySelector('.hero h2')?.textContent === 'Alpha Show',
+  w.document.getElementById('clear-watched-btn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(80);
+  check('clearing the watched list brings it back', (await research()) === 'Alpha Show',
     body.querySelector('.hero h2')?.textContent);
 }
 
@@ -1258,6 +1273,114 @@ console.log('\n--- analytics ---');
      hermetic. */
   check('the suite never enables external resource loading',
     !/resources\s*:\s*['"]usable/.test(readFileSync(`${ROOT}/test/suite.mjs`, 'utf8')));
+}
+
+/* ---------- the watched list ---------- */
+/* Stage 1 of the voting work: remember what you have already seen, and stop
+   recommending it. Entirely local — no account, no server, nothing uploaded. */
+
+console.log('\n--- the watched list ---');
+{
+  const G2 = ['Action', 'Fantasy'];
+  const mk = (r, i, t) => ({ r, i, t, s: 9 - r / 10, g: [0, 1], th: [], ty: 'TV', e: 12, y: 2013, m: 1000, im: 'x.jpg' });
+  const CAT = {
+    built: 'x', count: 3, names: G2,
+    anime: [mk(1, 501, 'Alpha Show'), mk(2, 502, 'Gamma Show'), mk(3, 503, 'Source Show')],
+  };
+
+  /* Its own factory rather than makeDom, so the module-scope helpers can be
+     reached from the test, and so the watched list can be seeded before the
+     script boots and reads it. */
+  function boot(seed) {
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
+    dom.window.scrollTo = () => {};
+    if (seed) dom.window.localStorage.setItem('wanx:watched:v1', JSON.stringify(seed));
+    dom.window.fetch = (t) => (String(t).includes('anilist')
+      ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: { Page: { media: [] } } }) })
+      : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) }));
+    dom.window.eval(`${appSource}
+      window.__parseExport = parseExport;
+      window.__markWatched = markWatched;
+      window.__watched = () => [...watched];`);
+    return dom;
+  }
+
+  const XML = `<?xml version="1.0" encoding="UTF-8"?>
+    <myanimelist>
+      <anime><series_animedb_id>501</series_animedb_id><my_status>Completed</my_status></anime>
+      <anime><series_animedb_id>502</series_animedb_id><my_status>Watching</my_status></anime>
+      <anime><series_animedb_id>777</series_animedb_id><my_status>Dropped</my_status></anime>
+      <anime><series_animedb_id>888</series_animedb_id><my_status>On-Hold</my_status></anime>
+      <anime><series_animedb_id>999</series_animedb_id><my_status>Plan to Watch</my_status></anime>
+    </myanimelist>`;
+
+  {
+    const dom = boot();
+    await sleep(200);
+    const w = dom.window;
+    const { ids, planned } = w.__parseExport(XML);
+    check('the import reads a MyAnimeList export', ids.length === 4, JSON.stringify(ids));
+    /* Plan-to-watch is usually the biggest section of a list, and you have not
+       seen any of it — treating it as watched would hide the very things
+       someone is most likely to want recommended. */
+    check('plan-to-watch is left out', !ids.includes(999) && planned === 1, `${ids} planned=${planned}`);
+    check('dropped and on-hold count as seen', ids.includes(777) && ids.includes(888), JSON.stringify(ids));
+
+    check('importing twice adds nothing the second time',
+      w.__markWatched(ids) === 4 && w.__markWatched(ids) === 0);
+    const saved = JSON.parse(w.localStorage.getItem('wanx:watched:v1') || '[]');
+    check('the list survives in local storage', saved.length === 4, JSON.stringify(saved));
+
+    let threw = '';
+    try { w.__parseExport('<html><body>not a list</body></html>'); } catch (e) { threw = e.message; }
+    check('a file that is not an export is rejected', threw.length > 0, threw);
+  }
+
+  {
+    /* Alpha is the best match above Source. Marked watched, the walk should
+       reach past it to Gamma rather than offering it again. */
+    const dom = boot([501]);
+    await sleep(200);
+    const body = await pickAndRecommend(dom, 'Source Show');
+    const hero = body?.querySelector('.hero h2')?.textContent;
+    check('a watched show is not recommended', hero !== 'Alpha Show', hero);
+    check('the next-best one is offered instead', hero === 'Gamma Show', hero);
+  }
+
+  {
+    /* The same rule as the format filter: it filters candidates, never the
+       anchor. Refusing to accept a show because you have seen it would break
+       the one thing this site is for. */
+    const dom = boot([501]);
+    await sleep(200);
+    const body = await pickAndRecommend(dom, 'Alpha Show');
+    check('a watched show still works as an anchor',
+      /Because you watched Alpha Show/.test(body?.textContent.replace(/\s+/g, ' ') || ''),
+      body?.textContent.replace(/\s+/g, ' ').slice(0, 90));
+  }
+
+  {
+    /* If the watched list is what emptied the walk, say so. "Nothing shares
+       these genres" would be false, and would read as the matcher breaking. */
+    const dom = boot([501, 502]);
+    await sleep(200);
+    const body = await pickAndRecommend(dom, 'Source Show');
+    const txt = body?.textContent.replace(/\s+/g, ' ') || '';
+    check('an empty walk blames the watched list, not the genres',
+      txt.includes('already on your watched list'), txt.slice(0, 140));
+  }
+
+  {
+    const dom = boot([501]);
+    await sleep(200);
+    const w = dom.window;
+    const label = w.document.getElementById('watched-count');
+    check('the landing page reports the count', /1 title/.test(label.textContent), label.textContent);
+    w.document.getElementById('clear-watched-btn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    await sleep(60);
+    check('clearing empties it', w.__watched().length === 0, JSON.stringify(w.__watched()));
+    check('and the label says so', /Nothing marked/.test(label.textContent), label.textContent);
+  }
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
