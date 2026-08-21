@@ -22,4 +22,4 @@ Disallow: /make-og-image.html
 # renders nothing without them, so blocking them would leave a crawler holding
 # an empty shell and judging the site on it.
 
-Sitemap: https://what-anime-next.pages.dev/sitemap.xml
+Sitemap: https://whatanimeshouldiwatchnext.com/sitemap.xml

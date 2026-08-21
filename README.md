@@ -5,7 +5,7 @@ up the MyAnimeList rankings to the next one that shares its genres.
 
 Static site — no build step, no server, no runtime API calls for the core loop.
 
-**Live at <https://what-anime-next.pages.dev>**
+**Live at <https://whatanimeshouldiwatchnext.com>**
 
 ## Run it
 

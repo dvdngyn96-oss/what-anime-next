@@ -1078,7 +1078,7 @@ console.log('\n--- link previews ---');
 {
   const head = new JSDOM(html).window.document;
   const meta = (sel) => head.querySelector(sel)?.getAttribute('content') ?? '';
-  const SITE = 'https://what-anime-next.pages.dev';
+  const SITE = 'https://whatanimeshouldiwatchnext.com';
 
   check('the card type is the large one', meta('meta[name="twitter:card"]') === 'summary_large_image');
   check('og:image is absolute', meta('meta[property="og:image"]').startsWith('https://'),

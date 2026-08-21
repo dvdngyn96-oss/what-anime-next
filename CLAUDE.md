@@ -24,9 +24,13 @@ about 1.15 MB. 142 checks pass via `npm test`.
 | Genres backfilled from AniList (`gs`) | 43 |
 | No genres (matched on themes only) | 31 |
 
-**Live at https://what-anime-next.pages.dev** on Cloudflare Pages, deploying
+**Live at https://whatanimeshouldiwatchnext.com** on Cloudflare Pages, deploying
 from `main` on GitHub (`dvdngyn96-oss/what-anime-next`). Every push redeploys
 automatically, in about 40 seconds.
+
+`what-anime-next.pages.dev` still serves the same site and is still where
+Pages deploys land; the apex is the canonical address and is what every
+absolute URL in the repo points at.
 
 **Use the bare hostname.** Each deploy also gets a pinned URL like
 `1da78362.what-anime-next.pages.dev`, which serves that build *forever* —
