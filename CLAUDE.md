@@ -457,6 +457,19 @@ but never corrupts the existing catalogue.
 
 ## Open
 
+**Cookieless analytics — chosen, not yet wired.** Cloudflare Web Analytics, as
+a **manual beacon in `index.html`** rather than the dashboard's automatic
+injection. Automatic is zero code, but it lives only in the Pages project
+settings: invisible in the repo, and gone the day the site moves off Pages.
+
+It needs a site token — Cloudflare dashboard → Web Analytics → add
+`what-anime-next.pages.dev` → the snippet contains `token: "..."`. The token is
+**not a secret**; it ships in the page source by design, so it belongs in the
+repo rather than in the two gitignored credential files.
+
+No `BUILD` bump when it lands: `index.html` is served `no-cache`, and `app.js`
+and `styles.css` are not involved.
+
 **The voting system.** "Have you watched it" → "would you recommend it", a
 % recommend rating, and MAL XML list import. The only part of the original idea
 still missing, and the only part needing a backend. Roughly 177,000 votes would
