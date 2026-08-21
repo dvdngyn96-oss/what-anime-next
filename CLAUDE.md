@@ -523,6 +523,31 @@ neighbour.
 
 Kept short; the reasoning that still matters has moved into the sections above.
 
+- **Domain** — `whatanimeshouldiwatchnext.com`, registered through Cloudflare
+  Registrar and attached to the Pages project as a custom domain. It is the
+  canonical address and what all ten absolute URLs in the repo point at.
+  `what-anime-next.pages.dev` still serves the same site and is still where
+  deploys land, so neither address breaks.
+  - `www` is a **proxied** CNAME to the apex plus a Redirect Rule — the
+    *dynamic* kind, `concat("https://whatanimeshouldiwatchnext.com",
+    http.request.uri.path)` with preserve-query-string on. A static redirect
+    would dump everyone on the home page and silently drop the `?id=` that
+    makes a shared recommendation a recommendation.
+  - **Always Use HTTPS** is on at the zone. Without it `http://www/` never
+    reached the rule and returned 522: the apex handled port 80 because Pages
+    set that up for the apex alone. Worst case is now two hops —
+    `http://www/?id=…` upgrades to HTTPS, then redirects to the apex, 200.
+  - **Web Analytics needs no per-hostname setup.** The beacon token identifies
+    the site, and hostname is just a dimension, so the apex and `pages.dev`
+    both report into the same dashboard — confirmed by both appearing in the
+    URL breakdown. The site's *label* still reads `what-anime-next.pages.dev`
+    and that is cosmetic. Never add a second site for a new hostname: that
+    issues a fresh token, and the old one is already in `index.html`, so the
+    new dashboard would sit empty while the site kept reporting elsewhere.
+  - Moving the domain again means moving all ten references together; `SITE`
+    in `test/suite.mjs` is one of them, which is what makes the other nine
+    enforceable rather than something to remember. And Facebook needs a fresh
+    scrape afterwards: a changed `og:url` is a new URL to them, not an update.
 - **Deployment** — live on Cloudflare Pages, auto-deploying from `main`.
   Build settings: preset **None**, build command **empty**, output `/`. The
   build command matters — Cloudflare's Workers import flow prefills
