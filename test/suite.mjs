@@ -1234,5 +1234,26 @@ console.log('\n--- when the catalogue does not load ---');
   process.off('unhandledRejection', watch);
 }
 
+console.log('\n--- analytics ---');
+{
+  const head = new JSDOM(html).window.document;
+  const beacon = head.querySelector('script[data-cf-beacon]');
+  check('the analytics beacon is present', !!beacon);
+  check('the beacon carries a token',
+    !!(beacon && JSON.parse(beacon.getAttribute('data-cf-beacon')).token), beacon?.getAttribute('data-cf-beacon'));
+  /* A module script defers itself. A blocking one would sit in front of the
+     catalogue fetch, which is the only thing on this page worth waiting for. */
+  check('the beacon cannot block the catalogue fetch',
+    beacon?.getAttribute('type') === 'module' || beacon?.hasAttribute('defer') || beacon?.hasAttribute('async'),
+    beacon?.outerHTML.slice(0, 80));
+  /* jsdom only fetches external scripts when built with `resources: usable`.
+     Nothing here does, which is what keeps a real network call to Cloudflare
+     out of every test run. Asserted against this file's own source, because the
+     day someone turns that on is the day the suite silently stops being
+     hermetic. */
+  check('the suite never enables external resource loading',
+    !/resources\s*:\s*['"]usable/.test(readFileSync(`${ROOT}/test/suite.mjs`, 'utf8')));
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);

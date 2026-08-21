@@ -11,7 +11,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 ## Current state
 
 **Build 31.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 138 checks pass via `npm test`.
+about 1.15 MB. 142 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -40,7 +40,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 138 checks, jsdom against the real app.js and anime.json
+npm test          # 142 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 14 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -457,19 +457,6 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**Cookieless analytics — chosen, not yet wired.** Cloudflare Web Analytics, as
-a **manual beacon in `index.html`** rather than the dashboard's automatic
-injection. Automatic is zero code, but it lives only in the Pages project
-settings: invisible in the repo, and gone the day the site moves off Pages.
-
-It needs a site token — Cloudflare dashboard → Web Analytics → add
-`what-anime-next.pages.dev` → the snippet contains `token: "..."`. The token is
-**not a secret**; it ships in the page source by design, so it belongs in the
-repo rather than in the two gitignored credential files.
-
-No `BUILD` bump when it lands: `index.html` is served `no-cache`, and `app.js`
-and `styles.css` are not involved.
-
 **The voting system.** "Have you watched it" → "would you recommend it", a
 % recommend rating, and MAL XML list import. The only part of the original idea
 still missing, and the only part needing a backend. Roughly 177,000 votes would
@@ -517,6 +504,13 @@ Kept short; the reasoning that still matters has moved into the sections above.
   Cloudflare serves the whole repo root, so `package.json`, the `.mjs` scripts
   and `test/` are publicly fetchable; no secrets in them. `/.mal-client-id`
   returns `index.html` (the SPA fallback), not the file — it is not in the repo.
+- **Analytics** — Cloudflare Web Analytics, as a manual beacon in `index.html`
+  rather than the Pages setting, so it is visible in the repo and survives the
+  site moving off Pages. Cookieless: no cookies, no fingerprinting, nothing to
+  put a consent banner in front of. The token is public by design and belongs
+  in the repo. Automatic setup was never on offer anyway — it needs the
+  hostname to be a zone on the account, and `pages.dev` is Cloudflare's domain,
+  not ours.
 - **AniList tags** — landed build 19, affinity only. Needed no second harvest.
 - **Genre backfill** — 43 of 74 recovered from AniList.
 - **Recaps** — 23 dropped; `looksLikeRecap` keeps them out of future builds.

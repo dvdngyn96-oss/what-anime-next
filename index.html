@@ -102,5 +102,17 @@
   </main>
 
   <script src="app.js?v=31"></script>
+
+  <!-- Cloudflare Web Analytics. Cookieless: no cookies, no fingerprinting, no
+       cross-site identifier, so there is nothing to put a consent banner in
+       front of. The token is public by design — it ships in the page source of
+       every site that uses one — which is why it lives here rather than
+       alongside the two gitignored build-time credentials.
+
+       Written out rather than switched on in the Pages project settings, so it
+       is visible in the repo and survives the site moving off Pages. It is a
+       module script, so it defers itself and never blocks the catalogue fetch;
+       an ad blocker dropping it costs nothing but the pageview. -->
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "298adc94c7bc41a28eb27dc2d58d097d"}'></script>
 </body>
 </html>
