@@ -75,15 +75,34 @@ function wordmarkWidth(size) {
 let size = 96;
 size = Math.min(96, size * (TARGET / wordmarkWidth(size)));
 
+/* ---- centre the block by measurement, not by hand ---- */
+/* The baselines below are fixed because the spacing *between* the parts is a
+   design choice. Where the block as a whole sits is not: placed by hand it left
+   180px of headroom against 70px underneath, which reads as the composition
+   sagging. Measure the real ink extent — cap height at the top, descender at the
+   bottom — and translate once. Doing it by measurement rather than by a tuned
+   constant means the framing survives the font stack falling back to a face with
+   different metrics on another machine. */
+const WORDMARK_BASELINE = 250, FOOTER_BASELINE = 552;
+
 ctx.font = `700 ${size}px ${FONT}`;
 ctx.letterSpacing = `${(-0.03 * size).toFixed(2)}px`;
 ctx.textBaseline = 'alphabetic';
+const inkTop = WORDMARK_BASELINE - ctx.measureText('whatanimeshouldiwatchnext').actualBoundingBoxAscent;
+ctx.letterSpacing = '0px';
+ctx.font = `400 22px ${FONT}`;
+const inkBottom = FOOTER_BASELINE + ctx.measureText('3,490 series').actualBoundingBoxDescent;
+
+ctx.save();
+ctx.translate(0, (H - (inkBottom - inkTop)) / 2 - inkTop);
+
+ctx.font = `700 ${size}px ${FONT}`;
+ctx.letterSpacing = `${(-0.03 * size).toFixed(2)}px`;
 const totalW = wordmarkWidth(size);
 let x = (W - totalW) / 2;
-const baseline = 250;
 for (const [text, colour] of WORDMARK) {
   ctx.fillStyle = colour;
-  ctx.fillText(text, x, baseline);
+  ctx.fillText(text, x, WORDMARK_BASELINE);
   x += ctx.measureText(text).width;
 }
 
@@ -128,7 +147,9 @@ ctx.fillText('Tokyo Ravens', boxX + 72, boxY + boxH / 2 + 10);
 ctx.textAlign = 'center';
 ctx.font = `400 22px ${FONT}`;
 ctx.fillStyle = FG_FAINT;
-ctx.fillText('3,490 series  ·  ranked by MyAnimeList  ·  no sequels, no films', W / 2, 552);
+ctx.fillText('3,490 series  ·  ranked by MyAnimeList  ·  no sequels, no films', W / 2, FOOTER_BASELINE);
+
+ctx.restore();
 
 /* ---- handoff ---- */
 /* Returned in slices: a 1200x630 PNG is comfortably past what a single tool
