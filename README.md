@@ -19,7 +19,7 @@ that matters when anything about matching changes.
 
 ## What's in the catalogue
 
-3,490 entries — 2,641 TV, 540 ONA, 309 OVA. Only things you can start watching
+3,505 entries — 2,680 TV, 533 ONA, 292 OVA. Only things you can start watching
 cold:
 
 - **TV, ONA and OVA.** No films and no specials. OVA and ONA are in because

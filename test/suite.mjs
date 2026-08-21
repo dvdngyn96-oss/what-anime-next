@@ -776,6 +776,41 @@ try {
       shareCount === 3 || ['Urban Fantasy', 'School'].some((t) => heroGenres.includes(t)),
       heroGenres.join(', '));
 
+    /* Re-cuts, recaps and franchise extras that once shipped in the catalogue.
+       Found by clicking through the live site: Overlord's chain reached
+       "One Piece: Gyojin Tou-hen" -- MyAnimeList's own title for "One Piece
+       Log: Fish-Man Island Saga", a 2024 re-broadcast condensing an arc into
+       21 episodes.
+
+       Checked by id rather than by title pattern, deliberately. `-hen` merely
+       means "arc" and appears in Rurouni Kenshin: Tsuioku-hen at #72; "Saga"
+       appears in Youjo Senki, Zombieland Saga and Excel Saga. A pattern here
+       deletes real series, which is the Special A lesson restated.
+
+       22 of these carry MyAnimeList's `full_story` relation, which points away
+       at the complete work and so says outright that the entry is a
+       condensation; the builder now drops those as a rule. The other five are
+       filed under relations that legitimate standalone remakes also use, and
+       are on a hand-curated denylist. */
+    const RE_CUTS = [
+      2449, 35321, 57469, 8756, 13931, 2125, 8423, 60820, 31105, 1111, 3483,
+      2363, 1504, 1396, 1112, 23405, 17655, 12439, 14685, 1836, 7664, 36424,
+      60108, 28069, 27957, 8857, 40323,
+    ];
+    const stillThere = real.anime.filter((a) => RE_CUTS.includes(a.i));
+    check('catalogue holds no known re-cuts or franchise extras',
+      stillThere.length === 0,
+      `${stillThere.length}: ${stillThere.slice(0, 4).map((a) => a.t).join(' | ')}`);
+
+    /* The four that look identical to the rule but must stay. `summary` points
+       the *other* way -- it names the condensation of this entry, so carrying
+       it marks the full work. Reading the two relations as equivalent would
+       have deleted all four of these real series. */
+    const KEEP_DESPITE_SUMMARY = [2829, 23587, 206, 36475];
+    const wronglyGone = KEEP_DESPITE_SUMMARY.filter((id) => !real.anime.some((a) => a.i === id));
+    check('the full works that merely have a summary are still here',
+      wronglyGone.length === 0, `${wronglyGone.length} of 4 missing: ${wronglyGone.join(', ')}`);
+
     // catalogue-wide invariants: TV only, first seasons only
     const SEQUEL = [
       /\b(?:2nd|3rd|4th|5th|6th|7th|8th|9th|final)\s+season\b/i,

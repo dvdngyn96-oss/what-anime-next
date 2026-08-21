@@ -10,18 +10,18 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 33.** `anime.json` holds **3,532 entries** (TV 2,683 · ONA 540 · OVA 309),
-about 1.19 MB. 167 checks pass via `npm test`.
+**Build 33.** `anime.json` holds **3,505 entries** (TV 2,680 · ONA 533 · OVA 292),
+about 1.18 MB. 169 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
-| Key-art colour | 3,294 |
-| Banner image | 2,362 |
-| Studio | 3,490 |
-| TMDB match | 3,156 |
+| Key-art colour | 3,274 |
+| Banner image | 2,358 |
+| Studio | 3,388 |
+| TMDB match | 3,152 |
 | US/CA streaming | 1,642 |
-| AniList tags | 3,272 (93%) |
-| Genres backfilled from AniList (`gs`) | 43 |
+| AniList tags | 3,252 (93%) |
+| Genres backfilled from AniList (`gs`) | 42 |
 | No genres (matched on themes only) | 31 |
 
 **Live at https://whatanimeshouldiwatchnext.com** on Cloudflare Pages, deploying
@@ -126,7 +126,7 @@ So it does. A shared theme carried by **no more than 5% of the catalogue** is
 worth one genre for bucketing. `promoteSignatures` in `app.js`, run after the
 scan and before `preferLocally`.
 
-**A share, not a count.** 5% of 3,532 entries is 176 shows: Isekai (161),
+**A share, not a count.** 5% of 3,505 entries is 175 shows: Isekai (161),
 Military (148), Harem (144), Psychological (132), Space (114), Time Travel (50)
 and rarer count; Martial Arts (207), Adult Cast (255), Mecha (270), Historical
 (403) and School (658) stay tie-breakers. A fixed count of 200 looks identical
@@ -220,7 +220,7 @@ Hyouge Mono (#704, 39 episodes, well regarded) was among them.
 
 `backfill-genres.mjs` fills those from AniList, and the builder does the same
 in its art pass. It **only ever fills where MAL supplied nothing** — it never
-overrides MAL — and sets `gs: 1` to record the provenance. 43 filled.
+overrides MAL — and sets `gs: 1` to record the provenance. 42 filled.
 
 Four AniList "genres" are MAL *themes* — Mahou Shoujo, Mecha, Music,
 Psychological — so they go to `th`, not `g`. Putting them in `g` would invent
@@ -431,6 +431,43 @@ diff proves nothing here, so reachability was checked directly instead: for each
 new entry, walk up from anchors just below it and confirm it appears. 29 of 29
 did. Do that rather than trusting an unchanged diff.
 
+**`full_story` is a third disqualifying relation, and it means the opposite of
+what it sounds like.** It points *away* from an entry at the complete work, so
+carrying it is MyAnimeList saying outright that this entry is a condensed
+version of something else. 22 entries had it — Ghost in the Shell: SAC – The
+Laughing Man, Sailor Moon Memorial, the Haikyuu!! Tokushuu recap — and not one
+of them had a prequel or a parent story, so nothing else could see them.
+
+**Do not also use `summary`, which points the other way.** It names the
+condensation *of* this entry, so carrying it marks the full work. Ie Naki Ko
+Remy, Lodoss-tou Senki: Eiyuu Kishi Den, SAO Alternative: Gun Gale Online and
+The iDOLM@STER Cinderella Girls all carry it and are all real series. Treating
+the two relations as equivalent would have deleted them; a check now asserts
+they are still here.
+
+**`RE_CUTS_AND_EXTRAS` is a hand-curated denylist** — the mirror of
+`STANDS_ALONE_ANYWAY`, and hand-curated for the same reason. One Piece: Gyojin
+Tou-hen is "One Piece Log: Fish-Man Island Saga", a 2024 re-broadcast
+condensing the Fish-Man Island arc into 21 episodes, and MAL files it as
+`alternative_version` — the same relation Trigun Stampede and the 2023 Rurouni
+Kenshin carry, and those two are real standalone remakes that belong. Nothing
+in the relation data separates them. Five entries: the One Piece re-broadcast,
+Your Lie in April: Moments, a Steins;Gate IBM Watson promo, the Nichijou pilot
+and a Gintama mobile-game collaboration.
+
+**A title pattern is not the answer, and that was checked rather than assumed.**
+`-hen` merely means "arc" and appears in Rurouni Kenshin: Tsuioku-hen, #72 and
+one of the best-regarded OVAs here; "Saga" appears in Youjo Senki, Zombieland
+Saga and Excel Saga. Both patterns would have taken real series with them —
+the Special A mistake again.
+
+**This was found by clicking through the live site**, not by the suite: an
+Overlord chain reached the One Piece re-broadcast at its sixteenth result.
+27 entries removed in total. `npm run walks` came out **byte-identical**, which
+proves nothing — none of the seventeen anchors reached any of them — so it was
+verified directly instead, by walking from Overlord and confirming the entry is
+gone. Same reasoning as adding entries below rank 955.
+
 Each build prints well-regarded OVAs/ONAs it dropped, formatted as ready-to-paste
 IDs. That list is a judgement call for the human, not something to automate.
 
@@ -501,7 +538,7 @@ test directory and `make-og-image.html` — Cloudflare serves the whole repo roo
 so those are all publicly fetchable. They hold no secrets, but they are source,
 not content.
 
-**`sitemap.xml` lists one URL.** There are 3,490 results, but all of them serve
+**`sitemap.xml` lists one URL.** There are 3,505 results, but all of them serve
 byte-identical HTML, so listing them would hand a crawler thousands of URLs with
 the same markup — which is what duplicate content means. The root is the only
 distinct document the site has.
@@ -788,7 +825,7 @@ Kept short; the reasoning that still matters has moved into the sections above.
   hostname to be a zone on the account, and `pages.dev` is Cloudflare's domain,
   not ours.
 - **AniList tags** — landed build 19, affinity only. Needed no second harvest.
-- **Genre backfill** — 43 of 74 recovered from AniList.
+- **Genre backfill** — 42 of 74 recovered from AniList.
 - **Recaps** — 23 dropped; `looksLikeRecap` keeps them out of future builds.
 - **43 unverified entries** — settled by the build-16 rebuild, now 0. That
   rebuild also dropped 24 entries whose relation lookups had failed open.

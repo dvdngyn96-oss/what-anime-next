@@ -78,6 +78,35 @@ const TYPE_LABELS = { tv: 'TV', ova: 'OVA', ona: 'ONA' };
  * here for works that stand on their own despite their relations; the builder
  * prints likely candidates at the end of each run.
  */
+/**
+ * Re-cuts, promos and franchise extras that every rule above lets through, and
+ * which no rule can catch without deleting real series alongside them.
+ *
+ * The mirror image of STANDS_ALONE_ANYWAY below, and hand-curated for exactly
+ * the same reason: MyAnimeList's relation data cannot tell these apart from
+ * legitimate standalone remakes. One Piece: Gyojin Tou-hen — "One Piece Log:
+ * Fish-Man Island Saga", a 2024 re-broadcast condensing the Fish-Man Island
+ * arc into 21 episodes — is filed as `alternative_version`, the same relation
+ * Trigun Stampede and the 2023 Rurouni Kenshin carry, and those two are real
+ * standalone remakes that belong. Nothing in the data separates them.
+ *
+ * **A title pattern is not the answer here, and this was checked rather than
+ * assumed.** `-hen` merely means "arc": it appears in Rurouni Kenshin:
+ * Tsuioku-hen, which is #72 and one of the best-regarded OVAs in the
+ * catalogue. "Saga" appears in Youjo Senki, Zombieland Saga and Excel Saga.
+ * Both would have taken real series with them — the Special A mistake again.
+ *
+ * Each entry is a judgement call someone made by reading what it actually is.
+ * Keep it that way.
+ */
+const RE_CUTS_AND_EXTRAS = new Set([
+  60108,  // One Piece: Gyojin Tou-hen — "One Piece Log", a 2024 arc re-broadcast
+  28069,  // Shigatsu wa Kimi no Uso: Moments — recap OVA of the series
+  27957,  // Steins;Gate: Soumei Eichi no Cognitive Computing — an IBM Watson promo
+  8857,   // Nichijou: Nichijou no 0-wa — the pilot episode, franchise filler
+  40323,  // Gintama: Monster Strike-hen — a mobile-game collaboration short
+]);
+
 const STANDS_ALONE_ANYWAY = new Set([
   777,    // Hellsing Ultimate — manga-faithful retelling, watchable cold
   820,    // Legend of the Galactic Heroes — its "prequel" is a later side film
@@ -154,11 +183,24 @@ const STANDS_ALONE_ANYWAY = new Set([
  * `parent_story` means it hangs off something else — a bundled bonus episode
  * or a side story. `prequel` means something comes before it. Either way you
  * cannot start here, unless it's on the list above.
+ *
+ * `full_story` is the third, and it means the opposite of what it sounds like:
+ * it points *away* from this entry at the complete work, so carrying it is
+ * MyAnimeList saying outright that this is a condensed version of something
+ * else. Ghost in the Shell: SAC - The Laughing Man, Sailor Moon Memorial and
+ * the Haikyuu!! Tokushuu recap all carry it, and none of the three has a
+ * prequel or a parent story, so nothing else here could see them.
+ *
+ * **Do not also use `summary`, which points the other way.** `summary` names
+ * the *condensation of this entry*, so it marks the full work — Ie Naki Ko
+ * Remy, Lodoss-tou Senki, SAO Alternative: Gun Gale Online and The iDOLM@STER
+ * Cinderella Girls all carry it, and all four are real series that must stay.
+ * Reading the two as equivalent would have deleted them.
  */
 function standsAlone(id, relations) {
   if (STANDS_ALONE_ANYWAY.has(id)) return true;
   const kinds = new Set((relations ?? []).map((r) => r.relation_type));
-  return !kinds.has('parent_story') && !kinds.has('prequel');
+  return !kinds.has('parent_story') && !kinds.has('prequel') && !kinds.has('full_story');
 }
 
 /** Backstop for sequels whose relation data is missing or unfetchable. */
@@ -282,7 +324,9 @@ let droppedByRecap = 0;
 let unchecked = 0;
 
 for (const [n, node] of tvSeries.entries()) {
-  if (looksLikeRecap(node)) {
+  if (RE_CUTS_AND_EXTRAS.has(node.id)) {
+    droppedByRecap++;
+  } else if (looksLikeRecap(node)) {
     // Checked before the sequel patterns and before the detail request: a
     // recap is never worth a lookup, whatever its relations say.
     droppedByRecap++;
