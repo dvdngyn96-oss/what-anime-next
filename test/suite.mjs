@@ -59,7 +59,10 @@ function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HI
   };
   // Top-level let/const are lexical bindings, invisible to an eval from
   // outside, so hand out an accessor from inside the same script.
-  dom.window.eval(`${appSource}\nwindow.__ranked = () => ranked;`);
+  dom.window.eval(`${appSource}\nwindow.__ranked = () => ranked;
+window.__signatureThemes = () => [...signatureThemes];
+window.__collectTiers = collectTiers;
+window.__positionOf = positionOf;`);
   return dom;
 }
 
@@ -758,8 +761,20 @@ try {
       shownRank > 2500 && shownRank < 2800, `got #${shownRank}`);
     check('a recommendation was produced', !!hero, 'none');
     const heroGenres = [...body.querySelectorAll('.hero .tag')].map((t) => t.textContent);
-    check('recommendation shares all three genres',
-      ['Action', 'Fantasy', 'Romance'].every((g) => heroGenres.includes(g)), heroGenres.join(', '));
+    /* This used to demand all three genres, and that assertion encoded the old
+       definition of match quality: shared genre count, full stop. Signature
+       themes changed it deliberately — a show sharing Action, Fantasy and
+       Tokyo Ravens' Urban Fantasy theme now outranks one sharing Action,
+       Fantasy and the far broader Romance genre.
+       So assert the rule that is actually in force rather than dropping the
+       check: two of the three genres at minimum, and anything short of a full
+       genre match has to be carrying a signature theme to be there at all. */
+    const shareCount = ['Action', 'Fantasy', 'Romance'].filter((g) => heroGenres.includes(g)).length;
+    check('recommendation shares at least two of the three genres',
+      shareCount >= 2, heroGenres.join(', '));
+    check('a less-than-full genre match earns its place with a signature theme',
+      shareCount === 3 || ['Urban Fantasy', 'School'].some((t) => heroGenres.includes(t)),
+      heroGenres.join(', '));
 
     // catalogue-wide invariants: TV only, first seasons only
     const SEQUEL = [
@@ -1381,6 +1396,106 @@ console.log('\n--- the watched list ---');
     check('clearing empties it', w.__watched().length === 0, JSON.stringify(w.__watched()));
     check('and the label says so', /Nothing marked/.test(label.textContent), label.textContent);
   }
+}
+
+/* ---------- signature themes ---------- */
+
+console.log('\n--- REAL catalogue: signature themes ---');
+{
+  const real = JSON.parse(readFileSync(`${ROOT}/anime.json`, 'utf8'));
+  const dom = makeDom(real);
+  await sleep(500);
+  const w = dom.window;
+  const signature = new Set(w.__signatureThemes());
+
+  /* Rarity is the whole point. A theme carried by a fifth of the catalogue
+     describes a show; one carried by a twentieth identifies it. */
+  check('Isekai counts as a signature theme', signature.has('Isekai'));
+  check('Time Travel counts as a signature theme', signature.has('Time Travel'));
+  check('School is too common to count', !signature.has('School'));
+  check('Historical is too common to count', !signature.has('Historical'));
+  check('every signature theme is rarer than one entry in twenty',
+    [...signature].every((t) => real.anime.filter((a) => (a.th || [])
+      .map((i) => real.names[i]).includes(t)).length <= real.anime.length * 0.05),
+    `${signature.size} themes`);
+
+  /* The documented failure this was built for: Konosuba's genres are
+     Adventure, Comedy and Fantasy, and exactly one thing above it shares all
+     three — 163 places away. Serving that lone distant match dragged the
+     high-water mark to the top of the rankings, and monotonicity then deferred
+     every nearer isekai, including one 24 places away. Seven results, not one
+     of them an isekai. */
+  const body = await pickAndRecommend(dom, 'Kono Subarashii Sekai ni Shukufuku wo!');
+  const hero = body?.querySelector('.hero h2')?.textContent || '';
+  const isekai = new Set(real.anime
+    .filter((a) => (a.th || []).map((i) => real.names[i]).includes('Isekai'))
+    .map((a) => a.t));
+  check('Konosuba is recommended an isekai first', isekai.has(hero), hero);
+
+  /* Both guards on promotion, asserted against the real catalogue rather than
+     a fixture, because both were found there and neither is visible in a small
+     one. Sources picked for shape: Konosuba is the case it was built for,
+     Berserk has five genres so its top tier holds a single entry, Steins;Gate
+     has almost nothing above it and walks the other way, and Tokyo Ravens sits
+     deep in the rankings where the tiers are dense. */
+  const probe = (title, direction) => JSON.parse(w.eval(`(() => {
+    const source = window.__ranked().find((a) => a.title.startsWith(${JSON.stringify(title)}));
+    const buckets = window.__collectTiers(source, ${JSON.stringify(direction)}, new Set());
+    const from = window.__positionOf(source);
+    const distance = (a) => Math.abs(window.__positionOf(a) - from);
+    return JSON.stringify(buckets.map((bucket, tier) => ({
+      tier,
+      natural: bucket.filter((a) => (a.matchGenres ?? tier) >= tier).map(distance),
+      promoted: bucket.filter((a) => (a.matchGenres ?? tier) < tier).map(distance),
+    })));
+  })()`));
+
+  const sources = [
+    ['Kono Subarashii', 'up'], ['Kenpuu Denki Berserk', 'down'],
+    ['Steins;Gate', 'down'], ['Tokyo Ravens', 'up'],
+    // Both of these have an empty tier directly above a populated one holding
+    // promotable candidates, which is the only situation the empty-tier guard
+    // can fire in. Roughly one source in eleven is shaped this way, and the
+    // four above are not among them -- without these two, that check passes
+    // whether the guard is there or not.
+    ['Made in Abyss', 'up'], ['Monster', 'up'],
+  ];
+
+  let invented = [];
+  let overreached = [];
+  for (const [title, direction] of sources) {
+    for (const { tier, natural, promoted } of probe(title, direction)) {
+      if (!promoted.length) continue;
+      // An empty tier is never conjured out of promotions: with no natural
+      // member there is no reach to measure against, and a lone promoted entry
+      // ahead of a dense tier is the Arslan Senki bug.
+      if (!natural.length) invented.push(`${title} tier ${tier}`);
+      // And promotion may densify a tier, never extend it. Unbounded, this let
+      // Arslan Senki (528 places from Berserk) and Grancrest Senki (1,376)
+      // into a tier whose only natural member was 258 away; the walk took them
+      // first, raced the frontier to the far end, and monotonicity deleted the
+      // near neighbours below.
+      else if (Math.max(...promoted) > Math.min(...natural)) {
+        overreached.push(`${title} tier ${tier}: ${Math.max(...promoted)} > ${Math.min(...natural)}`);
+      }
+    }
+  }
+  check('promotion never invents an empty tier', invented.length === 0, invented.join('; '));
+  check('a promoted entry never reaches further than the tier it joins',
+    overreached.length === 0, overreached.join('; '));
+
+  /* The tier an entry sits in and the genres it actually shares are no longer
+     the same number, and the note must report the second. Claiming a shared
+     genre that is really a shared theme would be a lie on the card. */
+  const overclaims = w.eval(`(() => {
+    const source = window.__ranked().find((a) => a.title.startsWith('Kono Subarashii'));
+    const buckets = window.__collectTiers(source, 'up', new Set());
+    return buckets.flatMap((bucket, tier) => bucket
+      .filter((a) => (a.matchGenres ?? 0) > source.genres.length
+        || a.genres.filter((g) => source.genres.includes(g)).length !== a.matchGenres)
+      .map((a) => a.title)).length;
+  })()`);
+  check('a promoted entry never overstates the genres it shares', overclaims === 0, `${overclaims}`);
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);

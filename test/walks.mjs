@@ -47,7 +47,13 @@ await walk('Ame to Kimi to','up',11);
 await walk('Tokyo Ravens','up');
 await walk('Sasaki to Pii-chan','up');
 await walk('Toradora!','up');
-await walk('Steins;Gate','up',5);
+/* Nine, not five. At five this anchor printed only as far as Evangelion, and
+ * when four nearer matches were later inserted ahead of it the documented tail
+ * — Shinsekai yori, Serial Experiments Lain, Texhnolyze, Inuyashiki — fell off
+ * the end of the listing and read exactly like the regression this file exists
+ * to catch. The chain was intact. A window too short to show the known-good
+ * result is a baseline that lies. */
+await walk('Steins;Gate','up',9);
 
 /* Added for the affinity-window work. Chosen for shape, not for fame:
  *
@@ -67,3 +73,21 @@ await walk('Yuru Camp△','up');
 await walk('Haikyuu!!','up');
 await walk('Gakkougurashi!','up');
 await walk('Hyouge Mono','up');
+
+/* Added for the signature-theme work, and the reason they were added is the
+ * point: not one of the fourteen anchors above is an isekai, so the walks
+ * harness could not see the problem the "Open" section had been describing
+ * for weeks. A baseline that cannot show the bug cannot show the fix either.
+ *
+ *   Konosuba is the documented case. Exactly *one* thing above it shares all
+ *   three of its genres, 163 places away, and serving that single distant
+ *   match drags the high-water mark to the top of the rankings — after which
+ *   monotonicity defers every nearer isekai, including one 24 places away.
+ *   Mushoku Tensei has four genres, one of them Ecchi, so full matches are
+ *   nearly impossible and almost the whole chain is backtracks.
+ *   Re:Zero is the control: it already reaches Mushoku Tensei first, on tag
+ *   similarity alone, and must keep doing so.
+ */
+await walk('Kono Subarashii Sekai ni Shukufuku wo!','up',10);
+await walk('Mushoku Tensei','up',10);
+await walk('Re:Zero kara Hajimeru Isekai Seikatsu','up',10);

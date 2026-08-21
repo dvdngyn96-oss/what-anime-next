@@ -22,10 +22,22 @@ const AFFINITY_WINDOW = 5;   // how far a *slightly* better thematic match may j
 const AFFINITY_REACH = 30;
 const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 
+/* How rare a theme must be before it counts as a genre — a *share* of the
+ * catalogue, not a count, because rarity only means anything relative to the
+ * corpus it is measured in. A fixed count of 200 looked equivalent on a
+ * 3,532-entry catalogue and made every theme in a six-entry test fixture
+ * "rare", which is how the test suite caught it.
+ *
+ * At 5% of 3,532 entries the cutoff is 176 shows: Isekai (161), Military
+ * (148), Harem (144), Psychological (132), Space (114), Time Travel (50) and
+ * everything rarer count; Martial Arts (207), Adult Cast (255), Mecha (270),
+ * Historical (403) and School (658) stay tie-breakers only. */
+const SIGNATURE_THEME_SHARE = 0.05;
+
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 32;
+const BUILD = 33;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -37,6 +49,7 @@ let byId = new Map();
 let catalogueMeta = null;
 let providerNames = [];
 let studioNames = [];
+let signatureThemes = new Set();   // themes rare enough to count as a genre
 
 /**
  * Which country's streaming listings to show. Availability differs sharply —
@@ -202,6 +215,32 @@ function tagSimilarity(a, b) {
   return dot / (a.tags.norm * b.tags.norm);
 }
 
+/* Themes rare enough to identify a show rather than merely describe it.
+ *
+ * MyAnimeList files the useful word as a *theme*, and themes only broke ties,
+ * so "shares Fantasy" (968 shows) decided matching while "shares Isekai" (161)
+ * did not. Konosuba is the case that made this worth fixing: exactly one thing
+ * above it shared all three of its genres, 163 places away, and serving that
+ * single distant match dragged the walk's high-water mark to the top of the
+ * rankings — after which monotonicity deferred every nearer isekai, including
+ * one 24 places away. Not one isekai in its first seven results.
+ *
+ * The cutoff is a frequency, not a hand-written list, because the whole point
+ * is rarity: a theme that half the catalogue carries tells you nothing, and
+ * which themes are rare is a property of the data that a rebuild can change.
+ * Counted here rather than baked in so it cannot go stale.
+ */
+function markSignatureThemes() {
+  const freq = new Map();
+  for (const anime of ranked) {
+    for (const theme of anime.themes || []) freq.set(theme, (freq.get(theme) || 0) + 1);
+  }
+  const cutoff = ranked.length * SIGNATURE_THEME_SHARE;
+  signatureThemes = new Set(
+    [...freq].filter(([, count]) => count <= cutoff).map(([theme]) => theme)
+  );
+}
+
 /** Compact catalogue rows -> the shape the rest of the app works with. */
 function expand(row, names) {
   return {
@@ -300,6 +339,7 @@ function loadCatalogue() {
     ranked = data.anime.map((row) => expand(row, data.names));
     renumberRanked();
     byId = new Map(ranked.map((a) => [a.id, a]));
+    markSignatureThemes();
     markHiddenGems();
     fitCompletionCurve();
     buildCompletionOrder();
@@ -516,6 +556,65 @@ function sameFranchise(a, b) {
  * direction 'down' -> toward the bottom of the list
  */
 /**
+ * A shared *rare* theme is worth one genre — but never a longer jump than the
+ * tier it is joining already makes.
+ *
+ * Why it is needed at all: affinity could already reorder a bucket, but it
+ * could never pull a strong theme match *into* one, and reordering was not the
+ * problem. Which candidates survive a pass is decided by the high-water mark,
+ * not by their order within it. Konosuba's nearest isekai is 24 places away
+ * and shares two of its three genres; every ordering of the 2-of-3 bucket
+ * still leaves it behind a frontier already dragged to position 34 by the
+ * single, distant 3-of-3 match. It has to enter the *top* bucket to be
+ * reachable at all.
+ *
+ * Why it is bounded by distance: the first version was not, and it re-created
+ * the Arslan Senki bug this file warns about twice. Berserk has five genres,
+ * so exactly one entry shares them all — and unbounded promotion let Arslan
+ * Senki (528 places away) and Grancrest Senki (1,376) into that tier. The walk
+ * took those first, raced the frontier to the far end of the rankings, and
+ * monotonicity then deleted the dense tier of near neighbours below. Same
+ * shape as the original bug, caused by the fix for it.
+ *
+ * So a candidate may only join the tier above if it is no further from the
+ * source than that tier's nearest existing member. Promotion can densify a
+ * sparse tier with nearer entries; it can never make one reach further. That
+ * also means the rule fires only where the problem is — when the top tier is
+ * sparse and distant — and is a no-op when it is already dense and close.
+ *
+ * An empty tier is never created. With nothing there to measure against there
+ * is no reach to respect, and a lone promoted entry ahead of a dense tier is
+ * exactly the failure above.
+ */
+function promoteSignatures(buckets, distanceOf, total) {
+  // Measured before anything moves, so a promoted entry can never extend the
+  // reach that the next promotion is checked against.
+  const nearest = buckets.map(
+    (bucket) => bucket.reduce((min, a) => Math.min(min, distanceOf(a)), Infinity)
+  );
+
+  // High tiers first: a destination is always processed before the tier that
+  // feeds it, so nothing can be promoted twice.
+  for (let tier = total - 1; tier >= 1; tier--) {
+    const destination = buckets[tier + 1];
+    if (!destination?.length) continue;
+
+    const reach = nearest[tier + 1];
+    const moving = buckets[tier].filter(
+      (a) => a.signatureThemes?.length && distanceOf(a) <= reach
+    );
+    if (!moving.length) continue;
+
+    const moved = new Set(moving);
+    for (const a of moving) a.promoted = true;
+    buckets[tier] = buckets[tier].filter((a) => !moved.has(a));
+    // preferLocally reads the head of a bucket as the nearest candidate, so the
+    // tier has to come back out in proximity order.
+    buckets[tier + 1] = destination.concat(moving).sort((a, b) => distanceOf(a) - distanceOf(b));
+  }
+}
+
+/**
  * Bucket nearby anime by how many of the source's genres they share.
  * Returns an array indexed by shared count: buckets[3] shares all three, etc.
  */
@@ -617,6 +716,32 @@ function collectTiers(source, direction, exclude) {
       continue;
     }
 
+    /* A shared *rare* theme is worth one genre, and one only.
+     *
+     * Affinity could already reorder a bucket, but it could never pull a
+     * strong theme match *into* one, and reordering was not the problem:
+     * which candidates survive a pass is decided by the high-water mark, not
+     * by their order within it. Konosuba's nearest isekai sits 24 places away
+     * and shares two of its three genres; every ordering of the 2-of-3 bucket
+     * leaves it behind a frontier already dragged to position 34 by the single
+     * 3-of-3 match. It has to enter the *top* bucket to be reachable at all.
+     *
+     * Bounded on every side, because changing what decides matching is the
+     * riskiest edit here:
+     *   - it only ever promotes, so nothing gets a worse tier than before
+     *   - it needs at least one genre already shared, so it invents no new
+     *     matches and leaves the genre-less tier in buckets[0] alone
+     *   - one tier, never two, and never above a full match
+     * The true genre count is kept for the note, which must not claim a
+     * shared genre that is really a shared theme.
+     */
+    candidate.signatureThemes = candidate.sharedThemes.filter((t) => signatureThemes.has(t));
+    candidate.matchGenres = shared;
+    // Cleared on every scan: these are catalogue objects, reused across walks,
+    // and a stale flag would have the note explain a promotion that this walk
+    // never made.
+    candidate.promoted = false;
+
     const audienceClash = candidate.demographic === 'Kids' && source.demographic !== 'Kids';
     buckets[audienceClash ? Math.max(1, shared - 1) : shared].push(candidate);
 
@@ -646,6 +771,8 @@ function collectTiers(source, direction, exclude) {
    * and can no longer do that. The premise is still "the next one along". */
   const sourcePosition = positionOf(source) ?? 0;
   const distanceOf = (a) => Math.abs((positionOf(a) ?? sourcePosition) - sourcePosition);
+
+  promoteSignatures(buckets, distanceOf, total);
 
   const preferLocally = (bucket) => {
     const remaining = bucket.slice();
@@ -751,9 +878,14 @@ function walkRankings(source, direction, exclude = new Set()) {
     for (const anime of group) {
       if (seen.has(anime.id)) continue;
       seen.add(anime.id);
-      anime.matchShared = shared;       // so the note describes the entry on screen
+      /* The tier an entry sat in and the genres it actually shares are no
+         longer the same number — a rare shared theme is worth a tier. The note
+         gets the truth, or it would tell someone a show shares three genres
+         when it shares two and an Isekai tag. */
+      anime.matchShared = anime.matchGenres ?? shared;
       anime.matchTotal = total;
       anime.matchThemes = anime.sharedThemes.length;
+      anime.matchSignature = anime.promoted ? (anime.signatureThemes || []) : [];
       anime.matchDemographic = anime.sharedDemographic;
       anime.matchFlipped = flipped;
       anime.matchBacktrack = false;
@@ -1310,9 +1442,18 @@ function matchNote(hero, source, direction) {
 
   if (relaxedGenres) {
     const pct = Math.round((shared / total) * 100);
+    /* A promoted entry is sitting above things that share more genres than it
+       does, which looks like a bug unless the reason is on screen. Only said
+       when the entry was actually promoted — plenty of candidates carry a
+       signature theme without it having changed where they landed. */
+    const signature = hero.matchSignature?.length ? hero.matchSignature : null;
     parts.push(
       `Nothing ${where} shares all ${total} genres, so the search widened to `
       + `${shared} of ${total} (${pct}%)`
+      + (signature
+        ? `, and this one came up first because few shows share its `
+          + `${listWords(signature)} theme${signature.length > 1 ? 's' : ''}`
+        : '')
     );
   } else if (lostThemes || lostDemographic) {
     // Name whichever signals ran out, so the jump back is accounted for.

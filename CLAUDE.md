@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 32.** `anime.json` holds **3,532 entries** (TV 2,683 · ONA 540 · OVA 309),
-about 1.19 MB. 157 checks pass via `npm test`.
+**Build 33.** `anime.json` holds **3,532 entries** (TV 2,683 · ONA 540 · OVA 309),
+about 1.19 MB. 167 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,8 +44,8 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 157 checks, jsdom against the real app.js and anime.json
-npm run walks     # prints recommendation chains for 14 known anchors
+npm test          # 167 checks, jsdom against the real app.js and anime.json
+npm run walks     # prints recommendation chains for 17 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
 
@@ -98,6 +98,76 @@ affinity = round(tagSimilarity × 6) + (same demographic ? 2 : 0)
 
 where `tagSimilarity` is cosine similarity over AniList's weighted tags, and
 entries without tags (8%) fall back to the old `shared themes` count.
+
+### A rare theme is worth a genre
+
+Genres are too broad to identify anything. Comedy is 1,276 shows, Fantasy 968 —
+"shares Fantasy" says almost nothing. The identifying word is usually filed as
+a *theme*, and themes only broke ties: Isekai is 161 shows and says a great
+deal, but it could never decide a match.
+
+**The damage was not that themes ranked too low. It was monotonicity.** Konosuba
+is the case. Its genres are Adventure, Comedy and Fantasy, and walking up,
+exactly *one* thing shares all three — Dungeon Meshi, 163 places away. Match
+quality goes first, so the walk serves it; Dungeon Meshi sits near the top, so
+the high-water mark jumps to position 34. The 2-of-3 tier then runs, holding 32
+entries including three isekai — and the nearest, 24 places away, cannot beat
+position 34, so every one of them is deferred out of sight. Seven results, not
+one an isekai, exactly as reported.
+
+This is why **reweighting the themes into `affinity` cannot fix it**, and that
+is worth stating because it is the obvious fix. Affinity reorders a bucket.
+Which candidates survive a pass is decided by the frontier, not by their order
+within it — every ordering of that 2-of-3 tier still leaves all of it behind
+position 34. A strong theme match has to enter the *top* tier to be reachable
+at all.
+
+So it does. A shared theme carried by **no more than 5% of the catalogue** is
+worth one genre for bucketing. `promoteSignatures` in `app.js`, run after the
+scan and before `preferLocally`.
+
+**A share, not a count.** 5% of 3,532 entries is 176 shows: Isekai (161),
+Military (148), Harem (144), Psychological (132), Space (114), Time Travel (50)
+and rarer count; Martial Arts (207), Adult Cast (255), Mecha (270), Historical
+(403) and School (658) stay tie-breakers. A fixed count of 200 looks identical
+on this catalogue and is a trap — in a six-entry test fixture every theme is
+under 200, so everything became a signature theme and five checks failed at
+once. Rarity only means something relative to the corpus. Counted at load, so a
+rebuild cannot leave it stale.
+
+**Bounded by distance, and that bound is the whole safety argument.** The first
+version was unbounded and re-created the Arslan Senki bug this file warns about
+twice. Berserk has five genres, so exactly one entry shares them all — and
+unbounded promotion let Arslan Senki (528 places away) and Grancrest Senki
+(1,376) into that tier. The walk took them first, raced the frontier to the far
+end of the rankings, and monotonicity deleted the dense tier of near
+neighbours below. The same bug, produced by its own fix.
+
+Two rules keep it honest, and `npm test` fails if either is removed:
+
+- **A candidate may only join the tier above if it is no further from the
+  source than that tier's nearest existing member.** Promotion can densify a
+  sparse tier; it can never make one reach further.
+- **An empty tier is never created.** With no natural member there is nothing
+  to measure reach against, and a lone promoted entry ahead of a dense tier is
+  the failure above. About one source in eleven is shaped this way.
+
+The rule therefore fires only where the problem is — a top tier that is sparse
+*and* distant, 7.2% of anchors — and is a no-op where it is already dense and
+close. It only ever promotes, never demotes; it needs at least one genre
+already shared, so it invents no new matches and leaves the genre-less tier in
+`buckets[0]` alone; and it moves one tier, never two.
+
+**The tier and the shared-genre count are no longer the same number.**
+`matchGenres` carries the true count and is what the card's note reports, or it
+would tell someone a show shares three genres when it shares two and an Isekai
+tag.
+
+Measured over the 17 known anchors: backtracks fell from 26 to 18. Konosuba
+opens on two isekai. Cowboy Bebop's six backtracks became a clean run of Space
+shows — Planetes, Kanata no Astra, Outlaw Star, Captain Herlock. Steins;Gate
+keeps its whole documented chain and gains four nearer matches ahead of it,
+one of them Link Click, 15 places away, sharing Time Travel.
 
 **A better match earns a longer jump, measured in ranking positions.** Each
 point of affinity buys `AFFINITY_REACH` (30) positions of extra distance over
@@ -556,13 +626,29 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**Genres may be the wrong thing to match on. Evidence, not yet a fix.**
+~~**Genres may be the wrong thing to match on.**~~ Fixed in build 33 for the
+case that motivated it — see "A rare theme is worth a genre" above. Konosuba
+now opens on Kage no Jitsuryokusha and Mushoku Tensei. **Two things are left
+open, and neither is a reason to reopen the whole question.**
 
-Searching for "another isekai" is a real thing people do, and the site is bad
-at it. Konosuba — genres Adventure, Comedy, Fantasy; theme Isekai — walks up to
+**Mushoku Tensei is unchanged, and that is the rule working.** Its genres are
+Adventure, Drama, Ecchi and Fantasy — four, one of them rare — so nothing above
+it shares all four and its top tier is *empty*. Promotion never creates an
+empty tier, so the rule correctly declines to fire. Fixing this anchor means
+promoting into nothing, which is the Arslan Senki failure. Leave it.
+
+**Rarity is a good proxy for "identifying", not a perfect one.** Tokyo Ravens
+is a magic-school show; its top result moved from Rakudai Kishi no Cavalry
+(3 genres + School) to Maou 2099 (2 genres + Urban Fantasy), because School is
+658 shows and Urban Fantasy is 77. Rakudai is arguably the better match and is
+still second. One anchor out of seventeen went slightly the wrong way while
+the rest improved, so the trade was taken — but if a better signal than raw
+frequency is ever wanted, this is the evidence for it.
+
+The old evidence, kept because it is what the fix was measured against:
+Konosuba — genres Adventure, Comedy, Fantasy; theme Isekai — walked up to
 Dungeon Meshi, Berserk, Made in Abyss, One Piece, Hunter x Hunter and
-Fullmetal Alchemist: Brotherhood. Not one isekai. Mushoku Tensei reaches Tian
-Guan Cifu and Frieren before anything sharing its theme.
+Fullmetal Alchemist: Brotherhood. Not one isekai.
 
 The cause is that **genres are far too broad to identify anything**, while the
 identifying word is filed as a theme and only breaks ties:
@@ -581,13 +667,13 @@ says a great deal. Re:Zero does reach Mushoku Tensei first, but only because
 AniList tags give them a high cosine similarity; affinity can *reorder* a
 genre bucket, it cannot pull a strong theme match in from outside one.
 
-**Do not just swap genres for themes.** 31 entries have no genres and are
-already handled by a special tier; far more have no themes, and the ordering
-rules — match quality, then direction, then monotonicity — are tuned against
-genre-sized buckets. Changing what *decides* matching is the highest-risk edit
-in this project, and the working notes exist because "obvious" fixes here have
-made things measurably worse before. Capture a walks baseline, change one
-thing, read the diff anchor by anchor.
+**Do not just swap genres for themes**, which build 33 deliberately did not do.
+31 entries have no genres and are already handled by a special tier; far more
+have no themes, and the ordering rules — match quality, then direction, then
+monotonicity — are tuned against genre-sized buckets. Changing what *decides*
+matching is the highest-risk edit in this project, and the working notes exist
+because "obvious" fixes here have made things measurably worse before. Capture
+a walks baseline, change one thing, read the diff anchor by anchor.
 
 **A tip jar — "buy me a coffee" or similar.** Not monetisation in the sense
 that matters legally: a donate link is not advertising, so it does not trip the
@@ -747,6 +833,21 @@ that, in the chat *and* in this file.
   change meant to improve it, the diff is the only evidence there is — read it
   anchor by anchor. The tags work looked finished and was silently dropping
   Steins;Gate's three nearest matches; only the diff showed it.
+- **Check the anchor list actually covers the thing being changed.** Not one of
+  the fourteen anchors was an isekai, so the walks harness could not see the
+  problem the Open section had been describing for weeks. Add the anchors
+  first, as a separate step, and confirm the existing ones come out
+  byte-identical — then the baseline contains the bug and the diff can show
+  the fix.
+- **A results window too short to reach the known-good result is a baseline
+  that lies.** Steins;Gate printed five, and when four nearer matches were
+  inserted ahead of it the documented tail — Shinsekai yori, Serial Experiments
+  Lain, Texhnolyze, Inuyashiki — fell off the end and read exactly like the
+  regression this project fears most. Nothing had been lost. Widened to nine.
+- **Break a new guard on purpose and watch the check fail.** Both promotion
+  guards were asserted against four anchors, and the empty-tier one passed with
+  the guard deleted — none of those four could reach the case. Made in Abyss
+  and Monster can, and now do.
 - **Dry-run any rule that deletes entries.** The recap patterns matched two
   real series (Special A, A Returner's Magic Should Be Special) on the first
   draft. A report-only mode costs nothing and caught it.
