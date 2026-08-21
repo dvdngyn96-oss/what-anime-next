@@ -10,17 +10,17 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 32.** `anime.json` holds **3,503 entries** (TV 2,654 · ONA 540 · OVA 309),
-about 1.18 MB. 157 checks pass via `npm test`.
+**Build 32.** `anime.json` holds **3,532 entries** (TV 2,683 · ONA 540 · OVA 309),
+about 1.19 MB. 157 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
-| Key-art colour | 3,266 |
-| Banner image | 2,334 |
+| Key-art colour | 3,294 |
+| Banner image | 2,362 |
 | Studio | 3,490 |
-| TMDB match | 3,129 |
-| US/CA streaming | 1,622 |
-| AniList tags | 3,243 (93%) |
+| TMDB match | 3,156 |
+| US/CA streaming | 1,642 |
+| AniList tags | 3,272 (93%) |
 | Genres backfilled from AniList (`gs`) | 43 |
 | No genres (matched on themes only) | 31 |
 
@@ -339,8 +339,27 @@ catalogue whose *only* prequel is titled as their own side story — that is, th
 prequel's title starts with the show's. That scan is a **candidate generator,
 not a rule**: it also flagged Mushoku Tensei II, which really does need season
 one, so every entry still gets looked at by a human. Re-run it after a rebuild
-if the catalogue feels like it is missing something obvious; only the top 500
-has been swept so far.
+if the catalogue feels like it is missing something obvious.
+
+**The sweep went to rank 2,000 next, and found 29 more** — Macross, Digimon
+Adventure, Saint Seiya, Slayers, Gundam: Suisei no Majo, Another, Guilty Crown
+among them. Suisei no Majo is the *Pluto* case rather than the Re:Zero one: its
+disqualifier is `parent_story: Kidou Senshi Gundam`, because MAL files every
+Gundam under the 1979 original.
+
+**Six were flagged and rejected, and four of those are the lesson.** Hayate no
+Gotoku!!, Genshiken Nidaime, Gatchaman Crowds Insight and High School DxD Hero
+are all sequels — and MAL does *not* list their earlier seasons as prequels, so
+nothing in the relation data gives them away. Only knowing that `!!`,
+*Nidaime*, *Insight* and *Hero* mean seasons two, two, two and four catches
+them. That is the argument for this list staying hand-checked, restated with
+better evidence than the Hellsing example.
+
+**Adding entries this far down leaves `npm run walks` byte-identical**, because
+all fourteen known anchors are top-ranked and never reach rank 955+. The walks
+diff proves nothing here, so reachability was checked directly instead: for each
+new entry, walk up from anchors just below it and confirm it appears. 29 of 29
+did. Do that rather than trusting an unchanged diff.
 
 Each build prints well-regarded OVAs/ONAs it dropped, formatted as ready-to-paste
 IDs. That list is a judgement call for the human, not something to automate.

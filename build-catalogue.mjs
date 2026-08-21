@@ -106,6 +106,46 @@ const STANDS_ALONE_ANYWAY = new Set([
   24833,  // Ansatsu Kyoushitsu — Deai no Jikan is a 2013 OVA
   11771,  // Kuroko no Basket — Tip Off is a special
   19815,  // No Game No Life — NGNL: Zero is a film made after
+
+  /* Twenty-nine more of the same shape, from sweeping the top 2,000 TV rather
+   * than the top 500. Mostly older or mid-ranked series whose "prequel" is a
+   * pilot, an episode 0, or an OVA made years later.
+   *
+   * The scan flagged six it should not have, and four of those are worth
+   * remembering: Hayate no Gotoku!!, Genshiken Nidaime, Gatchaman Crowds
+   * Insight and High School DxD Hero are all sequels whose earlier season MAL
+   * does *not* list as a prequel. Nothing in the relation data catches them —
+   * only knowing that "!!", "Nidaime", "Insight" and "Hero" mean season two,
+   * two, two and four. That is the argument for this list staying hand-checked. */
+  1088,   // Macross — Macross Zero is a 2002 OVA, twenty years later
+  2924,   // ef: A Tale of Memories. — its "prequel" is its own prologue episode
+  49828,  // Gundam: Suisei no Majo — parent_story is the 1979 Gundam, the Pluto case
+  9941,   // Tiger & Bunny — the "prequel" is a pilot film
+  552,    // Digimon Adventure — the 1999 short film that trailed it
+  1254,   // Saint Seiya — The Lost Canvas is a 2009 OVA in a different era
+  2582,   // Soukou Kihei Votoms — all three prequels are later OVAs
+  534,    // Slayers — the films came after the TV series
+  18153,  // Kyoukai no Kanata — Shinonome is a short special
+  8525,   // Kami nomi zo Shiru Sekai — Flag 0 is a special
+  10033,  // Toriko — the 3D short film
+  23277,  // Saenai Heroine no Sodatekata — its own episode 0
+  11111,  // Another — The Other is an OVA
+  334,    // Marmalade Boy — companion film
+  501,    // Doraemon (1973) — the "prequel" is a 1995 film
+  798,    // Yomigaeru Sora — Saigo no Shigoto is a later special
+  10793,  // Guilty Crown — Lost Christmas is an ONA side story
+  156,    // X — the 2001 OVA
+  38959,  // Lord El-Melloi II-sei — its own episode 0
+  25519,  // Yuuki Yuuna wa Yuusha de Aru — Washio Sumi is a 2017 prequel, made after
+  38472,  // Isekai Quartet — the "prequel" is a set of promo videos
+  20785,  // Mahouka Koukou no Rettousei — Tsuioku-hen is a 2021 side story
+  6895,   // Hakuouki — Reimeiroku is a 2012 prequel season, made after
+  33983,  // Onihei — Sono Otoko is a special
+  10798,  // Un-Go — Inga-ron is a companion film
+  99,     // Mai-Otome — Mai-Otome 0 is a 2008 OVA
+  75,     // Soukyuu no Fafner — Right of Left is a 2005 special
+  30911,  // Tales of Zestiria the Cross — Saiyaku no Jidai is a prologue special
+  27631,  // God Eater — God Eater Prologue
 ]);
 
 /**
