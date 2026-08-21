@@ -10,17 +10,17 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 32.** `anime.json` holds **3,490 entries** (TV 2,641 · ONA 540 · OVA 309),
-about 1.15 MB. 157 checks pass via `npm test`.
+**Build 32.** `anime.json` holds **3,503 entries** (TV 2,654 · ONA 540 · OVA 309),
+about 1.18 MB. 157 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
-| Key-art colour | 3,254 |
-| Banner image | 2,321 |
-| Studio | 3,412 |
-| TMDB match | 3,116 |
-| US/CA streaming | 1,610 |
-| AniList tags | 3,230 (93%) |
+| Key-art colour | 3,266 |
+| Banner image | 2,334 |
+| Studio | 3,490 |
+| TMDB match | 3,129 |
+| US/CA streaming | 1,622 |
+| AniList tags | 3,243 (93%) |
 | Genres backfilled from AniList (`gs`) | 43 |
 | No genres (matched on themes only) | 31 |
 
@@ -325,8 +325,22 @@ English title instead. Build 19 pruned 23 entries this way.
 **deliberately not a heuristic**. MAL's relation data cannot separate Hellsing
 Ultimate (a retelling) from Hunter x Hunter: Greed Island (a continuation) —
 both list a prequel and an alternative version. Three rules were tried and all
-three failed. Current entries: Hellsing Ultimate, Legend of the Galactic
-Heroes, Pluto, Steel Ball Run.
+three failed.
+
+**Thirteen were added at once in build 32, and they all share one shape.** A
+popular series gets a prequel special or film *years later*, MAL records it as
+a prequel, and the strict rule concludes you cannot start there. Re:Zero — MAL
+rank 393 — was dropped over *Hyouketsu no Kizuna*, a 2019 special, three years
+after it aired. Jujutsu Kaisen (#169) was dropped over *JJK 0*, a film made
+after the series. Your Lie in April (#91) over its own recap.
+
+They were found by scanning MAL's top 500 TV for entries missing from the
+catalogue whose *only* prequel is titled as their own side story — that is, the
+prequel's title starts with the show's. That scan is a **candidate generator,
+not a rule**: it also flagged Mushoku Tensei II, which really does need season
+one, so every entry still gets looked at by a human. Re-run it after a rebuild
+if the catalogue feels like it is missing something obvious; only the top 500
+has been swept so far.
 
 Each build prints well-regarded OVAs/ONAs it dropped, formatted as ready-to-paste
 IDs. That list is a judgement call for the human, not something to automate.
@@ -522,6 +536,50 @@ but never corrupts the existing catalogue.
 ---
 
 ## Open
+
+**Genres may be the wrong thing to match on. Evidence, not yet a fix.**
+
+Searching for "another isekai" is a real thing people do, and the site is bad
+at it. Konosuba — genres Adventure, Comedy, Fantasy; theme Isekai — walks up to
+Dungeon Meshi, Berserk, Made in Abyss, One Piece, Hunter x Hunter and
+Fullmetal Alchemist: Brotherhood. Not one isekai. Mushoku Tensei reaches Tian
+Guan Cifu and Frieren before anything sharing its theme.
+
+The cause is that **genres are far too broad to identify anything**, while the
+identifying word is filed as a theme and only breaks ties:
+
+| Decides matching (genre) | Count | Only breaks ties (theme) | Count |
+| --- | --- | --- | --- |
+| Comedy | 1,276 | School | 652 |
+| Action | 1,080 | Mecha | 265 |
+| Fantasy | 968 | Isekai | 159 |
+| Adventure | 871 | Harem | 142 |
+| Drama | 740 | Psychological | 132 |
+| Sci-Fi | 679 | Time Travel | 50 |
+
+"Shares Fantasy" says almost nothing — it is a thousand shows. "Shares Isekai"
+says a great deal. Re:Zero does reach Mushoku Tensei first, but only because
+AniList tags give them a high cosine similarity; affinity can *reorder* a
+genre bucket, it cannot pull a strong theme match in from outside one.
+
+**Do not just swap genres for themes.** 31 entries have no genres and are
+already handled by a special tier; far more have no themes, and the ordering
+rules — match quality, then direction, then monotonicity — are tuned against
+genre-sized buckets. Changing what *decides* matching is the highest-risk edit
+in this project, and the working notes exist because "obvious" fixes here have
+made things measurably worse before. Capture a walks baseline, change one
+thing, read the diff anchor by anchor.
+
+**A tip jar — "buy me a coffee" or similar.** Not monetisation in the sense
+that matters legally: a donate link is not advertising, so it does not trip the
+line that would force revisiting the MyAnimeList non-commercial and TMDB
+personal-use registrations. **Check both registrations before adding anything
+that looks like a business**, though — TMDB's definition of commercial is
+broader than "makes money", and ads are the trigger, not deployment.
+
+Practically it is one link in the footer next to the credit line. The card must
+not move to accommodate it, so it belongs outside `.hero` with the other
+explanatory notes.
 
 **The voting system — stage one shipped, two and three to go.** "Have you
 watched it" → "would you recommend it", a % recommend rating, and MAL XML list

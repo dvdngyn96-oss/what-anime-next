@@ -84,6 +84,28 @@ const STANDS_ALONE_ANYWAY = new Set([
   35737,  // Pluto — parent_story is Astro Boy, but it's self-contained
   61469,  // Steel Ball Run — alternate continuity, new cast, new setting;
           // MAL chains it to Part 6 by production order, not by story
+  /* The thirteen below share one shape: a popular series gets a prequel special
+   * or film *years later*, MAL records it as a prequel, and the strict rule
+   * concludes you cannot start there. In every case the TV series is the
+   * starting point and the "prequel" is a bonus for people who already watched
+   * it. Found by scanning MAL's top 500 TV for entries missing from the
+   * catalogue whose only prequel is titled as their own side story.
+   *
+   * Mushoku Tensei II was flagged by the same scan and deliberately left out:
+   * it really is a second season. That is why this list stays hand-checked. */
+  23273,  // Shigatsu wa Kimi no Uso — "prequel" is Moments, a recap special
+  40748,  // Jujutsu Kaisen — JJK 0 is a film made after the series
+  12431,  // Uchuu Kyoudai — Number Zero is a later OVA
+  10165,  // Nichijou — its "prequel" is episode 0, an OVA
+  2402,   // Ashita no Joe — Pilots is a pilot film
+  486,    // Kino no Tabi (2003) — "prequel" is a short film
+  45,     // Rurouni Kenshin — Tsuioku-hen is a 1999 OVA, three years later
+  31240,  // Re:Zero — Hyouketsu no Kizuna is a 2019 special, three years later
+  1453,   // Maison Ikkoku — Prelude is a side film
+  22297,  // Fate/stay night: UBW — Prologue aired as episode 0 of itself
+  24833,  // Ansatsu Kyoushitsu — Deai no Jikan is a 2013 OVA
+  11771,  // Kuroko no Basket — Tip Off is a special
+  19815,  // No Game No Life — NGNL: Zero is a film made after
 ]);
 
 /**
