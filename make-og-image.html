@@ -52,11 +52,27 @@ const ctx = document.getElementById('c').getContext('2d');
    does not read as a blank rectangle in a feed. */
 ctx.fillStyle = '#ffffff';
 ctx.fillRect(0, 0, W, H);
-const glow = ctx.createRadialGradient(W - 120, -40, 0, W - 120, -40, 720);
-glow.addColorStop(0, 'rgba(229, 72, 77, 0.14)');
-glow.addColorStop(1, 'rgba(229, 72, 77, 0)');
-ctx.fillStyle = glow;
-ctx.fillRect(0, 0, W, H);
+/* Horizontal, not radial, and that is a file-size decision as much as a visual
+   one. PNG compresses by predicting each pixel from its neighbours: a linear
+   ramp along x makes every row identical to the one above, which the Up filter
+   flattens to zeros. A radial gradient is predicted by nothing, so every one of
+   the 756,000 pixels costs bytes. Measured on this exact artwork:
+
+     radial      364 KB      horizontal   89 KB
+     diagonal    149 KB      flat white   85 KB
+
+   The tint itself costs 4 KB. The radial version cost 279. */
+/* Painted a column at a time instead of with createLinearGradient, which is
+   the second half of the same size argument. Canvas gradients are *dithered* —
+   the browser scatters per-pixel noise to hide banding — and that noise is
+   precisely what defeats the row predictor. Switching the radial for a native
+   linear gradient made the file bigger, 364 KB to 407. Exact integer columns
+   give the clean ramp the filter can flatten. */
+for (let x = 0; x < W; x++) {
+  const t = 0.13 * Math.max(0, (x / W - 0.45) / 0.55);
+  ctx.fillStyle = `rgb(${Math.round(255 - 26 * t)}, ${Math.round(255 - 183 * t)}, ${Math.round(255 - 178 * t)})`;
+  ctx.fillRect(x, 0, 1, H);
+}
 
 /* A hairline of accent along the top edge, the one bit of chrome that survives
    being scaled down to a 200px-wide thumbnail. */

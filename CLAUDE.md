@@ -361,9 +361,31 @@ so a palette change regenerates it rather than orphaning a mystery binary. Its
 colours are copied from `styles.css` by hand — if the palette moves there, move
 it there too.
 
-It is 368 KB, which is fat for flat artwork; the radial accent glow is what
-costs it. Left alone deliberately — it is fetched once per scrape and both
-platforms re-encode it anyway.
+**The background is a horizontal wash for compression reasons, not visual ones.**
+The first version used a radial corner glow and came to 368 KB, which is absurd
+for flat artwork. PNG predicts each pixel from its neighbours: a ramp along x
+makes every row identical to the one above, and the Up filter flattens it to
+zeros. A radial gradient is predicted by nothing, so all 756,000 pixels cost
+bytes. Measured on this artwork:
+
+| Background | Size |
+| --- | --- |
+| Radial glow | 364 KB |
+| Diagonal ramp | 149 KB |
+| Horizontal ramp | 89 KB |
+| Flat white | 85 KB |
+
+The tint costs 4 KB. The radial one cost 279.
+
+**And it is painted a column at a time rather than with
+`createLinearGradient`.** Canvas gradients are *dithered* — the browser scatters
+per-pixel noise to hide banding — and that noise is exactly what defeats the row
+predictor. Swapping the radial for a native linear gradient made the file
+*bigger*, 364 KB to 407. Only exact integer columns give a ramp the filter can
+flatten. Final size is 87 KB.
+
+Don't reach for a radial glow, a soft shadow, or a blur here without measuring
+first; all three are the same mistake.
 
 **`robots.txt` does not block `app.js`, `styles.css` or `anime.json`.** Blocking
 them would leave a crawler rendering an empty shell and judging the site on it,
