@@ -25,7 +25,7 @@ const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 30;
+const BUILD = 31;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -259,7 +259,43 @@ function loadCatalogue() {
     return ranked;
   })();
 
+  // A failed load is never remembered. Everything on the page waits on this one
+  // promise — search, the dice, a shared link — so caching the rejection turns a
+  // single dropped request into a session that stays broken until a reload.
+  // Same reasoning as never caching a failed synopsis fetch, one level up where
+  // it costs the whole page rather than five lines of it.
+  //
+  // The notice rides along here rather than at each call site because it
+  // reflects the state of the catalogue, and this is the only place that knows.
+  cataloguePromise.then(
+    () => setCatalogueNotice(null),
+    (error) => { cataloguePromise = null; setCatalogueNotice(error); },
+  );
+
   return cataloguePromise;
+}
+
+/** Human wording for a catalogue that would not load. */
+function catalogueTrouble(error) {
+  const detail = String(error?.message ?? error);
+  const status = detail.match(/HTTP (\d{3})/);
+  if (status) return `The catalogue could not be loaded — the server returned ${status[1]}.`;
+  // A Pages deploy mid-flight serves index.html for anime.json, which arrives
+  // here as a parse error rather than as a bad status.
+  if (/JSON|Unexpected token/i.test(detail)) {
+    return 'The catalogue came back damaged. A deploy may be in progress — this usually clears in a minute.';
+  }
+  // Everything else, "Failed to fetch" included, is jargon to someone who just
+  // wanted a recommendation.
+  return 'The catalogue could not be loaded. Check your connection and try again.';
+}
+
+/** The landing page cannot say "no results" when it never had any to search. */
+function setCatalogueNotice(error) {
+  const notice = document.getElementById('catalogue-notice');
+  if (!notice) return;
+  notice.textContent = error ? catalogueTrouble(error) : '';
+  notice.hidden = !error;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1028,7 +1064,17 @@ function attachAutocomplete(input, list, onPick) {
 
   async function runSearch(query) {
     const seq = ++requestSeq;
-    await loadCatalogue();
+    try {
+      await loadCatalogue();
+    } catch (error) {
+      // Said in the dropdown rather than by throwing the whole page away: you
+      // are mid-sentence in the search box, and replacing the view under your
+      // cursor to report a failed background fetch is worse than the failure.
+      if (seq !== requestSeq) return;
+      list.innerHTML = `<li class="suggestions-empty">${esc(catalogueTrouble(error))}</li>`;
+      list.hidden = false;
+      return;
+    }
     if (seq !== requestSeq) return;
 
     items = searchLocal(query);
@@ -1101,7 +1147,12 @@ function attachAutocomplete(input, list, onPick) {
   async function submitFreeText(query) {
     if (!query) return;
     showLoading(`Looking up “${query}”…`);
-    await loadCatalogue();
+    try {
+      await loadCatalogue();
+    } catch (error) {
+      showError(catalogueTrouble(error), () => submitFreeText(query));
+      return;
+    }
 
     let hits = searchLocal(query, 1);
     if (!hits.length) {
@@ -1145,12 +1196,19 @@ function showLoading(message) {
   resultBody.innerHTML = `<div class="state"><div class="spinner"></div>${esc(message)}</div>`;
 }
 
-function showError(message) {
+// Held aside rather than encoded in the markup: the thing worth retrying is a
+// closure over whatever was being attempted, and a data- attribute cannot hold
+// one.
+let pendingRetry = null;
+
+function showError(message, retry = null) {
+  pendingRetry = retry;
   showResultView();
   resultBody.innerHTML = `
     <div class="state">
       <p>${esc(message)}</p>
-      <button class="btn" type="button" data-action="home">Start over</button>
+      ${retry ? '<button class="btn" type="button" data-action="retry">Try again</button>' : ''}
+      <button class="btn${retry ? ' btn-ghost' : ''}" type="button" data-action="home">Start over</button>
     </div>`;
   wireResultControls();
 }
@@ -1472,6 +1530,14 @@ function wireResultControls() {
       const action = el.dataset.action;
 
       if (action === 'home') { goHome(); return; }
+
+      if (action === 'retry') {
+        const again = pendingRetry;
+        pendingRetry = null;
+        if (again) again();
+        return;
+      }
+
       if (action === 'trailer') { playTrailer(); return; }
 
       if (action === 'region') {
@@ -1614,16 +1680,23 @@ $('clear-btn').addEventListener('click', () => {
   searchInput.focus();
 });
 
-$('random-btn').addEventListener('click', async () => {
+$('random-btn').addEventListener('click', rollTheDice);
+
+async function rollTheDice() {
   showLoading('Rolling the dice…');
-  await loadCatalogue();
+  try {
+    await loadCatalogue();
+  } catch (error) {
+    showError(catalogueTrouble(error), rollTheDice);
+    return;
+  }
   // Respect the format filter here even though it is an anchor, not a
   // recommendation: being handed a donghua right after switching ONA off
   // would read as the toggle not working.
   const pool = ranked.filter((a) => !a.type || formats.has(a.type));
   const pick = (pool.length ? pool : ranked)[Math.floor(Math.random() * (pool.length || ranked.length))];
   recommendFor(pick, state.direction);
-});
+}
 
 $('home-btn').addEventListener('click', goHome);
 
@@ -1643,7 +1716,7 @@ async function routeFromUrl() {
   try {
     await loadCatalogue();
   } catch (error) {
-    showError(error.message);
+    showError(catalogueTrouble(error), () => routeFromUrl());
     return;
   }
 
@@ -1660,5 +1733,7 @@ const creditLine = document.querySelector('.credit');
 if (creditLine) creditLine.insertAdjacentHTML('beforeend', ` · <span class="build">build ${BUILD}</span>`);
 console.info(`whatanimeshouldiwatchnext — build ${BUILD}`);
 
+// The rejection is handled inside loadCatalogue, which raises the notice; this
+// only keeps the warm-up from counting as unhandled.
 loadCatalogue().catch(() => {});
 routeFromUrl();

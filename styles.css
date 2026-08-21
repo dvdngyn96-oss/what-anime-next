@@ -825,6 +825,21 @@ a { color: inherit; }
 
 /* States */
 
+/* Only ever visible when anime.json did not load, so it may push the credit
+   line down — there is nothing below it worth protecting, and at that point the
+   page has no card to keep still. */
+.catalogue-notice {
+  max-width: 420px;
+  margin: 0 auto 20px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--fg-dim);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .state {
   text-align: center;
   padding: 60px 20px;

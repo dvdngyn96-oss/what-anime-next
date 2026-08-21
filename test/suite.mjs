@@ -1118,5 +1118,121 @@ console.log('\n--- link previews ---');
   check('the sitemap lists the canonical root', sitemap.includes(`<loc>${SITE}/</loc>`));
 }
 
+/* ---------- when anime.json does not load ---------- */
+/* Every one of these was a real silent failure before build 31: the landing
+   page rendered perfectly and then ignored the search box, and the dice sat on
+   a spinner that never resolved. Worse, the memo cached the rejection, so one
+   dropped request kept the session broken until a reload. */
+
+console.log('\n--- when the catalogue does not load ---');
+{
+  const TINY = {
+    built: 'x', count: 2, names: ['Action'],
+    anime: [
+      { r: 1, i: 1, t: 'Real Show', s: 9, g: [0], th: [], ty: 'TV', e: 12, y: 2013, m: 100, im: 'a.jpg' },
+      { r: 2, i: 2, t: 'Other Show', s: 8, g: [0], th: [], ty: 'TV', e: 12, y: 2012, m: 100, im: 'b.jpg' },
+    ],
+  };
+
+  /* `failure` is a live switch so a test can let the network come back and
+     press Try again — which is the only way to prove the rejection is not
+     cached. */
+  function makeFailingDom(failure) {
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
+    dom.window.scrollTo = () => {};
+    const state = { mode: failure };
+    dom.window.fetch = (target) => {
+      if (String(target).includes('anilist')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
+      }
+      if (state.mode === null) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(TINY) });
+      if (state.mode === 'status') return Promise.resolve({ ok: false, status: 503, json: () => Promise.reject(new Error('x')) });
+      if (state.mode === 'offline') return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON at position 0')) });
+    };
+    dom.window.eval(appSource);
+    return { dom, state };
+  }
+
+  const notice = (d) => {
+    /* Null-tolerant so that running these against a build without the element
+       reports a failed check rather than crashing the suite. */
+    const el = d.getElementById('catalogue-notice');
+    return !el || el.hidden ? '' : el.textContent;
+  };
+  const resultText = (d) => d.getElementById('result-body').textContent.replace(/\s+/g, ' ').trim();
+
+  /* An unhandled rejection is not cosmetic here: it is exactly the shape the
+     old bug took, so the suite watches for one rather than trusting the DOM. */
+  const stray = [];
+  const watch = (r) => stray.push(String(r));
+  process.on('unhandledRejection', watch);
+
+  {
+    const { dom } = makeFailingDom('offline');
+    await sleep(300);
+    const d = dom.window.document;
+    check('a failed boot says so instead of looking fine', notice(d).length > 0, '(notice hidden)');
+
+    const input = d.getElementById('search-input');
+    input.value = 'Real';
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    await sleep(400);
+    const dropdown = d.getElementById('suggestions').textContent.replace(/\s+/g, ' ').trim();
+    check('typing reports the failure rather than doing nothing', dropdown.length > 0, '(empty dropdown)');
+    /* Reported in the dropdown, not by replacing the view under the cursor. */
+    check('typing does not throw the landing page away', d.getElementById('search-view').hidden === false);
+
+    d.getElementById('random-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await sleep(400);
+    check('the dice stops on an error, not on the spinner',
+      !resultText(d).includes('Rolling the dice'), resultText(d));
+    check('the error offers a way to try again', !!d.querySelector('[data-action="retry"]'));
+  }
+
+  {
+    /* The one that matters: a transient failure must not poison the session. */
+    const { dom, state } = makeFailingDom('offline');
+    await sleep(300);
+    const d = dom.window.document;
+    d.getElementById('random-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await sleep(300);
+
+    state.mode = null;
+    d.querySelector('[data-action="retry"]')?.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await sleep(500);
+    check('a failed load is not cached, so a retry can succeed',
+      resultText(d).includes('Because you watched'), resultText(d).slice(0, 90));
+    check('the notice clears once the catalogue arrives', notice(d) === '', notice(d));
+  }
+
+  {
+    const { dom } = makeFailingDom('status');
+    await sleep(300);
+    check('an HTTP failure names the status', notice(dom.window.document).includes('503'),
+      notice(dom.window.document));
+  }
+
+  {
+    /* A deploy in flight serves index.html for anime.json, so this arrives as a
+       parse error rather than a bad status, and is worth saying differently. */
+    const { dom } = makeFailingDom('damaged');
+    await sleep(300);
+    const said = notice(dom.window.document);
+    check('a damaged catalogue is described as damaged, not as offline',
+      said.includes('damaged') && !said.includes('connection'), said);
+  }
+
+  {
+    const { dom } = makeFailingDom(null);
+    await sleep(400);
+    check('a healthy boot leaves the notice hidden', notice(dom.window.document) === '',
+      notice(dom.window.document));
+  }
+
+  check('none of it leaks an unhandled rejection', stray.length === 0, stray.join(' | '));
+  process.off('unhandledRejection', watch);
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);
