@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>og:image generator — whatanimeshouldiwatchnext</title>
+<!--
+  Draws og.png (1200x630) on a canvas and hands back a data URL.
+
+  There is no sharp, no canvas package and no headless browser in this project,
+  and X/Twitter will not render an SVG og:image — so the preview image has to be
+  a real PNG produced somehow. Drawing it in a browser adds no dependency and,
+  more to the point, keeps the image reproducible: this file IS the source, so
+  a colour change here regenerates it rather than orphaning a mystery binary.
+
+  Open it, click Download, or drive it with __ogChunk() from an automated
+  browser. Colours are copied from styles.css by hand; if the palette there
+  moves, move it here too.
+-->
+<style>
+  body { margin: 0; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; background: #f8f9fa; color: #202124; padding: 24px; }
+  canvas { width: 600px; height: 315px; border: 1px solid #dfe1e5; box-shadow: 0 1px 6px rgba(32,33,36,.28); }
+  .row { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
+  button { font: inherit; padding: 8px 16px; border-radius: 20px; border: 1px solid #dfe1e5; background: #fff; cursor: pointer; }
+  code { background: #f1f3f4; padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <canvas id="c" width="1200" height="630"></canvas>
+  <div class="row">
+    <button id="dl" type="button">Download og.png</button>
+    <span>Shown at half size. The file is 1200&times;630.</span>
+  </div>
+
+<script>
+const W = 1200, H = 630;
+const FONT = '"Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif';
+
+/* Straight from styles.css. */
+const ACCENT = '#e5484d', FG = '#202124', FG_DIM = '#5f6368', FG_FAINT = '#9aa0a6', BORDER = '#dfe1e5';
+const WORDMARK = [
+  ['what',   '#4285f4'],
+  ['anime',  ACCENT],
+  ['should', '#f5b301'],
+  ['i',      '#4285f4'],
+  ['watch',  '#34a853'],
+  ['next',   ACCENT],
+];
+
+const ctx = document.getElementById('c').getContext('2d');
+
+/* Background: white, with the accent bled in from the top right so the card
+   does not read as a blank rectangle in a feed. */
+ctx.fillStyle = '#ffffff';
+ctx.fillRect(0, 0, W, H);
+const glow = ctx.createRadialGradient(W - 120, -40, 0, W - 120, -40, 720);
+glow.addColorStop(0, 'rgba(229, 72, 77, 0.14)');
+glow.addColorStop(1, 'rgba(229, 72, 77, 0)');
+ctx.fillStyle = glow;
+ctx.fillRect(0, 0, W, H);
+
+/* A hairline of accent along the top edge, the one bit of chrome that survives
+   being scaled down to a 200px-wide thumbnail. */
+ctx.fillStyle = ACCENT;
+ctx.fillRect(0, 0, W, 8);
+
+/* ---- wordmark, auto-fitted to a target width ---- */
+/* Hard-coding a size risks the stack falling back to a wider face on another
+   machine and running off the edge. Measure, then scale to fit. */
+const TARGET = 1000;
+function wordmarkWidth(size) {
+  ctx.font = `700 ${size}px ${FONT}`;
+  ctx.letterSpacing = `${(-0.03 * size).toFixed(2)}px`;
+  return WORDMARK.reduce((sum, [text]) => sum + ctx.measureText(text).width, 0);
+}
+let size = 96;
+size = Math.min(96, size * (TARGET / wordmarkWidth(size)));
+
+ctx.font = `700 ${size}px ${FONT}`;
+ctx.letterSpacing = `${(-0.03 * size).toFixed(2)}px`;
+ctx.textBaseline = 'alphabetic';
+const totalW = wordmarkWidth(size);
+let x = (W - totalW) / 2;
+const baseline = 250;
+for (const [text, colour] of WORDMARK) {
+  ctx.fillStyle = colour;
+  ctx.fillText(text, x, baseline);
+  x += ctx.measureText(text).width;
+}
+
+/* ---- tagline ---- */
+ctx.letterSpacing = '0px';
+ctx.font = `400 30px ${FONT}`;
+ctx.fillStyle = FG_DIM;
+ctx.textAlign = 'center';
+ctx.fillText("Type an anime you've already watched.", W / 2, 312);
+ctx.fillText('Get the next one up the rankings that shares its genres.', W / 2, 354);
+
+/* ---- the search box, because it is the whole interface ---- */
+const boxW = 620, boxH = 68, boxX = (W - boxW) / 2, boxY = 410, r = boxH / 2;
+ctx.beginPath();
+ctx.roundRect(boxX, boxY, boxW, boxH, r);
+ctx.fillStyle = '#ffffff';
+ctx.fill();
+ctx.strokeStyle = BORDER;
+ctx.lineWidth = 2;
+ctx.stroke();
+
+/* Magnifier, drawn rather than pulled from the SVG in index.html — two
+   primitives are cheaper than parsing a path. */
+const cx = boxX + 42, cy = boxY + boxH / 2;
+ctx.strokeStyle = FG_FAINT;
+ctx.lineWidth = 3.5;
+ctx.beginPath();
+ctx.arc(cx, cy - 2, 11, 0, Math.PI * 2);
+ctx.stroke();
+ctx.beginPath();
+ctx.moveTo(cx + 8, cy + 6);
+ctx.lineTo(cx + 16, cy + 14);
+ctx.lineCap = 'round';
+ctx.stroke();
+
+ctx.textAlign = 'left';
+ctx.font = `400 27px ${FONT}`;
+ctx.fillStyle = FG_FAINT;
+ctx.fillText('Tokyo Ravens', boxX + 72, boxY + boxH / 2 + 10);
+
+/* ---- footer ---- */
+ctx.textAlign = 'center';
+ctx.font = `400 22px ${FONT}`;
+ctx.fillStyle = FG_FAINT;
+ctx.fillText('3,490 series  ·  ranked by MyAnimeList  ·  no sequels, no films', W / 2, 552);
+
+/* ---- handoff ---- */
+/* Returned in slices: a 1200x630 PNG is comfortably past what a single tool
+   result will carry intact, and a silently truncated base64 string writes a
+   corrupt file that looks like it worked. */
+const dataUrl = ctx.canvas.toDataURL('image/png');
+const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+window.__ogSize = b64.length;
+window.__ogChunk = (i, n = 60000) => b64.slice(i * n, (i + 1) * n);
+
+document.getElementById('dl').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = 'og.png';
+  a.click();
+});
+</script>
+</body>
+</html>

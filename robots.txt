@@ -1,0 +1,25 @@
+# whatanimeshouldiwatchnext
+
+User-agent: *
+Allow: /
+
+# Cloudflare Pages serves the whole repository root, so the build scripts and
+# the test suite are publicly fetchable. They hold no secrets — the two
+# credential files are gitignored and were never committed — but they are
+# source, not content, and have no business in an index.
+Disallow: /test/
+Disallow: /build-catalogue.mjs
+Disallow: /add-anilist-tags.mjs
+Disallow: /add-watch-providers.mjs
+Disallow: /backfill-genres.mjs
+Disallow: /patch-studios.mjs
+Disallow: /add-one.mjs
+Disallow: /package.json
+Disallow: /package-lock.json
+Disallow: /make-og-image.html
+
+# app.js, styles.css and anime.json are deliberately NOT disallowed. The page
+# renders nothing without them, so blocking them would leave a crawler holding
+# an empty shell and judging the site on it.
+
+Sitemap: https://what-anime-next.pages.dev/sitemap.xml

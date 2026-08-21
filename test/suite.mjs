@@ -1068,5 +1068,55 @@ console.log('\n--- the format filter ---');
   check('switching a format back on restores it', shown().includes('Web Release'), shown());
 }
 
+/* ---------- link previews and crawler files ---------- */
+/* A wrong og:image fails silently — the scraper simply shows no picture, and
+   you find out from someone else's timeline. These assert the two things that
+   go wrong in a way nobody would notice locally: a relative image URL, and a
+   declared size that no longer matches the file on disk. */
+
+console.log('\n--- link previews ---');
+{
+  const head = new JSDOM(html).window.document;
+  const meta = (sel) => head.querySelector(sel)?.getAttribute('content') ?? '';
+  const SITE = 'https://what-anime-next.pages.dev';
+
+  check('the card type is the large one', meta('meta[name="twitter:card"]') === 'summary_large_image');
+  check('og:image is absolute', meta('meta[property="og:image"]').startsWith('https://'),
+    meta('meta[property="og:image"]'));
+  check('twitter:image is absolute', meta('meta[name="twitter:image"]').startsWith('https://'),
+    meta('meta[name="twitter:image"]'));
+  check('og:url is the bare hostname', meta('meta[property="og:url"]') === `${SITE}/`,
+    meta('meta[property="og:url"]'));
+  check('the canonical link matches og:url',
+    head.querySelector('link[rel="canonical"]')?.getAttribute('href') === `${SITE}/`);
+  check('both preview images carry alt text',
+    !!meta('meta[property="og:image:alt"]') && !!meta('meta[name="twitter:image:alt"]'));
+  check('title and description reach both scrapers',
+    !!meta('meta[property="og:title"]') && !!meta('meta[name="twitter:title"]')
+    && !!meta('meta[property="og:description"]') && !!meta('meta[name="twitter:description"]'));
+
+  /* Read the real dimensions out of the PNG rather than trusting the tags:
+     IHDR carries width at byte 16 and height at byte 20. */
+  const png = readFileSync(`${ROOT}/og.png`);
+  check('og.png is a real PNG', png.subarray(0, 8).toString('hex') === '89504e470d0a1a0a',
+    png.subarray(0, 8).toString('hex'));
+  const pw = png.readUInt32BE(16), ph = png.readUInt32BE(20);
+  check('the declared width matches the file', String(pw) === meta('meta[property="og:image:width"]'),
+    `${pw} vs ${meta('meta[property="og:image:width"]')}`);
+  check('the declared height matches the file', String(ph) === meta('meta[property="og:image:height"]'),
+    `${ph} vs ${meta('meta[property="og:image:height"]')}`);
+  check('the preview is the 1.91:1 both scrapers want', pw === 1200 && ph === 630, `${pw}x${ph}`);
+
+  const robots = readFileSync(`${ROOT}/robots.txt`, 'utf8');
+  const sitemap = readFileSync(`${ROOT}/sitemap.xml`, 'utf8');
+  check('robots.txt points at the sitemap', robots.includes(`Sitemap: ${SITE}/sitemap.xml`));
+  /* Blocking these would leave a crawler rendering an empty shell and judging
+     the site on it, which is worse than not being crawled at all. */
+  check('robots.txt leaves the rendering assets crawlable',
+    !/Disallow: \/(app\.js|styles\.css|anime\.json)/.test(robots));
+  check('robots.txt keeps the build scripts out', robots.includes('Disallow: /build-catalogue.mjs'));
+  check('the sitemap lists the canonical root', sitemap.includes(`<loc>${SITE}/</loc>`));
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);

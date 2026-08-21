@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  One URL, on purpose.
+
+  Every result lives at /?id=N, and there are 3,490 of them — but the site is
+  client-rendered, so all 3,490 serve this same index.html byte for byte. The
+  card is built by app.js after the catalogue loads. Listing them would offer a
+  crawler thousands of URLs with identical markup, which is what duplicate
+  content means. The root is the only distinct document there is.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://what-anime-next.pages.dev/</loc>
+    <lastmod>2026-08-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

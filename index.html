@@ -5,6 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>whatanimeshouldiwatchnext</title>
   <meta name="description" content="Type an anime you've already watched. Get the next one up the rankings that shares its genres.">
+
+  <!-- Link previews. Everything below is deliberately static: every /?id=N URL
+       serves this same document, and the card is built client-side, so a
+       scraper never sees a per-anime title no matter which link was shared.
+       Describing the site is honest; templating a title we cannot fill is not.
+
+       og:image must be absolute — a relative path resolves against the
+       scraper's own host and silently yields no preview at all. og.png is
+       1200x630, regenerate it from make-og-image.html. -->
+  <link rel="canonical" href="https://what-anime-next.pages.dev/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="whatanimeshouldiwatchnext">
+  <meta property="og:url" content="https://what-anime-next.pages.dev/">
+  <meta property="og:title" content="whatanimeshouldiwatchnext">
+  <meta property="og:description" content="Type an anime you've already watched. Get the next one up the rankings that shares its genres — no sequels, no films, nothing you need backstory for.">
+  <meta property="og:image" content="https://what-anime-next.pages.dev/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="whatanimeshouldiwatchnext — a search box over the tagline: type an anime you've already watched, get the next one up the rankings that shares its genres.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="whatanimeshouldiwatchnext">
+  <meta name="twitter:description" content="Type an anime you've already watched. Get the next one up the rankings that shares its genres — no sequels, no films, nothing you need backstory for.">
+  <meta name="twitter:image" content="https://what-anime-next.pages.dev/og.png">
+  <meta name="twitter:image:alt" content="whatanimeshouldiwatchnext — a search box over the tagline: type an anime you've already watched, get the next one up the rankings that shares its genres.">
+
+  <!-- Matches --bg in styles.css at both ends, so the phone browser chrome
+       does not sit in the opposite scheme to the page under it. -->
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17181a" media="(prefers-color-scheme: dark)">
   <!-- The ?v= markers below only help if this document is itself fresh, so
        ask the browser not to serve a cached copy of it. -->
   <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
