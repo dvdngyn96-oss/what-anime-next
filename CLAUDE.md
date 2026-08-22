@@ -785,6 +785,58 @@ matching is the highest-risk edit in this project, and the working notes exist
 because "obvious" fixes here have made things measurably worse before. Capture
 a walks baseline, change one thing, read the diff anchor by anchor.
 
+**A very long series is still recommended to a very short one. The Kids
+demotion has a twin.** GATE: Jieitai is 12 episodes, and its fifth result is
+Naruto at 220. Nothing is misbehaving: Naruto shares all three of GATE's
+genres, which is an exact match as far as the matcher is concerned, and it sits
+283 places away — four behind Juuni Kokuki. It arrives in proper proximity
+order in the top tier.
+
+What the matcher never looks at is **length**. This is the same shape as the
+case that justified demoting `Kids`: "a 12-episode dark isekai recommends
+Pokémon — 276 episodes, same three genres, 48 places away". Pokémon is caught
+because it is Kids; Naruto is Shounen, so nothing catches it. And GATE has no
+demographic recorded at all, so that tie-breaker cannot fire either — by
+design, a missing demographic is never a penalty.
+
+Measured: 46% of short anchors (≤26 episodes, with genres) have a 100+ episode
+*full* genre match within 300 places. Treat that as the ceiling on exposure,
+not the rate of bad results — most are buried by affinity, and GATE's Naruto
+still only surfaced fifth. The sharper number is that only **100 of 3,505
+entries have 100+ episodes**, and being high-ranked and genre-broad they sit
+near everything: Ginga Eiyuu Densetsu, Gintama, Hunter x Hunter and Naruto turn
+up against Bocchi the Rock, Cyberpunk: Edgerunners and Violet Evergarden alike.
+
+**The fix to try is a length-mismatch demotion built exactly like the Kids one**
+— a tier down, so it surfaces once closer-sized matches are exhausted.
+
+**It must be a ratio against the anchor, not an episode count**, because
+sometimes a long series is exactly right: Haikyuu!! legitimately reaches Slam
+Dunk, Hajime no Ippo, Touch and Diamond no Ace, and a blunt penalty would
+wreck that chain. Haikyuu (25 ep) to Hajime no Ippo (75) is 3x; GATE (12) to
+Naruto (220) is 18x. That gap is wide enough to separate them — wider than
+anything separating the cases that defeated the affinity work above, which is
+the reason to think this one is tractable.
+
+**Say why the watched list changed the answer.** When it removes candidates the
+card is silent; it only speaks when the list empties a walk completely. Logged
+in, GATE returns Slayers, because Moonlit Fantasy and the rest are already
+watched — which is correct and reads as broken. `watchedSkipped` already counts
+them, so this is one line under the card: "3 closer matches are on your watched
+list." Found by the owner clicking through the live site while logged in, and
+it cost a round of debugging that the page could have answered itself.
+
+**Finish the `full_story` sweep.** `full-scan.mjs` walks the whole catalogue
+for the relation, checkpointing to `full-scan.jsonl` so it resumes rather than
+restarts; both are gitignored. It found **9 more re-cuts** beyond the 27 already
+dropped — Initial D Battle Stage (#1816), Yozakura Quartet: Hoshi no Umi
+(#2790), Gundam Wing: Operation Meteor (#2950), Love Hina Final Selection
+(#4114), 30-pun de Wakaru! Love Live! (#4385), Tenjou Tenge: The Past Chapter
+(#4698), Karneval OVA (#5011), Fate/stay night TV Reproduction (#5790), Mahou
+no Yousei Persia: Kaiten Mokuba (#6437). All are deep in the rankings and none
+is ambiguous. Drop them the same way, and check reachability directly rather
+than trusting a byte-identical walks diff.
+
 **A tip jar — "buy me a coffee" or similar.** Not monetisation in the sense
 that matters legally: a donate link is not advertising, so it does not trip the
 line that would force revisiting the MyAnimeList non-commercial and TMDB
