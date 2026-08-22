@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 33.** `anime.json` holds **3,505 entries** (TV 2,680 · ONA 533 · OVA 292),
+**Build 34.** `anime.json` holds **3,505 entries** (TV 2,680 · ONA 533 · OVA 292),
 about 1.18 MB. 169 checks pass via `npm test`.
 
 | Data | Coverage |
@@ -170,8 +170,32 @@ keeps its whole documented chain and gains four nearer matches ahead of it,
 one of them Link Click, 15 places away, sharing Time Travel.
 
 **A better match earns a longer jump, measured in ranking positions.** Each
-point of affinity buys `AFFINITY_REACH` (30) positions of extra distance over
-the nearest candidate; `MAX_LOOKAHEAD` (30) bounds the scan for cost. Sorting a
+point of affinity buys extra distance over the nearest candidate;
+`MAX_LOOKAHEAD` (30) bounds the scan for cost.
+
+**How much distance depends on where the anchor sits, and that is build 34.**
+It was a flat 30 positions, which is a small step at #5 and nothing at all at
+#1508 — so GATE: Jieitai, whose isekai and military matches sit about 195
+places away, recommended Slayers instead. The budget now runs from
+`AFFINITY_REACH` (30) up to `REACH_CAP` (60), at `REACH_FRACTION` (0.30) of the
+anchor's own position.
+
+**Measuring distance as a ratio instead is the obvious fix and it is wrong.**
+Tried first, because #393 to #5 and #1508 to #968 are both "about 150
+positions" while being wildly different in kind. It fixes GATE and breaks the
+other end: Fullmetal Alchemist: Brotherhood began recommending Arslan Senki
+(#1594), Grancrest Senki (#3559) and an entry at #7831. A flat measure
+under-reaches deep in the catalogue and a ratio over-reaches there — both are
+wrong, in opposite directions, which is why the answer is a position measure
+with a moving budget rather than a different measure.
+
+60 is the mildest cap that works. At 50 GATE still leads with Slayers; at 60 it
+leads with Drifters, which shares Isekai *and* Military. Of the 19 known
+anchors 12 came out byte-identical, including every fragile one — FMA:B,
+Steins;Gate, Berserk, Cowboy Bebop, Re:Zero, Konosuba, Mushoku Tensei,
+Chihayafuru, Haikyuu, Mushishi, Gakkougurashi, Tokyo Ravens. Backtracks went
+from 18 to 22. The one real loss is Toradora, which drops Chihayafuru and
+Kodomo no Omocha; Sasaki to Pii-chan and Ame to Kimi to both improved. Sorting a
 whole bucket by affinity instead let a distant match leapfrog everything nearer
 — walking down from FMA:B, Arslan Senki (1,592 places away) jumped ahead of
 Berserk (105 away). That one bug produced three separate symptoms before it was
@@ -668,8 +692,13 @@ case that motivated it — see "A rare theme is worth a genre" above. Konosuba
 now opens on Kage no Jitsuryokusha and Mushoku Tensei. **Two things are left
 open, and neither is a reason to reopen the whole question.**
 
-**The dense-tier half is still open, and one fix for it has been tried and
-reverted.** Promotion only fires when the top tier is sparse and distant,
+~~**The dense-tier half.**~~ Fixed in build 34 by scaling the affinity reach
+with the anchor's position — see "A better match earns a longer jump" above.
+GATE now opens Tsuki ga Michibiku, Drifters, Berserk: Ougon Jidai-hen, Juuni
+Kokuki: five of its top six share Isekai or Military, against one before.
+
+**The two fixes that did not work are kept below**, because both are the
+obvious thing to try and both cost a day. Promotion only fires when the top tier is sparse and distant,
 because that is the only time the frontier deletes the tier below. GATE:
 Jieitai is the other shape — 31 shows share all three of its genres within 100
 places, so nothing is promoted and proximity decides. Its first result *is* an

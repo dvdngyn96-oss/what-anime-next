@@ -18,8 +18,32 @@ const MAX_PER_TIER = 60;
 const AFFINITY_WINDOW = 5;   // how far a *slightly* better thematic match may jump
 /* Ranking positions of extra distance a candidate earns per point of affinity.
  * Measured in positions rather than bucket slots on purpose: a bucket holds
- * only genre-sharing candidates, so ten bucket slots can span 1,500 places. */
+ * only genre-sharing candidates, so ten bucket slots can span 1,500 places.
+ *
+ * Now the *floor* of a range rather than a flat figure — see reachPerPoint.
+ * 30 positions is a small step at #5 and nothing at all at #1508, which is why
+ * GATE: Jieitai could never reach matches that were plainly right. */
 const AFFINITY_REACH = 30;
+/* How far a candidate may come forward scales with where the anchor sits, and
+ * is capped.
+ *
+ * Both halves are load-bearing, and each was arrived at by breaking the other.
+ * A flat 30 positions under-reaches deep in the catalogue: GATE's isekai and
+ * military matches sit ~195 places away and could never be picked, so it
+ * recommended Slayers. Measuring distance as a *ratio* instead — the obvious
+ * fix, and tried first — over-reaches at the same end: Fullmetal Alchemist:
+ * Brotherhood began recommending Arslan Senki (#1594) and Grancrest Senki
+ * (#3559), which is the one bug this file warns about twice.
+ *
+ * So the unit stays positions and the budget moves. At #5 it is 30, so the top
+ * of the catalogue behaves exactly as it did. At #1508 it is 60, enough for
+ * Drifters. The cap is what stops a deep anchor leaping thousands of places.
+ *
+ * 60 is the mildest cap that works, not a preference: at 50 GATE still leads
+ * with Slayers, at 60 it leads with Drifters, and every value above 60 costs
+ * more anchors without gaining another. */
+const REACH_FRACTION = 0.30;
+const REACH_CAP = 60;
 const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 
 /* How rare a theme must be before it counts as a genre — a *share* of the
@@ -37,7 +61,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 33;
+const BUILD = 34;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -774,6 +798,12 @@ function collectTiers(source, direction, exclude) {
 
   promoteSignatures(buckets, distanceOf, total);
 
+  // Between AFFINITY_REACH and REACH_CAP, proportional to where the anchor
+  // sits. A show at #5 gets the old flat 30; one at #1508 gets 60.
+  const reachPerPoint = Math.max(
+    AFFINITY_REACH, Math.min(REACH_CAP, REACH_FRACTION * sourcePosition)
+  );
+
   const preferLocally = (bucket) => {
     const remaining = bucket.slice();
     const out = [];
@@ -792,7 +822,7 @@ function collectTiers(source, direction, exclude) {
         // A better match may sit further away, in proportion to how much
         // better it is — but measured in ranking positions, so it can never
         // come from the far end of the list.
-        const earned = AFFINITY_REACH * (candidate.affinity - nearest.affinity);
+        const earned = reachPerPoint * (candidate.affinity - nearest.affinity);
         if (distanceOf(candidate) - nearestDistance <= earned) {
           pick = i;
           bestAffinity = candidate.affinity;
