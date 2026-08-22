@@ -91,3 +91,17 @@ await walk('Hyouge Mono','up');
 await walk('Kono Subarashii Sekai ni Shukufuku wo!','up',10);
 await walk('Mushoku Tensei','up',10);
 await walk('Re:Zero kara Hajimeru Isekai Seikatsu','up',10);
+
+/* Added for the signature-theme *ordering* work. The promotion rule above only
+ * fires when the top tier is sparse and distant, so these are the opposite
+ * shape: tiers that are dense and close, where promotion is a no-op by design
+ * and ordering is the only thing that can help.
+ *
+ *   GATE has 31 shows sharing all three of its genres within 100 places. Its
+ *   isekai and military matches -- Drifters, which shares both, plus Overlord,
+ *   Tate no Yuusha and Youjo Senki -- sit 195 to 251 places away, so proximity
+ *   hands the slot to Slayers at 37 with no shared theme at all.
+ *   Overlord is the anchor that surfaced the One Piece re-broadcast.
+ */
+await walk('Gate: Jieitai','up',10);
+await walk('Overlord','up',10);

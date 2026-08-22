@@ -45,7 +45,7 @@ wasted a session's worth of confusion once already.
 ```bash
 npm run serve     # python -m http.server 8777
 npm test          # 167 checks, jsdom against the real app.js and anime.json
-npm run walks     # prints recommendation chains for 17 known anchors
+npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
 
@@ -667,6 +667,50 @@ but never corrupts the existing catalogue.
 case that motivated it — see "A rare theme is worth a genre" above. Konosuba
 now opens on Kage no Jitsuryokusha and Mushoku Tensei. **Two things are left
 open, and neither is a reason to reopen the whole question.**
+
+**The dense-tier half is still open, and one fix for it has been tried and
+reverted.** Promotion only fires when the top tier is sparse and distant,
+because that is the only time the frontier deletes the tier below. GATE:
+Jieitai is the other shape — 31 shows share all three of its genres within 100
+places, so nothing is promoted and proximity decides. Its first result *is* an
+isekai (Tsuki ga Michibiku, 27 places up), but its second is Slayers at 37
+with no shared theme, while Drifters — which shares Isekai *and* Military —
+sits 195 away and loses on distance.
+
+**Feeding signature themes into `affinity` does not fix this. Measured, not
+guessed.** The idea is sound on paper: `preferLocally` already lets a better
+match come forward `AFFINITY_REACH` positions per point, so a bonus per shared
+signature theme should pull Drifters past Slayers. Three values were tried
+against the 19 known anchors:
+
+| Bonus | GATE fixed | Backtracks (18 at baseline) |
+| --- | --- | --- |
+| +1 | no | 20 |
+| +2 | yes | 28 |
+| +3 | yes | 29 |
+
+**The value that fixes GATE is the value that breaks everything else, and the
+two cannot be separated because the distances are the same size.** At +2,
+Re:Zero shares Time Travel and Psychological with Steins;Gate, earning 120
+positions of reach — enough to pull Steins;Gate (#5) to the second slot, which
+drags the high-water mark to the very top of the rankings and defers
+Evangelion, Madoka, Houseki no Kuni, Tian Guan Cifu, Berserk and Guimi Zhi Zhu
+into the backtrack tail. Re:Zero's clean run of eight became a run of three. At
++3 the Arslan Senki bug returns outright: walking down from Berserk, Arslan
+(#1594) leads over Wolf's Rain (#1204).
+
+GATE's desired jump is about 158 positions. Berserk's forbidden one is about
+138. No threshold divides them, so **this mechanism cannot tell them apart** —
+which is the finding, and the reason not to retry it with a cleverer constant.
+
+**What is left to try, and it is the riskiest edit in the file.** In both
+failures the damage is not the reorder, it is that a jumped-forward candidate
+*advances the frontier* and monotonicity then deletes everything behind it. A
+candidate that comes forward on affinity could be made not to move the
+high-water mark, so Steins;Gate could lead Re:Zero's chain without costing it
+Evangelion. That is a change to the monotonicity rule itself — rule 3 of the
+three that compete — so capture a baseline, change only that, and read all 19
+anchors.
 
 **Mushoku Tensei is unchanged, and that is the rule working.** Its genres are
 Adventure, Drama, Ecchi and Fantasy — four, one of them rare — so nothing above
