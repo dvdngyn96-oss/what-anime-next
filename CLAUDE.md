@@ -11,7 +11,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 ## Current state
 
 **Build 36.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.18 MB. 204 checks pass via `npm test`.
+about 1.18 MB. 207 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,7 +44,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 204 checks, jsdom against the real app.js and anime.json
+npm test          # 207 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -807,6 +807,19 @@ CPU budget, not tidiness, and the client has to chunk a large import.
 `{"include": ["/api/*"]}`. Without it Pages puts a Function in front of every
 request on the site, including `index.html` and the 1.18 MB catalogue. With it,
 everything except `/api/` is served exactly as it was.
+
+### An unrouted method falls through to the SPA
+
+Pages routes a method only if something handles it. Without a HEAD handler,
+`HEAD /api/ratings` answered **200 with `index.html`** — a web page, from a
+JSON endpoint. Harmless for the site, which only ever sends GET, but anything
+monitoring the endpoint would be told it was healthy by a page that knows
+nothing about it. Found by calling the deployed endpoint rather than by reading
+the code, which is the same way most real bugs here get found.
+
+`/api/vote` has one `onRequest` that dispatches, rather than an `onRequestPost`
+plus a catch-all: exporting both leaves it ambiguous which Pages prefers, and
+that is not worth depending on.
 
 ### It has to degrade to today's site
 

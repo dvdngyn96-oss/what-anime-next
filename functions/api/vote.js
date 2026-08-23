@@ -25,7 +25,21 @@ function column(vote) {
   return null;
 }
 
-export async function onRequestPost({ request, env }) {
+/* One entry point that dispatches, rather than a method-specific export plus a
+ * catch-all. Exporting both leaves it ambiguous which Pages will prefer, and
+ * the answer to that is not worth depending on.
+ *
+ * The catch-all earns its place: Pages routes a method only if something
+ * handles it, so an unrouted GET here would fall through to the static handler
+ * and answer 200 with the SPA's index.html. A JSON endpoint replying with a
+ * web page is the kind of thing that reads as healthy to a monitor and
+ * baffling to a person. */
+export function onRequest(context) {
+  if (context.request.method === 'POST') return record(context);
+  return bad('This endpoint takes POST.', 405);
+}
+
+async function record({ request, env }) {
   if (!env.VOTES) return bad('Voting is not available right now.', 503);
 
   let body;

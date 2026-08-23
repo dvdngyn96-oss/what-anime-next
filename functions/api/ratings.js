@@ -52,6 +52,16 @@ export async function onRequestGet({ request, env }) {
   return json({ ratings, floor: VOTE_FLOOR, recommendAt: RECOMMEND_AT }, 200, cacheFor(300));
 }
 
+/* Pages routes a method only if a handler is exported for it, so without this
+ * a HEAD request falls through to the static handler and answers with the
+ * SPA's index.html — HTML, from a JSON endpoint. Nothing on the page sends
+ * HEAD, but anything monitoring the endpoint would, and would be told it was
+ * healthy by a page that knows nothing about it. */
+export async function onRequestHead(context) {
+  const response = await onRequestGet(context);
+  return new Response(null, { status: response.status, headers: response.headers });
+}
+
 const cacheFor = (seconds) => ({
   'cache-control': `public, max-age=${seconds}, s-maxage=${seconds}`,
 });

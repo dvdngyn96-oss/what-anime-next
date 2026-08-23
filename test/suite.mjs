@@ -1714,6 +1714,23 @@ console.log('\n--- vote backend ---');
   /* Functions are scoped to /api/* so the rest of the site is served exactly
      as it was -- static files, no runtime in front of them. Without this,
      Pages puts a Function in front of every request on the site. */
+  /* Pages routes a method only if something handles it, so an unrouted method
+     falls through to the static handler and answers 200 with the SPA's
+     index.html. A JSON endpoint replying with a web page reads as healthy to a
+     monitor and baffling to a person. Found by calling the deployed endpoint,
+     not by reading the code. */
+  check('a HEAD request is answered by the endpoint, not the SPA',
+    /export async function onRequestHead/.test(ratings));
+
+  const vote = readFileSync(`${ROOT}/functions/api/vote.js`, 'utf8');
+  check('and the vote endpoint refuses a wrong method rather than falling through',
+    /export function onRequest\(/.test(vote) && /takes POST/.test(vote) && /405/.test(vote));
+  /* One entry point that dispatches, not a method-specific export plus a
+     catch-all: exporting both leaves it ambiguous which Pages prefers, and
+     that is not worth depending on. */
+  check('and it has one entry point rather than two that might disagree',
+    !/export async function onRequestPost/.test(vote));
+
   const routes = JSON.parse(readFileSync(`${ROOT}/_routes.json`, 'utf8'));
   check('Functions run only for /api/, leaving the site static',
     Array.isArray(routes.include) && routes.include.length === 1
