@@ -19,3 +19,6 @@ anime.json.tmp
 # scratch: the full_story sweep, not part of the site
 full-scan.mjs
 full-scan.jsonl
+
+# wrangler local state, from testing the vote endpoints
+.wrangler/

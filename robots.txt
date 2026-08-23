@@ -17,6 +17,12 @@ Disallow: /add-one.mjs
 Disallow: /package.json
 Disallow: /package-lock.json
 Disallow: /make-og-image.html
+Disallow: /schema.sql
+
+# The vote endpoints. Nothing here is a document — they answer JSON to the
+# page's own fetches — so there is nothing for a crawler to index, and a
+# crawler walking them would spend the daily request allowance on nobody.
+Disallow: /api/
 
 # app.js, styles.css and anime.json are deliberately NOT disallowed. The page
 # renders nothing without them, so blocking them would leave a crawler holding

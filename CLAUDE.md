@@ -11,7 +11,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 ## Current state
 
 **Build 36.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.18 MB. 180 checks pass via `npm test`.
+about 1.18 MB. 204 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,7 +44,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 180 checks, jsdom against the real app.js and anime.json
+npm test          # 204 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -744,6 +744,93 @@ still, and at that point the page has nothing else to show.
 rejection, which is the exact shape the original bug took. Run against build 30,
 8 of the 11 checks fail.
 
+## The vote backend
+
+**Built but not wired up.** The endpoints, the schema and the tests exist;
+nothing in `app.js` calls them yet and no database is bound, so the site
+behaves exactly as it did. That is deliberate — it is the skeleton, and it can
+sit there harmlessly until the card work is done.
+
+**Two manual steps, and neither can be done from the repo.** Until they happen
+`/api/ratings` answers `{"ratings":{},"unavailable":true}` and `/api/vote`
+refuses with 503, which is the designed resting state rather than a fault:
+
+1. Create the database — `npx wrangler d1 create wanx-votes`, or the D1 page in
+   the Cloudflare dashboard.
+2. Bind it to the Pages project as **`VOTES`**: Workers & Pages → the project →
+   Settings → Bindings → D1 database binding. The name in the code is
+   `env.VOTES`, so the binding must be spelled exactly that.
+
+Then apply the schema once:
+`npx wrangler d1 execute wanx-votes --remote --file=./schema.sql`
+
+### Two tables, and the split is the whole cost story
+
+`votes` holds one row per person per title and is touched only when somebody
+votes. `ratings` holds one row per title and is what every card view reads.
+
+**Computing a percentage by scanning `votes` at read time would cost one row
+read per vote, per card view.** A title with 5,000 votes would cost 5,000 reads
+every time it appeared; D1's free allowance is 5 million reads a day, so a few
+hundred visitors would exhaust it. Reading one pre-aggregated row costs 1. That
+single choice is the difference between free forever and a bill, and a check
+asserts the read path never says `FROM votes`.
+
+The response is cached at the edge for five minutes on top of that, so most
+card views never reach the database at all. Ratings move slowly — a title needs
+30 votes before it shows a number — so a stale figure is harmless.
+
+### The raw signal is stored, never the verdict
+
+A thumb gives yes/no; an import gives a score of 1-10. Both are kept as they
+arrived. `RECOMMEND_AT` (7) is applied at *read* time, so "what counts as a
+recommendation" can be retuned with a one-line change — where a stored verdict
+could only be retuned by asking everyone again.
+
+The aggregate is a **histogram** (`s1`..`s10`, `up`, `down`) rather than a
+yes/total pair for the same reason: any threshold is computable from that one
+row, so moving to 8 needs no migration. The read costs the same either way.
+
+Thumbs and imported scores **pool** into one figure, because far more titles
+clear the 30-vote floor that way and that is the entire point of importing.
+They stay separate in the row, so splitting them later needs no new data.
+
+### What the free tier actually constrains
+
+100,000 requests a day, and **10ms of CPU per request**. A single indexed query
+is nowhere near it; inserting several hundred rows from an import in one go
+could be. Hence `MAX_BATCH` (100) and `MAX_IDS` (40) — those caps are about the
+CPU budget, not tidiness, and the client has to chunk a large import.
+
+### `_routes.json` keeps the rest of the site static
+
+`{"include": ["/api/*"]}`. Without it Pages puts a Function in front of every
+request on the site, including `index.html` and the 1.18 MB catalogue. With it,
+everything except `/api/` is served exactly as it was.
+
+### It has to degrade to today's site
+
+Same rule as a failed catalogue fetch, one level down: if the database is
+missing or falls over, `/api/ratings` returns 200 with `unavailable: true` and
+the page carries on without ratings. The site worked without them yesterday and
+must keep working without them today. A check asserts that path exists.
+
+### Tested against real SQLite, not mocked
+
+D1 is SQLite and Node ships SQLite, so `npm test` applies `schema.sql` verbatim
+to an in-memory database and runs the exact upserts the endpoint issues — no
+new dependency, `node:sqlite` is built in. That covers the case worth covering:
+**changing your vote has to move the count out of the old bucket as well as
+into the new one.** Missing that decrement is the classic aggregate bug, where
+the total drifts upward and never comes back, and it is invisible until the
+numbers are already wrong. A check compares the aggregate against a scan of the
+raw votes and fails if they disagree.
+
+Compiled with `npx wrangler pages functions build` and exercised with
+`wrangler pages dev` before shipping, which is the same toolchain Cloudflare
+runs — worth doing, because a Functions build failure fails the whole
+deployment, and that would take the site down rather than just the endpoints.
+
 ## Maintenance
 
 | Task | Cadence | Time |
@@ -939,6 +1026,17 @@ import. Still the only part of the original idea needing a backend.
   no accounts. Ratings need votes, not identities, and holding strangers'
   credentials is a responsibility this project should not take on. Cloudflare
   already hosts the site, so Pages Functions plus D1 keeps it on one platform.
+  **The backend is built** — see "The vote backend" above. What is left is the
+  database binding (two dashboard steps), the vote control on the card, and the
+  rating line. Both card pieces are under the constant-height rule, so they
+  need reserved space like `.synopsis` has, or the buttons will move when the
+  number arrives.
+  **Two things to be honest about on the page.** This is the first time
+  anything leaves the visitor's machine — today the whole privacy story is
+  "nothing is uploaded, no cookies, nothing to consent to", and that ends here.
+  And it cannot be made abuse-proof without accounts: clearing local storage
+  earns a fresh id. Rate limiting raises the cost, it does not close the door,
+  so the numbers should read as soft rather than as survey data.
 - **Stage 3: imported lists feeding the ratings**, behind a clear opt-in. This
   is the part that makes the numbers real: roughly 177,000 votes are needed for
   meaningful per-title percentages, which is why list import matters — a few

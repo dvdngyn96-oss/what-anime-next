@@ -1640,5 +1640,171 @@ console.log('\n--- REAL catalogue: length mismatch ---');
     ippo.tier === ippo.top, `tier ${ippo.tier} of ${ippo.top}`);
 }
 
+/* ---------- the vote backend ---------- */
+
+console.log('\n--- vote backend ---');
+{
+  const shared = await import('../functions/api/_shared.js');
+  const { tally, animeId, voterId, RECOMMEND_AT, VOTE_FLOOR, MAX_IDS, MAX_BATCH } = shared;
+
+  /* The threshold is applied here, at read time, rather than stored. That is
+     what makes it retunable: moving from 7 to 8 is a one-line change and no
+     data is lost, where a stored verdict would mean asking everyone again. */
+  check('a score of 7 counts as a recommendation', RECOMMEND_AT === 7, `${RECOMMEND_AT}`);
+  const spread = tally({ s5: 1, s6: 1, s7: 1, s8: 1, s9: 1, s10: 1, up: 0, down: 0 });
+  check('scores at or above the threshold count, below it do not',
+    spread.yes === 4 && spread.total === 6, JSON.stringify(spread));
+
+  /* Thumbs and imported scores pool into one figure -- the point of importing
+     is that far more titles clear the floor -- while staying separate in the
+     row underneath, so they can be split again without new data. */
+  const pooled = tally({ s8: 2, s3: 1, up: 3, down: 1 });
+  check('thumbs and imported scores pool into one figure',
+    pooled.yes === 5 && pooled.total === 7, JSON.stringify(pooled));
+  check('a title nobody has voted on tallies to nothing',
+    tally(null).total === 0 && tally({}).total === 0);
+
+  /* A percentage from a handful of votes looks like data and is not. */
+  check('a floor is set before any percentage is shown', VOTE_FLOOR >= 30, `${VOTE_FLOOR}`);
+
+  // Ids arrive from the network, so anything that is not a plain positive
+  // integer has to be refused rather than reaching a query.
+  check('sane anime ids are accepted', animeId(5114) === 5114 && animeId('21') === 21);
+  const junk = [0, -1, 1.5, 1e12, 'abc', '', null, undefined, {}, '1; DROP TABLE votes'];
+  check('everything else is refused', junk.every((v) => animeId(v) === null),
+    junk.filter((v) => animeId(v) !== null).join(', '));
+
+  // The voter id is opaque -- a random string the browser invented -- so the
+  // only question is whether its shape could become a storage problem.
+  check('a plausible voter id is accepted', voterId('a'.repeat(24)) !== null);
+  const badVoters = ['short', 'x'.repeat(200), '', null, 42, 'has spaces', "quote'd"];
+  check('a malformed or oversized voter id is refused',
+    badVoters.every((v) => voterId(v) === null),
+    badVoters.filter((v) => voterId(v) !== null).join(', '));
+
+  // Both caps exist for the free tier's 10ms CPU budget, not for tidiness.
+  check('a single request cannot ask about the whole catalogue',
+    MAX_IDS > 0 && MAX_IDS <= 100, `${MAX_IDS}`);
+  check('a bulk import is capped so the client has to chunk',
+    MAX_BATCH > 0 && MAX_BATCH <= 500, `${MAX_BATCH}`);
+}
+
+{
+  /* The read path must never scan the votes table. A title with 5,000 votes
+     would cost 5,000 row reads on every card view, and the free allowance is
+     five million a day -- a few hundred visitors would exhaust it. The
+     pre-aggregated table is what keeps that at one row. */
+  const ratings = readFileSync(`${ROOT}/functions/api/ratings.js`, 'utf8');
+  check('the read path selects from the aggregate, not from votes',
+    /FROM ratings/.test(ratings) && !/FROM votes/.test(ratings));
+  check('and it is cached at the edge so most views never reach the database',
+    /s-maxage=/.test(ratings) && /cache-control/.test(ratings));
+  /* Same rule as a failed catalogue fetch: the site worked without ratings
+     yesterday and has to keep working without them today. */
+  check('a missing or broken database degrades instead of erroring',
+    /unavailable: true/.test(ratings) && /!env\.VOTES/.test(ratings));
+
+  const schema = readFileSync(`${ROOT}/schema.sql`, 'utf8');
+  check('the schema keeps the raw signal as well as the aggregate',
+    /CREATE TABLE IF NOT EXISTS votes/.test(schema)
+    && /CREATE TABLE IF NOT EXISTS ratings/.test(schema));
+  check('and the aggregate is a histogram, so the threshold can move later',
+    /\bs7\b/.test(schema) && /\bs10\b/.test(schema));
+
+  /* Functions are scoped to /api/* so the rest of the site is served exactly
+     as it was -- static files, no runtime in front of them. Without this,
+     Pages puts a Function in front of every request on the site. */
+  const routes = JSON.parse(readFileSync(`${ROOT}/_routes.json`, 'utf8'));
+  check('Functions run only for /api/, leaving the site static',
+    Array.isArray(routes.include) && routes.include.length === 1
+    && routes.include[0] === '/api/*', JSON.stringify(routes));
+
+  const robots = readFileSync(`${ROOT}/robots.txt`, 'utf8');
+  check('crawlers are kept off the endpoints and the schema',
+    /Disallow: \/api\//.test(robots) && /Disallow: \/schema\.sql/.test(robots));
+}
+
+/* ---------- the vote SQL, run for real ---------- */
+
+console.log('\n--- vote SQL ---');
+{
+  /* D1 is SQLite, and Node ships SQLite, so the schema and the exact
+     statements from the vote endpoint can be executed here rather than
+     eyeballed. Nothing is mocked: this is schema.sql applied verbatim and the
+     same upserts the endpoint issues. No new dependency -- node:sqlite is
+     built in. */
+  const { DatabaseSync } = await import('node:sqlite');
+  const { tally } = await import('../functions/api/_shared.js');
+  const db = new DatabaseSync(':memory:');
+  db.exec(readFileSync(`${ROOT}/schema.sql`, 'utf8'));
+  check('schema.sql applies cleanly to a real SQLite database', true);
+
+  const now = 1700000000;
+  const castVote = (voter, anime, { score = null, liked = null }) => {
+    const to = liked === 1 ? 'up' : liked === 0 ? 'down' : `s${score}`;
+    const was = db.prepare('SELECT score, liked FROM votes WHERE voter = ? AND anime = ?').get(voter, anime);
+    const from = was
+      ? (was.liked === 1 ? 'up' : was.liked === 0 ? 'down' : `s${was.score}`)
+      : null;
+    if (from === to) return false;
+    db.prepare(`INSERT INTO votes (voter, anime, score, liked, source, updated)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(voter, anime) DO UPDATE SET
+                  score = excluded.score, liked = excluded.liked,
+                  source = excluded.source, updated = excluded.updated`)
+      .run(voter, anime, score, liked, score === null ? 'thumb' : 'import', now);
+    if (from) {
+      db.prepare(`UPDATE ratings SET ${from} = MAX(${from} - 1, 0), updated = ? WHERE anime = ?`).run(now, anime);
+    }
+    db.prepare(`INSERT INTO ratings (anime, ${to}, updated) VALUES (?, 1, ?)
+                ON CONFLICT(anime) DO UPDATE SET ${to} = ${to} + 1, updated = excluded.updated`)
+      .run(anime, now);
+    return true;
+  };
+
+  const readBack = (anime) => tally(db.prepare('SELECT * FROM ratings WHERE anime = ?').get(anime));
+
+  // three imported scores and two thumbs on the same title
+  castVote('voter-aaaaaaaaaaaaaaa', 5114, { score: 9 });
+  castVote('voter-bbbbbbbbbbbbbbb', 5114, { score: 8 });
+  castVote('voter-ccccccccccccccc', 5114, { score: 4 });
+  castVote('voter-ddddddddddddddd', 5114, { liked: 1 });
+  castVote('voter-eeeeeeeeeeeeeee', 5114, { liked: 0 });
+  check('votes and thumbs aggregate into one tally',
+    JSON.stringify(readBack(5114)) === JSON.stringify({ yes: 3, total: 5 }),
+    JSON.stringify(readBack(5114)));
+
+  /* The same person voting twice must replace, never add -- otherwise anyone
+     could inflate a title by clicking repeatedly. */
+  const again = castVote('voter-aaaaaaaaaaaaaaa', 5114, { score: 9 });
+  check('voting the same way twice changes nothing', again === false
+    && JSON.stringify(readBack(5114)) === JSON.stringify({ yes: 3, total: 5 }),
+    JSON.stringify(readBack(5114)));
+
+  /* Changing your mind has to move the count out of the old bucket as well as
+     into the new one. Missing the decrement is the classic aggregate bug: the
+     total drifts upward and never comes back. */
+  castVote('voter-aaaaaaaaaaaaaaa', 5114, { score: 3 });
+  check('changing a vote moves it rather than double-counting',
+    JSON.stringify(readBack(5114)) === JSON.stringify({ yes: 2, total: 5 }),
+    JSON.stringify(readBack(5114)));
+
+  const rows = db.prepare('SELECT COUNT(*) AS n FROM votes WHERE anime = ?').get(5114);
+  check('and one person still holds exactly one row', rows.n === 5, `${rows.n}`);
+
+  /* The aggregate must agree with the rows behind it, which is the whole
+     reason the aggregate is safe to read instead of the votes table. */
+  const raw = db.prepare('SELECT score, liked FROM votes WHERE anime = ?').all(5114);
+  const fromRaw = raw.reduce((acc, r) => {
+    const yes = r.liked === 1 || (r.score !== null && r.score >= 7);
+    return { yes: acc.yes + (yes ? 1 : 0), total: acc.total + 1 };
+  }, { yes: 0, total: 0 });
+  check('the aggregate agrees with a scan of the raw votes',
+    JSON.stringify(fromRaw) === JSON.stringify(readBack(5114)),
+    `raw ${JSON.stringify(fromRaw)} vs aggregate ${JSON.stringify(readBack(5114))}`);
+
+  db.close();
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);
