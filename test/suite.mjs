@@ -44,10 +44,22 @@ const ANILIST_HIT = {
   }] } },
 };
 
-function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null } = {}) {
+function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null, ratings = null, onVote = null } = {}) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', url, pretendToBeVisual: true });
   dom.window.scrollTo = () => {};
   dom.window.fetch = (target, options) => {
+    const href = String(target);
+    /* The vote endpoints. Absent unless a test asks for them, so every other
+       test exercises the path where ratings are simply unavailable -- which is
+       the state the live site is in for any title nobody has rated. */
+    if (href.includes('api/ratings')) {
+      if (!ratings) return Promise.reject(new Error('offline'));
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(ratings) });
+    }
+    if (href.includes('api/vote')) {
+      if (onVote) onVote(JSON.parse(options?.body || '{}'));
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ recorded: 1 }) });
+    }
     if (String(target).includes('anilist')) {
       // The per-title lookup (synopsis + trailer) and the search share a host,
       // so tell them apart by which query went out.
@@ -1046,13 +1058,16 @@ console.log('\n--- the card keeps its shape ---');
       watch: !!body.querySelector('.watch'),
       trailer: !!body.querySelector('[data-action="trailer"]'),
       synopsis: !!body.querySelector('.synopsis'),
+      // The recommend row arrives from the network like the synopsis does, and
+      // has three possible states plus a failure. It belongs to this guard.
+      recommend: !!body.querySelector('.recommend'),
     };
   };
 
   const rich = await shapeOf({ bn: 'a/b.jpg', tm: 1234, wp: { u: [0] } }, 'rich');
   const bare = await shapeOf({}, 'bare');
 
-  for (const part of ['banner', 'watch', 'trailer', 'synopsis']) {
+  for (const part of ['banner', 'watch', 'trailer', 'synopsis', 'recommend']) {
     check(`the ${part} block is present with artwork and data`, rich[part], JSON.stringify(rich));
     check(`the ${part} block is present without them`, bare[part], JSON.stringify(bare));
   }
@@ -1821,6 +1836,116 @@ console.log('\n--- vote SQL ---');
     `raw ${JSON.stringify(fromRaw)} vs aggregate ${JSON.stringify(readBack(5114))}`);
 
   db.close();
+}
+
+/* ---------- the recommend row ---------- */
+
+console.log('\n--- the recommend row ---');
+{
+  const real = JSON.parse(readFileSync(`${ROOT}/anime.json`, 'utf8'));
+  const heroId = () => Number(dom.window.eval('(() => { const s = window.__peek ? window.__peek() : null; return s ? s.list[s.index].id : 0; })()'));
+
+  /* Three states for one line of text, all arriving after the card is on
+     screen: nothing, a bare count, and a percentage. Any of them changing the
+     row's height would move every button under it. */
+  let dom = makeDom(real, {
+    ratings: { ratings: {}, floor: 30, recommendAt: 7 },
+  });
+  await sleep(400);
+  let body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
+  await sleep(300);
+  check('the recommend row is always rendered', !!body?.querySelector('.recommend'));
+  check('and it sits inside the card, not below it with the notes',
+    !!body?.querySelector('.hero .recommend'));
+  check('with nothing to say when nobody has rated the title',
+    body?.querySelector('.recommend-figure')?.textContent === '',
+    JSON.stringify(body?.querySelector('.recommend-figure')?.textContent));
+  check('and the ask is there either way',
+    body?.querySelectorAll('.vote-btn').length === 2);
+
+  /* Below the floor it reports the count rather than a percentage. "100% would
+     recommend" off one vote looks like data and is not. */
+  const id = Number(body.querySelector('.vote-btn')?.dataset.id);
+  dom = makeDom(real, { ratings: { ratings: { [id]: { yes: 2, total: 3 } }, floor: 30, recommendAt: 7 } });
+  await sleep(400);
+  body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
+  await sleep(300);
+  check('below the floor it reports a count, never a percentage',
+    /3 ratings so far/.test(body?.textContent || '')
+    && !/%/.test(body?.querySelector('.recommend-figure')?.textContent || ''),
+    body?.querySelector('.recommend-figure')?.textContent);
+
+  dom = makeDom(real, { ratings: { ratings: { [id]: { yes: 121, total: 147 } }, floor: 30, recommendAt: 7 } });
+  await sleep(400);
+  body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
+  await sleep(300);
+  check('at the floor it shows the percentage',
+    /82% would recommend/.test(body?.querySelector('.recommend-figure')?.textContent || ''),
+    body?.querySelector('.recommend-figure')?.textContent);
+
+  /* Same rule as a failed synopsis fetch and a failed catalogue fetch: the
+     site worked without ratings before they existed and has to keep working
+     without them. The row stays, holding its height, and says nothing. */
+  dom = makeDom(real, { ratings: null });        // the stub rejects
+  await sleep(400);
+  body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
+  await sleep(300);
+  check('a failed ratings request leaves the row in place and quiet',
+    !!body?.querySelector('.recommend')
+    && body?.querySelector('.recommend-figure')?.textContent === '');
+  check('and the buttons still work when ratings are unavailable',
+    body?.querySelectorAll('.vote-btn').length === 2);
+}
+
+{
+  const real = JSON.parse(readFileSync(`${ROOT}/anime.json`, 'utf8'));
+  const sent = [];
+  const dom = makeDom(real, {
+    ratings: { ratings: {}, floor: 30, recommendAt: 7 },
+    onVote: (payload) => sent.push(payload),
+  });
+  await sleep(400);
+  const body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
+  await sleep(300);
+  const w = dom.window;
+
+  const yes = body.querySelector('.vote-btn[data-vote="up"]');
+  yes.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+
+  check('voting marks the button you chose',
+    yes.getAttribute('aria-pressed') === 'true'
+    && body.querySelector('.vote-btn[data-vote="down"]').getAttribute('aria-pressed') === 'false');
+  check('and sends it', sent.length === 1 && sent[0].liked === true, JSON.stringify(sent));
+  /* Anonymous by construction: a random id, no account, nothing that leads
+     back to a person. */
+  check('with an anonymous id and nothing else',
+    /^[A-Za-z0-9_-]{16,64}$/.test(sent[0]?.voter || '')
+    && Object.keys(sent[0] || {}).sort().join(',') === 'anime,liked,voter',
+    Object.keys(sent[0] || {}).join(','));
+
+  /* The figure moves with your own vote, so the click feels done rather than
+     pending on a request nobody should wait for. */
+  check('and the figure counts your own vote immediately',
+    /1 rating so far/.test(body.querySelector('.recommend-figure')?.textContent || ''),
+    body.querySelector('.recommend-figure')?.textContent);
+
+  // Clicking the same answer again must not send a second time.
+  yes.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+  check('voting the same way twice sends nothing further', sent.length === 1, `${sent.length}`);
+
+  // Changing your mind moves it rather than adding.
+  body.querySelector('.vote-btn[data-vote="down"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(150);
+  check('changing your mind sends the new answer', sent.length === 2 && sent[1].liked === false);
+  check('and the figure does not gain a second vote',
+    /1 rating so far/.test(body.querySelector('.recommend-figure')?.textContent || ''),
+    body.querySelector('.recommend-figure')?.textContent);
+
+  check('the vote is remembered in local storage',
+    (w.localStorage.getItem('wanx:myvotes:v1') || '').includes('false'),
+    w.localStorage.getItem('wanx:myvotes:v1'));
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);

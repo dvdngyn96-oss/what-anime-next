@@ -718,6 +718,79 @@ a { color: inherit; }
   font-size: 13px;
 }
 
+/* The recommend row: what other people said, and the ask.
+ *
+ * A fixed height, not a minimum. The figure arrives from /api/ratings after
+ * the card is already on screen, and it has four possible states — nothing,
+ * "3 ratings so far", "82% would recommend · 147 ratings", and nothing again
+ * if the request fails. Any of those changing the row's height would move
+ * every button under it, which is the jitter the whole card is built to avoid.
+ *
+ * One row holding both halves rather than two rows, for the same reason: one
+ * reserved block cannot disagree with itself. */
+.recommend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: nowrap;
+  height: 30px;
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+
+.recommend-figure {
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recommend-ask {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.recommend-label {
+  color: var(--fg-faint);
+}
+
+.vote-btn {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.vote-btn:hover { background: var(--hover); }
+
+/* Your own answer, once given. Filled rather than merely outlined, so it reads
+   as a state you are in rather than a button you could press. */
+.vote-on {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+}
+
+.vote-on:hover { background: var(--fg); }
+
+/* At 400px and below the label is the first thing to go: "Recommend it?" is
+   implied by two buttons saying Yes and No, and the figure beside them is the
+   part carrying information. */
+@media (max-width: 400px) {
+  .recommend { font-size: 12px; }
+  .recommend-label { display: none; }
+  .vote-btn { padding: 6px 10px; }
+}
+
 .watch-label {
   color: var(--fg-faint);
   text-transform: uppercase;

@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 36.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.18 MB. 207 checks pass via `npm test`.
+**Build 37.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.18 MB. 225 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,7 +44,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 207 checks, jsdom against the real app.js and anime.json
+npm test          # 225 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -744,6 +744,47 @@ still, and at that point the page has nothing else to show.
 rejection, which is the exact shape the original bug took. Run against build 30,
 8 of the 11 checks fail.
 
+### The recommend row
+
+Build 37, and it is the visible half of stage two: what other people said, and
+the ask, in one row between the streaming line and the buttons.
+
+**One row holding both, not two rows.** The figure arrives from `/api/ratings`
+after the card is already on screen and has four possible states — nothing, a
+count, a percentage, and nothing again if the request fails. Two separate
+blocks could each appear and shove the buttons; one reserved block cannot
+disagree with itself. Fixed `height: 30px`, not a minimum, the same trick as
+`.synopsis`. It is in the card-shape check alongside the banner, the streaming
+row, the trailer slot and the synopsis.
+
+**Inside the card, unlike the explanatory notes.** Those sit below `.hero`
+because they are conditional and appear exactly when the result changed. This
+one is unconditional, so it can live where it is relevant.
+
+**The figure is quiet until it has something to say.** At zero votes it says
+nothing at all — "no ratings yet" on every card of an empty database is noise,
+and the ask sitting beside it already implies it. Between 1 and the floor it
+reports the count ("3 ratings so far"), never a percentage. At or above the
+floor it says "82% would recommend · 147 ratings". The floor comes from the
+server so it can move without a deploy of the page.
+
+**Voting is optimistic.** The buttons and the figure update on click and the
+request goes out behind them: a rating is not worth making anyone wait for, and
+losing one to a dropped connection matters less than a card that feels stuck.
+The answer is kept in `wanx:myvotes:v1` so the buttons still show it on the way
+back, and so clicking the same answer twice costs no request at all.
+
+**Ratings are fetched for the next twenty as well as the one on screen.**
+"Show me another" walks the list, so one request makes every later card instant
+at no extra cost — and the edge cache means most of those requests never reach
+the database.
+
+**A failed request is never cached**, the same rule as a failed synopsis fetch
+and a failed catalogue fetch. The row keeps its height and stays quiet, and the
+next card retries rather than inheriting the failure. Checks cover all of it,
+including that the buttons still work when ratings are unavailable — which is
+the state every title is in until somebody rates it.
+
 ## The vote backend
 
 **Built but not wired up.** The endpoints, the schema and the tests exist;
@@ -1039,11 +1080,11 @@ import. Still the only part of the original idea needing a backend.
   no accounts. Ratings need votes, not identities, and holding strangers'
   credentials is a responsibility this project should not take on. Cloudflare
   already hosts the site, so Pages Functions plus D1 keeps it on one platform.
-  **The backend is built** — see "The vote backend" above. What is left is the
-  database binding (two dashboard steps), the vote control on the card, and the
-  rating line. Both card pieces are under the constant-height rule, so they
-  need reserved space like `.synopsis` has, or the buttons will move when the
-  number arrives.
+  **Shipped in builds 36 and 37** — see "The vote backend" and "The recommend
+  row" above. The database is bound, the endpoints are live and verified
+  against real D1, and the card asks and reports. What is left is stage three:
+  the import feeding ratings, which is what actually produces enough votes to
+  clear the floor.
   **Two things to be honest about on the page.** This is the first time
   anything leaves the visitor's machine — today the whole privacy story is
   "nothing is uploaded, no cookies, nothing to consent to", and that ends here.

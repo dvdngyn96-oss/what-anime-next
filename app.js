@@ -72,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 36;
+const BUILD = 37;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -92,8 +92,59 @@ let signatureThemes = new Set();   // themes rare enough to count as a genre
  * whole feature misleading. Start from the browser's locale, let it be changed,
  * and remember the choice.
  */
+/* Voting. A random id in local storage and nothing else — no account, no
+ * email, no way back to a person. It is enough to stop an honest visitor being
+ * counted twice and stops nobody determined, which is the accepted trade and
+ * the reason the figure is presented as soft rather than as survey data. */
+const VOTER_KEY = 'wanx:voter:v1';
+const MY_VOTES_KEY = 'wanx:myvotes:v1';
+/* Below this many ratings no percentage is shown. "100% would recommend" off a
+ * single vote looks like data and is not. The server sends its own floor; this
+ * is the fallback for when the request never lands. */
+const VOTE_FLOOR = 30;
+
 const REGION_KEY = 'wanx:region';
 const REGIONS = { u: 'US', c: 'CA' };
+
+/** This browser's anonymous voter id, made once and kept. */
+const voterId = (() => {
+  let cached = null;
+  return () => {
+    if (cached) return cached;
+    try {
+      cached = localStorage.getItem(VOTER_KEY);
+      if (!cached || !/^[A-Za-z0-9_-]{16,64}$/.test(cached)) {
+        cached = [...crypto.getRandomValues(new Uint8Array(18))]
+          .map((n) => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'[n % 64])
+          .join('');
+        localStorage.setItem(VOTER_KEY, cached);
+      }
+    } catch {
+      // Private browsing. Vote anyway; it just will not be remembered.
+      cached = cached || 'anonymous000000000000000';
+    }
+    return cached;
+  };
+})();
+
+/** How this browser voted, so the buttons can show it without asking the
+ *  server — and so a second click on the same answer costs no request. */
+let myVotes = (() => {
+  try { return new Map(Object.entries(JSON.parse(localStorage.getItem(MY_VOTES_KEY) || '{}'))); }
+  catch { return new Map(); }
+})();
+
+function rememberVote(id, liked) {
+  myVotes.set(String(id), liked);
+  try { localStorage.setItem(MY_VOTES_KEY, JSON.stringify(Object.fromEntries(myVotes))); }
+  catch { /* private browsing */ }
+}
+
+/* Ratings already fetched this session. Successes only — a failure is never
+ * cached, the same rule as a failed synopsis fetch, so a dropped request does
+ * not leave a card permanently blank. */
+const ratingCache = new Map();
+let ratingFloor = VOTE_FLOOR;
 
 let region = (() => {
   try {
@@ -1193,6 +1244,108 @@ function heroTint(anime) {
  * services regularly. Absent listings say so instead of rendering nothing,
  * since "we don't know" and "not streaming" are different answers.
  */
+/**
+ * Ratings for a batch of titles, from /api/ratings.
+ *
+ * Batched because "show me another" walks the list, so fetching the next
+ * twenty along with the one on screen makes every later card instant at no
+ * extra cost — one request either way. Only ids not already known are asked
+ * for, and a failure is never cached.
+ *
+ * Never throws. The site worked without ratings before this existed and has to
+ * keep working without them: if the request fails, or the database is not
+ * bound, the row simply stays quiet.
+ */
+async function loadRatings(ids) {
+  const wanted = [...new Set(ids.map(Number).filter(Boolean))]
+    .filter((id) => !ratingCache.has(id))
+    .slice(0, 40);
+  if (!wanted.length) return;
+
+  try {
+    const res = await fetch(`api/ratings?ids=${wanted.join(',')}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.unavailable) return;
+    if (Number.isFinite(data.floor)) ratingFloor = data.floor;
+    for (const id of wanted) {
+      ratingCache.set(id, data.ratings?.[id] ?? { yes: 0, total: 0 });
+    }
+  } catch {
+    /* Offline, blocked, or the endpoint is down. Nothing is cached, so the
+     * next card retries rather than inheriting the failure. */
+  }
+}
+
+/** Record a vote, and move the local figure with it so the click feels done. */
+async function castVote(id, liked) {
+  const key = String(id);
+  if (myVotes.get(key) === liked) return;         // same answer; nothing to send
+
+  const was = myVotes.get(key);
+  rememberVote(key, liked);
+
+  // Optimistic: shift the cached tally the way the server is about to.
+  const tally = ratingCache.get(Number(id));
+  if (tally) {
+    if (was === undefined) tally.total += 1;
+    if (was === true) tally.yes -= 1;
+    if (liked) tally.yes += 1;
+  }
+
+  try {
+    await fetch('api/vote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ voter: voterId(), anime: Number(id), liked }),
+    });
+  } catch {
+    /* The vote is remembered locally either way. Losing one to a dropped
+     * request is not worth an error message on a card someone is skimming. */
+  }
+}
+
+/**
+ * The recommend row: what other people said, and the ask.
+ *
+ * One row holding both, always rendered, so it is a single reserved block
+ * rather than two things that can each appear and shove the buttons below
+ * them. Same rule as the badge row and the trailer slot.
+ *
+ * The figure is deliberately quiet until it has something to say. Below the
+ * floor it reports the count rather than a percentage — "100% would recommend"
+ * off one vote looks like data and is not — and at zero it says nothing at
+ * all, because "no ratings yet" on every card in an empty database is noise,
+ * and the ask sitting next to it already implies it.
+ */
+function recommendRow(anime) {
+  const mine = myVotes.get(String(anime.id));
+  return `
+        <div class="recommend">
+          <span class="recommend-figure" id="recommend-figure">${esc(recommendText(anime.id))}</span>
+          <span class="recommend-ask">
+            <span class="recommend-label">Recommend it?</span>
+            <button class="vote-btn${mine === true ? ' vote-on' : ''}" type="button"
+              data-action="vote" data-id="${esc(anime.id)}" data-vote="up"
+              aria-pressed="${mine === true}">Yes</button>
+            <button class="vote-btn${mine === false ? ' vote-on' : ''}" type="button"
+              data-action="vote" data-id="${esc(anime.id)}" data-vote="down"
+              aria-pressed="${mine === false}">No</button>
+          </span>
+        </div>`;
+}
+
+/** What the figure says for one title, given what is known right now. */
+function recommendText(id) {
+  const tally = ratingCache.get(Number(id));
+  if (!tally || !tally.total) return '';
+  if (tally.total < ratingFloor) {
+    return `${tally.total} rating${tally.total === 1 ? '' : 's'} so far`;
+  }
+  return `${Math.round((tally.yes / tally.total) * 100)}% would recommend`
+    + ` · ${tally.total.toLocaleString()} ratings`;
+}
+
 function watchRow(anime) {
   /* 374 entries never matched to TMDB, so there is nothing to look up. Say so
    * rather than omitting the row: dropping it moved every button below it,
@@ -1748,6 +1901,7 @@ function renderResult() {
         </div>
         <p class="synopsis${hero.synopsis ? '' : ' synopsis-pending'}" id="hero-synopsis">${esc(trimSynopsis(hero.synopsis))}</p>
         ${watchRow(hero)}
+        ${recommendRow(hero)}
         <div class="hero-actions">
           <a class="btn" href="${esc(hero.url)}" target="_blank" rel="noopener">Open on MyAnimeList</a>
           <button class="btn btn-ghost" type="button" data-action="shuffle">Show me another</button>
@@ -1800,6 +1954,21 @@ function renderResult() {
    * card, several a second, which is how the rate limiting starts. Waiting a
    * moment first means a card you skimmed past never costs a request, and the
    * ones you actually stop on still fill in imperceptibly. */
+  /* Ratings for this card and the twenty behind it, in one request.
+   *
+   * "Show me another" walks the list, so fetching ahead makes every later card
+   * instant for the same single request. Fired after the card is on screen and
+   * never awaited: the card is complete without it, and the row is already
+   * holding its height. */
+  {
+    const ahead = state.list.slice(state.index, state.index + 21).map((a) => a.id);
+    loadRatings([hero.id, ...ahead]).then(() => {
+      if (state.list[state.index]?.id !== hero.id) return;   // moved on already
+      const figure = $('recommend-figure');
+      if (figure) figure.textContent = recommendText(hero.id);
+    });
+  }
+
   if (!hero.synopsis || hero.trailer === undefined) {
     setTimeout(() => {
       if (state.list[state.index]?.id !== hero.id) return;   // moved on already
@@ -1929,6 +2098,28 @@ function wireResultControls() {
         markWatched([id]);
         renderWatchedBar();
         refreshFromAnchor();
+        return;
+      }
+
+      /* A vote. The buttons and the figure update immediately and the request
+       * goes out behind them: a rating is not worth making anyone wait for,
+       * and losing one to a dropped connection matters less than a card that
+       * feels stuck. The answer is remembered locally either way, so the
+       * buttons still show it on the way back. */
+      if (action === 'vote') {
+        const id = Number(el.dataset.id);
+        const liked = el.dataset.vote === 'up';
+        const row = el.closest('.recommend');
+
+        castVote(id, liked);
+
+        for (const button of row?.querySelectorAll('.vote-btn') || []) {
+          const on = (button.dataset.vote === 'up') === liked;
+          button.classList.toggle('vote-on', on);
+          button.setAttribute('aria-pressed', String(on));
+        }
+        const figure = row?.querySelector('.recommend-figure');
+        if (figure) figure.textContent = recommendText(id);
         return;
       }
 
