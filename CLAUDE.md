@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 34.** `anime.json` holds **3,505 entries** (TV 2,680 · ONA 533 · OVA 292),
-about 1.18 MB. 169 checks pass via `npm test`.
+**Build 35.** `anime.json` holds **3,505 entries** (TV 2,680 · ONA 533 · OVA 292),
+about 1.18 MB. 176 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -363,6 +363,60 @@ with no way back but a reload.
 `Kids` is the one demographic marking a different *audience* rather than a
 different tone. Without demoting it, a 12-episode dark isekai recommends
 Pokémon — 276 episodes, same three genres, 48 places away. Affected 54 anchors.
+
+### And a 220-episode series is demoted against a 12-episode one
+
+The Kids rule was half a fix and build 35 is the other half. **Length was never
+looked at.** GATE: Jieitai is 12 episodes and its fifth result was Naruto at
+220 — which shares all three of its genres and sits 283 places up, four behind
+Juuni Kokuki, so it arrived in perfectly correct order. Nothing was
+misbehaving; the code had no idea it was asking for a 220-episode commitment.
+Pokémon is caught against a short isekai for being *Kids*. Naruto is Shounen,
+so nothing caught it — and GATE has no demographic recorded at all, so that
+tie-breaker could not fire either.
+
+A candidate `LENGTH_MISMATCH` (6) times longer than the source drops one tier,
+exactly like Kids, so it surfaces once closer-sized matches are exhausted.
+
+**A ratio, never an episode count, and the threshold came from measurement.**
+Every length ratio actually served across the 19 anchors was collected — 150
+pairs. The legitimate ones stop at 5.8x and the questionable ones start at 7x:
+
+| Ratio | Pair | |
+| --- | --- | --- |
+| 18.3x | GATE (12) → Naruto (220) | demote |
+| 14.8x | Konosuba (10) → Hunter x Hunter (148) | demote |
+| 11.8x | Overlord (13) → Dragon Ball (153) | demote |
+| 8.7x | Ame to Kimi to (12) → Chi's Sweet Home (104) | demote |
+| 7.0x | Tokyo Ravens (24) → InuYasha (167) | demote |
+| 5.8x | Mushoku Tensei (11) → FMA:B (64) | keep |
+| 4.0x | Haikyuu!! (25) → Slam Dunk (101) | keep |
+| 3.1x | Steins;Gate (24) → Monster (74) | keep |
+
+A clean gap, which is more than could be said for anything separating the
+cases that defeated the affinity work — there the wanted jump was *larger*
+than the forbidden one. Haikyuu!! legitimately reaches Slam Dunk, Hajime no
+Ippo, Touch and Diamond no Ace, and a blunt episode count would have wrecked
+that chain; its whole run tops out at 4.0x and comes out byte-identical.
+
+**A missing episode count is estimated, not ignored, and skipping that step
+broke the rule on its first run.** All 38 entries without a count are currently
+airing — which covers One Piece and Meitantei Conan, the two longest things
+here, *and* a series three episodes into its first season. Treated as unknown,
+the rule demoted Dragon Ball at 153 episodes and One Piece, at more than a
+thousand, walked into the slot it had just vacated. `lengthOf` now estimates
+from run length once a show has been airing `LONG_RUNNING_YEARS` (5): a weekly
+series broadcasting since 1999 has over a thousand episodes whatever the
+catalogue says. Below five years it stays unknown and earns no penalty, the
+same rule as a missing demographic.
+
+Episode count still overstates shorts — Chi's Sweet Home is 104 episodes of
+about three minutes — and there is no duration field to correct with.
+
+15 of the 19 anchors came out byte-identical. The four that moved each lost
+exactly one over-long entry: GATE drops Naruto, Overlord drops Dragon Ball
+*and* One Piece, Konosuba drops Hunter x Hunter and One Piece, Tokyo Ravens
+drops InuYasha. Backtracks went 22 to 25.
 
 ### Two ranking axes
 
@@ -785,8 +839,12 @@ matching is the highest-risk edit in this project, and the working notes exist
 because "obvious" fixes here have made things measurably worse before. Capture
 a walks baseline, change one thing, read the diff anchor by anchor.
 
-**A very long series is still recommended to a very short one. The Kids
-demotion has a twin.** GATE: Jieitai is 12 episodes, and its fifth result is
+~~**A very long series is still recommended to a very short one.**~~ Fixed in
+build 35 — see "And a 220-episode series is demoted against a 12-episode one"
+above. The original note is kept below because the measurement in it is what
+the threshold was chosen against.
+
+**The old note.** GATE: Jieitai is 12 episodes, and its fifth result is
 Naruto at 220. Nothing is misbehaving: Naruto shares all three of GATE's
 genres, which is an exact match as far as the matcher is concerned, and it sits
 283 places away — four behind Juuni Kokuki. It arrives in proper proximity

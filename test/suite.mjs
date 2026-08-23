@@ -62,7 +62,8 @@ function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HI
   dom.window.eval(`${appSource}\nwindow.__ranked = () => ranked;
 window.__signatureThemes = () => [...signatureThemes];
 window.__collectTiers = collectTiers;
-window.__positionOf = positionOf;`);
+window.__positionOf = positionOf;
+window.__lengthOf = lengthOf;`);
   return dom;
 }
 
@@ -1531,6 +1532,72 @@ console.log('\n--- REAL catalogue: signature themes ---');
       .map((a) => a.title)).length;
   })()`);
   check('a promoted entry never overstates the genres it shares', overclaims === 0, `${overclaims}`);
+}
+
+/* ---------- length mismatch ---------- */
+
+console.log('\n--- REAL catalogue: length mismatch ---');
+{
+  const real = JSON.parse(readFileSync(`${ROOT}/anime.json`, 'utf8'));
+  const dom = makeDom(real);
+  await sleep(500);
+  const w = dom.window;
+
+  /* A show still airing five years on is long-running whatever its missing
+     episode count says. Ignoring that group was tried and broke the rule on
+     the spot: Overlord demoted Dragon Ball at 153 episodes and One Piece, at
+     more than a thousand, took the slot it vacated. */
+  const onePiece = w.__ranked().find((a) => a.title === 'One Piece');
+  const conan = w.__ranked().find((a) => a.title.startsWith('Meitantei Conan'));
+  check('One Piece has no episode count on record', !onePiece?.episodes, `${onePiece?.episodes}`);
+  check('but it is still counted as long-running', w.__lengthOf(onePiece) > 500,
+    `${w.__lengthOf(onePiece)}`);
+  check('and so is Meitantei Conan', w.__lengthOf(conan) > 500, `${w.__lengthOf(conan)}`);
+
+  /* A show that started airing recently is genuinely ambiguous -- three
+     episodes in looks identical to a thousand -- so it gets no penalty, the
+     same rule as a missing demographic. */
+  const young = w.__ranked().find((a) => !a.episodes && a.status === 'air'
+    && a.year >= new Date().getFullYear() - 2);
+  if (young) {
+    check('a recently-started airing show is left unknown, not guessed at',
+      w.__lengthOf(young) === null, `${young.title} -> ${w.__lengthOf(young)}`);
+  }
+
+  /* Which tier a named show lands in, searched across the whole bucket.
+     The first version of this looked only at the first 12 entries of the top
+     tier, and it passed with the rule deleted -- GATE's top tier is dense, 31
+     shows share all three of its genres within 100 places, and Naruto sits at
+     283, so it was never inside the window being examined. A guard that cannot
+     see the thing it guards is worse than no guard. */
+  const tierOf = (title, direction, target) => JSON.parse(w.eval(`(() => {
+    const source = window.__ranked().find((a) => a.title.startsWith(${JSON.stringify(title)}));
+    const buckets = window.__collectTiers(source, ${JSON.stringify(direction)}, new Set());
+    let found = null;
+    buckets.forEach((bucket, tier) => {
+      if (bucket.some((a) => a.title === ${JSON.stringify(target)})) found = tier;
+    });
+    return JSON.stringify({ tier: found, top: buckets.length - 1 });
+  })()`));
+
+  /* GATE is 12 episodes and its fifth result was Naruto at 220 -- an exact
+     three-genre match arriving in correct proximity order, which is exactly
+     why nothing else could catch it. */
+  const naruto = tierOf('Gate: Jieitai', 'up', 'Naruto');
+  check('a 220-episode series is demoted out of a 12-episode show\'s top tier',
+    naruto.tier !== null && naruto.tier < naruto.top,
+    `Naruto in tier ${naruto.tier} of ${naruto.top}`);
+
+  /* The other half of the rule, and the reason it is a ratio rather than an
+     episode count: Haikyuu!! legitimately reaches long sports series, and a
+     blunt penalty would wreck that chain. 25 to 101 episodes is 4x; GATE to
+     Naruto is 18x. */
+  const slamDunk = tierOf('Haikyuu!!', 'up', 'Slam Dunk');
+  const ippo = tierOf('Haikyuu!!', 'up', 'Hajime no Ippo');
+  check('but Haikyuu!! keeps Slam Dunk in its top tier',
+    slamDunk.tier === slamDunk.top, `tier ${slamDunk.tier} of ${slamDunk.top}`);
+  check('and Hajime no Ippo too',
+    ippo.tier === ippo.top, `tier ${ippo.tier} of ${ippo.top}`);
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);

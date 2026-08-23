@@ -46,6 +46,17 @@ const REACH_FRACTION = 0.30;
 const REACH_CAP = 60;
 const MAX_LOOKAHEAD = 30;    // how far ahead to look at all, for cost only
 
+/* How many times longer than what you watched a show may be before it is
+ * demoted a tier. See the lengthClash comment in collectTiers. */
+const LENGTH_MISMATCH = 6;
+/* A show still airing this many years after it started has no episode count in
+ * the catalogue and is long-running by definition, so its length is estimated
+ * rather than treated as unknown. Below the threshold it stays unknown: a show
+ * three episodes into its first season is airing too, and guessing there would
+ * penalise every new series. */
+const LONG_RUNNING_YEARS = 5;
+const EPISODES_PER_YEAR = 40;    // a weekly slot, allowing for breaks
+
 /* How rare a theme must be before it counts as a genre — a *share* of the
  * catalogue, not a count, because rarity only means anything relative to the
  * corpus it is measured in. A fixed count of 200 looked equivalent on a
@@ -61,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 34;
+const BUILD = 35;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -565,6 +576,29 @@ function trailerEmbed(trailer) {
  * The ranking walk
  * ------------------------------------------------------------------ */
 
+/**
+ * How long a show is, in episodes, or null when that genuinely cannot be said.
+ *
+ * 38 entries have no episode count and every one of them is currently airing —
+ * which covers both One Piece and Meitantei Conan, the two longest things in
+ * the catalogue, and a brand-new series three episodes in. Treating the whole
+ * group as unknown made the length rule incoherent the moment it shipped:
+ * walking up from Overlord it demoted Dragon Ball at 153 episodes and One
+ * Piece, at more than a thousand, walked straight into the slot it vacated.
+ *
+ * So a show still airing LONG_RUNNING_YEARS after it began gets an estimate
+ * from its own run length, which is not a guess in any meaningful sense — a
+ * weekly series broadcasting since 1999 has over a thousand episodes whatever
+ * the catalogue says. Anything airing for less stays unknown, because there
+ * the ambiguity is real.
+ */
+function lengthOf(anime) {
+  if (anime.episodes) return anime.episodes;
+  if (anime.status !== 'air' || !anime.year) return null;
+  const years = new Date().getFullYear() - anime.year;
+  return years >= LONG_RUNNING_YEARS ? years * EPISODES_PER_YEAR : null;
+}
+
 function sameFranchise(a, b) {
   const x = squash(a.title);
   const y = squash(b.title);
@@ -766,8 +800,53 @@ function collectTiers(source, direction, exclude) {
     // never made.
     candidate.promoted = false;
 
+    /* A very long series against a very short one, demoted the same way and
+     * for the same reason as Kids.
+     *
+     * The matcher never looked at length at all. GATE: Jieitai is 12 episodes
+     * and its fifth result was Naruto at 220 — which shares all three of its
+     * genres and sits 283 places up, four behind Juuni Kokuki, so it arrived in
+     * perfectly correct order. Nothing was misbehaving; the code simply had no
+     * idea it was asking for a 220-episode commitment.
+     *
+     * This is the case the Kids demotion already half-fixed. Pokémon gets
+     * caught against a 12-episode isekai for being *Kids*; Naruto is Shounen,
+     * so nothing caught it, and GATE has no demographic recorded so that
+     * tie-breaker could not fire either.
+     *
+     * **A ratio, never an episode count**, because sometimes a long series is
+     * exactly right. Measured over every pair actually served across the 19
+     * known anchors, the legitimate ones top out at 5.8x — Haikyuu!! to Slam
+     * Dunk is 4.0x, to Hajime no Ippo 3.0x, Steins;Gate to Monster 3.1x,
+     * Mushoku Tensei to Fullmetal Alchemist: Brotherhood 5.8x — and the
+     * questionable ones start at 7x: InuYasha 7.0x, Chi's Sweet Home 8.7x,
+     * Dragon Ball 11.8x, Hunter x Hunter 14.8x, Naruto 18.3x. A clean gap,
+     * which is more than could be said for anything separating the cases that
+     * defeated the affinity work.
+     *
+     * **A missing episode count is estimated, not ignored** — see lengthOf.
+     * Ignoring it was tried and it broke the rule immediately: Overlord
+     * demoted Dragon Ball at 153 episodes and One Piece, at more than a
+     * thousand, took the slot, because One Piece is still airing and so has no
+     * count at all. A show airing for five years or more is long whatever the
+     * data says; one airing for less is genuinely unknown and gets no
+     * penalty, the same rule as a missing demographic.
+     *
+     * Episode count also overstates the length of shorts — Chi's Sweet Home is
+     * 104 episodes of about three minutes. There is no duration in the
+     * catalogue to correct with.
+     *
+     * One tier, not two: an entry that is both Kids and far too long is
+     * demoted once, like everything else here. */
+    const candidateLength = lengthOf(candidate);
+    const lengthClash = Boolean(
+      source.episodes && candidateLength
+      && candidateLength >= source.episodes * LENGTH_MISMATCH
+    );
+    candidate.matchLengthClash = lengthClash;
+
     const audienceClash = candidate.demographic === 'Kids' && source.demographic !== 'Kids';
-    buckets[audienceClash ? Math.max(1, shared - 1) : shared].push(candidate);
+    buckets[audienceClash || lengthClash ? Math.max(1, shared - 1) : shared].push(candidate);
 
     if (buckets[total].length >= MAX_PER_TIER) break;
   }
