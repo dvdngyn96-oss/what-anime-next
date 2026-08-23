@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 35.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.18 MB. 176 checks pass via `npm test`.
+**Build 36.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.18 MB. 180 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,7 +44,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 167 checks, jsdom against the real app.js and anime.json
+npm test          # 180 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -682,6 +682,27 @@ removed every candidate, the old message — "nothing shares these genres" — i
 false, and reads as the matcher being broken. `watchedSkipped` counts what the
 list removed so the message can name the real reason and point at Clear.
 
+**And a walk that merely lost a few has to say so too.** That is the common
+case, and the page was silent about it until build 36: the count existed and
+was read in exactly one place, the branch that runs when the list emptied the
+walk completely. Logged in, GATE: Jieitai returns Slayers — because Moonlit
+Fantasy, Drifters, Berserk: Ougon Jidai-hen and Juuni Kokuki are all already
+watched. That is correct, and with nothing on the card to explain it, it reads
+as the matcher being broken. Found by the owner clicking through the live site,
+and it cost a round of debugging the page could have answered in one line.
+
+**Not "closer matches", which is what the working note first proposed.** Of
+GATE's four skips only Moonlit Fantasy is nearer than the Slayers it served;
+the other three are better matches that lost on distance. The honest claim is
+that they matched and you have seen them, not that they were nearer — and the
+wrong sentence would have shipped straight out of the note if the distances had
+not been checked first.
+
+It sits below the card with the other explanatory notes, and a check asserts
+that placement rather than trusting it: a note appearing above moves the card
+and every button in it, and this one appears exactly when the result changed in
+a way worth reading about.
+
 ### When anime.json does not load
 
 Everything on the page waits on one promise. Before build 31, a failed
@@ -896,14 +917,6 @@ wreck that chain. Haikyuu (25 ep) to Hajime no Ippo (75) is 3x; GATE (12) to
 Naruto (220) is 18x. That gap is wide enough to separate them — wider than
 anything separating the cases that defeated the affinity work above, which is
 the reason to think this one is tractable.
-
-**Say why the watched list changed the answer.** When it removes candidates the
-card is silent; it only speaks when the list empties a walk completely. Logged
-in, GATE returns Slayers, because Moonlit Fantasy and the rest are already
-watched — which is correct and reads as broken. `watchedSkipped` already counts
-them, so this is one line under the card: "3 closer matches are on your watched
-list." Found by the owner clicking through the live site while logged in, and
-it cost a round of debugging that the page could have answered itself.
 
 **A tip jar — "buy me a coffee" or similar.** Not monetisation in the sense
 that matters legally: a donate link is not advertising, so it does not trip the

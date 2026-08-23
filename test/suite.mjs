@@ -1413,6 +1413,44 @@ console.log('\n--- the watched list ---');
   }
 
   {
+    /* The other half of the same idea, and the common case. When the list
+       removes only *some* candidates a result still comes back, and until
+       build 36 the page said nothing at all about why it had changed. Logged
+       in, GATE: Jieitai returns Slayers because Moonlit Fantasy, Drifters,
+       Berserk: Ougon Jidai-hen and Juuni Kokuki are all already watched --
+       correct, and it reads as the matcher being broken. */
+    const dom = boot([501]);
+    await sleep(200);
+    const body = await pickAndRecommend(dom, 'Source Show');
+    const txt = body?.textContent.replace(/\s+/g, ' ') || '';
+    check('a walk that lost some candidates says the list did it',
+      /already on your watched list, so/.test(txt), txt.slice(0, 200));
+    check('and counts them', /\b1 show that matched is\b/.test(txt), txt.slice(0, 200));
+
+    /* It is an explanation of the card, so it sits below the card with the
+       other notes. A note that appears above moves the card and every button
+       in it, and this one appears exactly when the result changed. */
+    const hero = body?.querySelector('.hero');
+    const note = [...(body?.querySelectorAll('.note') || [])]
+      .find((n) => /already on your watched list/.test(n.textContent));
+    check('and it renders below the card, not above it',
+      Boolean(hero && note) &&
+        (hero.compareDocumentPosition(note) & 4) === 4,   // note FOLLOWS hero
+      note ? 'note found, wrong side' : 'no note');
+  }
+
+  {
+    /* Nothing removed, nothing to explain -- the note must not appear at all,
+       or it becomes noise on every card. */
+    const dom = boot([]);
+    await sleep(200);
+    const body = await pickAndRecommend(dom, 'Source Show');
+    const txt = body?.textContent.replace(/\s+/g, ' ') || '';
+    check('and stays quiet when the list removed nothing',
+      !/already on your watched list/.test(txt), txt.slice(0, 160));
+  }
+
+  {
     /* If the watched list is what emptied the walk, say so. "Nothing shares
        these genres" would be false, and would read as the matcher breaking. */
     const dom = boot([501, 502]);

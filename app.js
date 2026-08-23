@@ -72,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 35;
+const BUILD = 36;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -1683,6 +1683,28 @@ function renderResult() {
     ? `${esc(source.title)} has no completion figure — it's still airing, or too few people have watched it — so this uses the MAL ranking instead.`
     : '';
 
+  /* Say when the watched list is why the answer changed.
+   *
+   * The count already existed and was used in exactly one place: the branch
+   * that runs when the list emptied the walk completely, where "nothing shares
+   * these genres" would have been a lie. When the list removes only *some*
+   * candidates the page said nothing at all — and that is the common case.
+   * Logged in, GATE: Jieitai returns Slayers, because Moonlit Fantasy,
+   * Drifters, Berserk: Ougon Jidai-hen and Juuni Kokuki are all already
+   * watched. That is correct and reads as the matcher being broken. Found by
+   * the owner clicking through the live site, and it cost a round of debugging
+   * the page could have answered in one line.
+   *
+   * **Not "closer matches", which is what the working note first said.** Of
+   * the four GATE skips, only Moonlit Fantasy is nearer than the Slayers it
+   * served; the other three are better matches that lost on distance. The
+   * honest claim is that they matched and you have seen them, not that they
+   * were nearer. */
+  const watchedNote = hero && watchedSkipped
+    ? `${watchedSkipped} ${watchedSkipped === 1 ? 'show that matched is' : 'shows that matched are'}`
+      + ` already on your watched list, so ${watchedSkipped === 1 ? 'it was' : 'they were'} skipped.`
+    : '';
+
   resultBody.innerHTML = `${because}
 
     <!-- hero-has-banner is unconditional: a third of entries have no banner
@@ -1754,6 +1776,7 @@ function renderResult() {
     ${axisNote ? `<div class="note">${axisNote}</div>` : ''}
     ${outsideNote ? `<div class="note">${outsideNote}</div>` : ''}
     ${relaxNote ? `<div class="note">${esc(relaxNote)}</div>` : ''}
+    ${watchedNote ? `<div class="note">${esc(watchedNote)}</div>` : ''}
 
     ${more.length ? `
       <p class="section-title">Others further ${shown === 'up' ? 'up' : 'down'} the list</p>
