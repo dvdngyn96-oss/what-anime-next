@@ -10,17 +10,17 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 35.** `anime.json` holds **3,505 entries** (TV 2,680 · ONA 533 · OVA 292),
+**Build 35.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
 about 1.18 MB. 176 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
-| Key-art colour | 3,274 |
-| Banner image | 2,358 |
-| Studio | 3,388 |
-| TMDB match | 3,152 |
-| US/CA streaming | 1,642 |
-| AniList tags | 3,252 (93%) |
+| Key-art colour | 3,266 |
+| Banner image | 2,357 |
+| Studio | 3,376 |
+| TMDB match | 3,149 |
+| US/CA streaming | 1,641 |
+| AniList tags | 3,245 (93%) |
 | Genres backfilled from AniList (`gs`) | 42 |
 | No genres (matched on themes only) | 31 |
 
@@ -126,7 +126,7 @@ So it does. A shared theme carried by **no more than 5% of the catalogue** is
 worth one genre for bucketing. `promoteSignatures` in `app.js`, run after the
 scan and before `preferLocally`.
 
-**A share, not a count.** 5% of 3,505 entries is 175 shows: Isekai (161),
+**A share, not a count.** 5% of 3,493 entries is 174 shows: Isekai (161),
 Military (148), Harem (144), Psychological (132), Space (114), Time Travel (50)
 and rarer count; Martial Arts (207), Adult Cast (255), Mecha (270), Historical
 (403) and School (658) stay tie-breakers. A fixed count of 200 looks identical
@@ -539,12 +539,33 @@ one of the best-regarded OVAs here; "Saga" appears in Youjo Senki, Zombieland
 Saga and Excel Saga. Both patterns would have taken real series with them —
 the Special A mistake again.
 
+**The sweep was then run over the whole catalogue**, not just the 125 entries
+whose titles extend another entry's — that shape was a guess about where
+re-cuts live, and guessing where to look is how the first 27 were found rather
+than all of them. `full-scan.mjs` checks every entry for the relation and
+checkpoints to `full-scan.jsonl` so an interrupted run resumes; both are
+gitignored. All 3,505 entries, zero errors, **12 more found**: Initial D Battle
+Stage, Yozakura Quartet: Hoshi no Umi, Gundam Wing: Operation Meteor, Love Hina
+Final Selection, 30-pun de Wakaru! Love Live!, Tenjou Tenge: The Past Chapter,
+Karneval OVA, Fate/stay night TV Reproduction, Mahou no Yousei Persia, Flag
+Director's Edition, Honoo no Alpenrose and Pretty Rhythm: All Star Selection.
+
+**343 entries carry `summary` and every one of them stays.** That is the
+reassuring half of the sweep: the relation that points the other way is nearly
+thirty times more common than the one that disqualifies, so reading the two as
+equivalent would have gutted the catalogue.
+
 **This was found by clicking through the live site**, not by the suite: an
 Overlord chain reached the One Piece re-broadcast at its sixteenth result.
-27 entries removed in total. `npm run walks` came out **byte-identical**, which
+39 entries removed in total. `npm run walks` came out **byte-identical**, which
 proves nothing — none of the seventeen anchors reached any of them — so it was
 verified directly instead, by walking from Overlord and confirming the entry is
 gone. Same reasoning as adding entries below rank 955.
+
+The twelve from the full sweep were checked the same way and it mattered:
+**11 of the 12 were reachable** before removal, walking up from sources placed
+just below each one. A byte-identical walks diff would have said nothing about
+any of them.
 
 Each build prints well-regarded OVAs/ONAs it dropped, formatted as ready-to-paste
 IDs. That list is a judgement call for the human, not something to automate.
@@ -616,7 +637,7 @@ test directory and `make-og-image.html` — Cloudflare serves the whole repo roo
 so those are all publicly fetchable. They hold no secrets, but they are source,
 not content.
 
-**`sitemap.xml` lists one URL.** There are 3,505 results, but all of them serve
+**`sitemap.xml` lists one URL.** There are 3,493 results, but all of them serve
 byte-identical HTML, so listing them would hand a crawler thousands of URLs with
 the same markup — which is what duplicate content means. The root is the only
 distinct document the site has.
@@ -860,7 +881,7 @@ design, a missing demographic is never a penalty.
 Measured: 46% of short anchors (≤26 episodes, with genres) have a 100+ episode
 *full* genre match within 300 places. Treat that as the ceiling on exposure,
 not the rate of bad results — most are buried by affinity, and GATE's Naruto
-still only surfaced fifth. The sharper number is that only **100 of 3,505
+still only surfaced fifth. The sharper number is that only **100 of 3,493
 entries have 100+ episodes**, and being high-ranked and genre-broad they sit
 near everything: Ginga Eiyuu Densetsu, Gintama, Hunter x Hunter and Naruto turn
 up against Bocchi the Rock, Cyberpunk: Edgerunners and Violet Evergarden alike.
@@ -883,17 +904,6 @@ watched — which is correct and reads as broken. `watchedSkipped` already count
 them, so this is one line under the card: "3 closer matches are on your watched
 list." Found by the owner clicking through the live site while logged in, and
 it cost a round of debugging that the page could have answered itself.
-
-**Finish the `full_story` sweep.** `full-scan.mjs` walks the whole catalogue
-for the relation, checkpointing to `full-scan.jsonl` so it resumes rather than
-restarts; both are gitignored. It found **9 more re-cuts** beyond the 27 already
-dropped — Initial D Battle Stage (#1816), Yozakura Quartet: Hoshi no Umi
-(#2790), Gundam Wing: Operation Meteor (#2950), Love Hina Final Selection
-(#4114), 30-pun de Wakaru! Love Live! (#4385), Tenjou Tenge: The Past Chapter
-(#4698), Karneval OVA (#5011), Fate/stay night TV Reproduction (#5790), Mahou
-no Yousei Persia: Kaiten Mokuba (#6437). All are deep in the rankings and none
-is ambiguous. Drop them the same way, and check reachability directly rather
-than trusting a byte-identical walks diff.
 
 **A tip jar — "buy me a coffee" or similar.** Not monetisation in the sense
 that matters legally: a donate link is not advertising, so it does not trip the

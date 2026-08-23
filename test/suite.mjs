@@ -797,6 +797,8 @@ try {
       2449, 35321, 57469, 8756, 13931, 2125, 8423, 60820, 31105, 1111, 3483,
       2363, 1504, 1396, 1112, 23405, 17655, 12439, 14685, 1836, 7664, 36424,
       60108, 28069, 27957, 8857, 40323,
+      // the twelve the full-catalogue sweep turned up after the first pass
+      821, 8457, 3626, 3247, 30829, 760, 16033, 7559, 35519, 5136, 11101, 22215,
     ];
     const stillThere = real.anime.filter((a) => RE_CUTS.includes(a.i));
     check('catalogue holds no known re-cuts or franchise extras',
