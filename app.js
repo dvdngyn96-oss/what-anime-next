@@ -2282,7 +2282,7 @@ function offerToShare(scored) {
       <button class="btn btn-ghost btn-sm" type="button" data-share="no">No thanks</button>
     </p>
     <p class="share-foot">Either way, they are marked as watched on this device only.
-      <a href="privacy.html">What this site stores</a></p>`;
+      <a href="privacy">What this site stores</a></p>`;
   host.hidden = false;
 
   host.querySelector('[data-share="no"]').addEventListener('click', () => {
@@ -2337,7 +2337,7 @@ async function shareScores(scored, host) {
 
   if (progress) {
     progress.innerHTML = `Shared ${total.toLocaleString()} scores. Thank you — that is a real dent in the ${VOTE_FLOOR}-rating floor. `
-      + '<a href="privacy.html">How to remove them</a>';
+      + '<a href="privacy">How to remove them</a>';
   }
   ratingCache.clear();          // the figures on cards are now out of date
   renderWatchedBar();

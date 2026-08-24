@@ -18,7 +18,7 @@
   <!-- The one other distinct document on the site. Every /?id=N serves the
        root's markup; this does not, so it is worth listing. -->
   <url>
-    <loc>https://whatanimeshouldiwatchnext.com/privacy.html</loc>
+    <loc>https://whatanimeshouldiwatchnext.com/privacy</loc>
     <lastmod>2026-08-23</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>

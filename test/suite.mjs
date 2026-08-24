@@ -2052,7 +2052,7 @@ console.log('\n--- sharing imported scores ---');
      how a consent box quietly becomes dishonest. */
   check('it says what is not sent as well as what is',
     /Not sent/i.test(offer.textContent) && /your name/i.test(offer.textContent));
-  check('and it links to the privacy page', !!offer.querySelector('a[href="privacy.html"]'));
+  check('and it links to the privacy page', !!offer.querySelector('a[href="privacy"]'));
   check('declining is a real button, not a greyed-out link',
     !!offer.querySelector('[data-share="no"]:not([disabled])'));
 
@@ -2135,8 +2135,14 @@ console.log('\n--- sharing imported scores ---');
      any phrase long enough to be worth asserting spans a line break. */
   const privacy = readFileSync(`${ROOT}/privacy.html`, 'utf8').replace(/\s+/g, ' ');
   const index = readFileSync(`${ROOT}/index.html`, 'utf8');
+  /* Linked as /privacy, not /privacy.html. Pages serves the file at the
+     extensionless path and 308s the other, so naming the .html would make
+     every link, the canonical and the sitemap entry point at a redirect. */
   check('the privacy page exists and is linked from the site',
-    privacy.length > 500 && index.includes('href="privacy.html"'));
+    privacy.length > 500 && index.includes('href="privacy"'));
+  check('and linked at the address Cloudflare actually serves',
+    !index.includes('href="privacy.html"')
+    && !readFileSync(`${ROOT}/app.js`, 'utf8').includes('href="privacy.html"'));
   for (const [what, pattern] of [
     ['what is kept in the browser', /watched list/i],
     ['what is sent', /only the show ids and your scores/i],
@@ -2154,7 +2160,9 @@ console.log('\n--- sharing imported scores ---');
     !/Disallow: \/privacy/.test(robots));
   const sitemap = readFileSync(`${ROOT}/sitemap.xml`, 'utf8');
   check('and listed in the sitemap, being the only other real document',
-    sitemap.includes('/privacy.html'));
+    sitemap.includes('/privacy<') || sitemap.includes('/privacy</loc>'));
+  check('with no redirecting URL left in the sitemap or the canonical',
+    !sitemap.includes('/privacy.html') && !privacy.includes('canonical" href="https://whatanimeshouldiwatchnext.com/privacy.html"'));
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
