@@ -1055,14 +1055,37 @@ GATE's desired jump is about 158 positions. Berserk's forbidden one is about
 138. No threshold divides them, so **this mechanism cannot tell them apart** —
 which is the finding, and the reason not to retry it with a cleverer constant.
 
-**What is left to try, and it is the riskiest edit in the file.** In both
-failures the damage is not the reorder, it is that a jumped-forward candidate
-*advances the frontier* and monotonicity then deletes everything behind it. A
-candidate that comes forward on affinity could be made not to move the
-high-water mark, so Steins;Gate could lead Re:Zero's chain without costing it
-Evangelion. That is a change to the monotonicity rule itself — rule 3 of the
-three that compete — so capture a baseline, change only that, and read all 19
-anchors.
+**Exempting a jumped candidate from the frontier was the third idea, and it
+was tried and reverted too.** The reasoning was sound: in both failures above
+the damage is not the reorder, it is that a jumped-forward candidate *advances
+the high-water mark* and monotonicity then deletes everything behind it. So let
+a candidate that came forward on affinity be shown without moving the mark.
+
+**Exempting every reorder removes the climb altogether.** `preferLocally`
+shuffles neighbours constantly over tiny affinity differences, so almost
+nothing advanced the mark and almost nothing was filtered. Backtracks fell from
+18 to 4, which looks like success and is monotonicity switching off — the
+sawtooth simply moved out of the labelled tail and into the middle of the
+chain, where nothing explains it. Ame to Kimi to went 2049, 1968, **2039**,
+1900, **2001**; Chihayafuru lost Nana, Shigatsu wa Kimi no Uso and Rurouni
+Kenshin and gained **Planetes**, a space drama.
+
+**Restricting it to leaps over 100 positions is far better behaved** — only
+three anchors moved, and Berserk's Fullmetal Alchemist stopped being
+mislabelled a backtrack. Paired with the +2 theme bonus it even fixes GATE
+properly, pulling Drifters in while *keeping* Slayers, Dragon Quest and
+Claymore rather than deleting them.
+
+**But it still costs more than it earns.** Overlord loses Log Horizon, its best
+result. Re:Zero still loses Evangelion, Madoka, Houseki no Kuni and Tian Guan
+Cifu — because the entry *after* the jump advances the mark instead. Toradora
+loses three, Ame to Kimi to wanders. **The exemption stops the jumping entry
+from deleting what it leapt over; it cannot stop the next one doing the same
+thing.** It moves the problem one position down the chain rather than removing
+it, which is why there is no fourth version of this idea worth writing.
+
+Build 34 fixed GATE a different way — by scaling the reach with the anchor's
+position — without touching monotonicity at all. That is the one that shipped.
 
 **Mushoku Tensei is unchanged, and that is the rule working.** Its genres are
 Adventure, Drama, Ecchi and Fantasy — four, one of them rare — so nothing above
@@ -1113,7 +1136,8 @@ build 35 — see "And a 220-episode series is demoted against a 12-episode one"
 above. The original note is kept below because the measurement in it is what
 the threshold was chosen against.
 
-**The old note.** GATE: Jieitai is 12 episodes, and its fifth result is
+**The measurement it was chosen against**, kept because the threshold came
+from it. GATE: Jieitai is 12 episodes, and its fifth result was
 Naruto at 220. Nothing is misbehaving: Naruto shares all three of GATE's
 genres, which is an exact match as far as the matcher is concerned, and it sits
 283 places away — four behind Juuni Kokuki. It arrives in proper proximity
@@ -1156,27 +1180,24 @@ Practically it is one link in the footer next to the credit line. The card must
 not move to accommodate it, so it belongs outside `.hero` with the other
 explanatory notes.
 
-**The voting system — stage one shipped, two and three to go.** "Have you
-watched it" → "would you recommend it", a % recommend rating, and MAL XML list
-import. Still the only part of the original idea needing a backend.
+~~**The voting system.**~~ All three stages shipped, builds 32 to 38: "have you
+watched it" → "would you recommend it", a % recommend rating, and MyAnimeList
+list import. It was the only part of the original idea needing a backend, and
+it now has one.
 
 - ~~**Stage 1: remember what you have watched.**~~ Shipped in build 32. Local
   only, no server. See "The watched list" above.
-- **Stage 2: the votes themselves.** Anonymous — a random id in local storage,
+- ~~**Stage 2: the votes themselves.**~~ Anonymous — a random id in local storage,
   no accounts. Ratings need votes, not identities, and holding strangers'
   credentials is a responsibility this project should not take on. Cloudflare
   already hosts the site, so Pages Functions plus D1 keeps it on one platform.
-  **Shipped in builds 36 and 37** — see "The vote backend" and "The recommend
-  row" above. The database is bound, the endpoints are live and verified
-  against real D1, and the card asks and reports. What is left is stage three:
-  the import feeding ratings, which is what actually produces enough votes to
-  clear the floor.
-  **Two things to be honest about on the page.** This is the first time
-  anything leaves the visitor's machine — today the whole privacy story is
-  "nothing is uploaded, no cookies, nothing to consent to", and that ends here.
-  And it cannot be made abuse-proof without accounts: clearing local storage
-  earns a fresh id. Rate limiting raises the cost, it does not close the door,
-  so the numbers should read as soft rather than as survey data.
+  Shipped in builds 36 and 37 — see "The vote backend" and "The recommend row"
+  above.
+  **It cannot be made abuse-proof without accounts, and that is permanent.**
+  Clearing local storage earns a fresh id. Rate limiting raises the cost, it
+  does not close the door. The numbers should keep reading as soft rather than
+  as survey data, and nothing should ever be built on top of them that assumes
+  otherwise.
 - ~~**Stage 3: imported lists feeding the ratings.**~~ Shipped in build 38 —
   see "Sharing an imported list" above. Roughly 105,000 ratings are needed for
   meaningful per-title percentages (30 across 3,493 titles), which is why the
@@ -1184,10 +1205,14 @@ import. Still the only part of the original idea needing a backend.
   **What is left is nobody knowing the site exists.** The machinery is done;
   the numbers now need people.
 
-**A percentage needs a floor before it is shown.** "100% would recommend" from
-one vote is worse than no number at all. Nothing should display a percentage
-until it has real support behind it — around 30 votes — and should say plainly
-that it does not yet, rather than showing a figure that looks like data.
+~~**A percentage needs a floor before it is shown.**~~ Shipped: `VOTE_FLOOR`
+is 30, the server sends it so it can move without a deploy of the page, and
+below it the card reports a bare count instead. "100% would recommend" from one
+vote looks like data and is not.
+
+**What is left is nobody knowing the site exists.** 30 ratings across 3,493
+titles is over a hundred thousand ratings. The machinery is finished; the
+numbers now need people, and no amount of further code supplies that.
 
 ~~**Tune `AFFINITY_REACH` against real taste.**~~ Judged good as shipped —
 30 positions per affinity point, 2026-08-19, by reading the live chains rather
