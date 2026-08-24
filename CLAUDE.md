@@ -1010,6 +1010,63 @@ but never corrupts the existing catalogue.
 
 ## Open
 
+**Three jobs are queued, in this order.** Each is self-contained; the reasoning
+and the measurements are here so none of them starts from scratch.
+
+### 1. A year filter — one chip, not a new row
+
+**41% of the catalogue is pre-2010** (pre-1990 10%, 1990s 10%, 2000s 21%;
+2010+ is 2,053 entries). Bouncing off older art and pacing is a real
+preference and worth serving.
+
+The matcher side is well-trodden: it filters *candidates* exactly like the
+format filter, so it is a low-risk edit. **The risk is vertical space.** Three
+toggle rows on a 360px phone already pushed the card most of a screen down and
+the fix was cutting reservations from three to two — a fourth row would undo
+that work.
+
+So: **one chip in the existing toggle row**, reading "2010 or later", on or
+off, remembered in `localStorage` beside the format filter. Not a slider, not a
+range, not a new row. If 2000+ versus 2015+ is ever wanted that is a second
+chip, not a redesign.
+
+It can empty a walk for an older anchor. The messaging pattern already exists —
+`watchedSkipped` does exactly this for the watched list — so extend that rather
+than inventing something.
+
+### 2. Drop TMDB as the streaming source
+
+**53% of cards already say "No listing found"** — 1,852 of 3,493. The feature
+fails more often than it works. It is also the only thing blocking the tip jar
+(see below), it needs a separate ~20 minute refresh pass whenever listings go
+stale, and it is one of the two credentials to keep alive.
+
+**Keep the row, replace what fills it.** `.watch` is part of the constant-height
+design and a check asserts it renders either way, so removing the row would move
+every button below it. A single outbound "Find where to stream" link keeps the
+geometry and drops the dependency.
+
+**The better replacement is AniList's `externalLinks`**, which carries real
+per-title streaming links and needs no new credential, since the app already
+queries AniList for synopses. **This is unverified** — the API was returning
+`403 The AniList API has been temporarily disabled due to severe stability
+issues` when it was checked, so confirm the field exists and carries
+`type: STREAMING` before designing around it. If it does not, the outbound
+search link is the fallback and is fine.
+
+Removing TMDB also means dropping `tm` and `wp` from the catalogue, the
+`add-watch-providers.mjs` pass, the `.tmdb-key` file, the region toggle, and the
+maintenance-table row — the region picker exists *only* to choose which TMDB
+listings to show.
+
+### 3. The tip jar — but email TMDB first, unless it is already gone
+
+Covered under "A tip jar" below. **If job 2 lands first this stops being
+blocked at all**, since the constraint is entirely TMDB's terms. Doing them in
+this order is deliberate.
+
+---
+
 ~~**Genres may be the wrong thing to match on.**~~ Fixed in build 33 for the
 case that motivated it — see "A rare theme is worth a genre" above. Konosuba
 now opens on Kage no Jitsuryokusha and Mushoku Tensei. **Two things are left
@@ -1092,6 +1149,23 @@ Adventure, Drama, Ecchi and Fantasy — four, one of them rare — so nothing ab
 it shares all four and its top tier is *empty*. Promotion never creates an
 empty tier, so the rule correctly declines to fire. Fixing this anchor means
 promoting into nothing, which is the Arslan Senki failure. Leave it.
+
+**And the deeper reason it never opens on isekai is that it has nowhere to
+go.** Mushoku Tensei is #309, and **1 of the 161 isekai in the catalogue ranks
+above it** — Guimi Zhi Zhu, and that is the whole list. 2 of the 66
+Reincarnation entries do. Walking *up* from one of the best-regarded isekai on
+the site, there is nothing left of its own kind to find; "Ranked lower" is the
+useful direction for an anchor near the top of its genre. Worth remembering
+before treating a thin chain here as a bug.
+
+**It also loses its best thematic match by a single position, which is worth
+recording as the shape of the proximity/affinity tension.** Mo Dao Zu Shi is 33
+away and shares three genres *and* Reincarnation. Berserk is 62 away, shares
+three genres and no theme, and carries one more point of affinity. Jumping
+ahead needed 29 positions of reach and the budget at Mushoku's rank is exactly
+30, so Berserk went first by one position — and then advanced the high-water
+mark past Mo Dao Zu Shi, dropping it into the backtrack tail. Nothing here is
+misbehaving; the margin is simply one position wide.
 
 **Rarity is a good proxy for "identifying", not a perfect one.** Tokyo Ravens
 is a magic-school show; its top result moved from Rakudai Kishi no Cavalry
