@@ -44,9 +44,14 @@ const ANILIST_HIT = {
   }] } },
 };
 
-function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null, ratings = null, onVote = null } = {}) {
+function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null, ratings = null, onVote = null, seedWatched = null, seedModern = null } = {}) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', url, pretendToBeVisual: true });
   dom.window.scrollTo = () => {};
+  /* Seeded before the script boots, because app.js reads both of these
+     into module scope on load -- setting them afterwards leaves the page
+     running on the defaults and quietly passes tests that should fail. */
+  if (seedWatched) dom.window.localStorage.setItem('wanx:watched:v1', JSON.stringify(seedWatched));
+  if (seedModern != null) dom.window.localStorage.setItem('wanx:modern', seedModern ? '1' : '0');
   dom.window.fetch = (target, options) => {
     const href = String(target);
     /* The vote endpoints. Absent unless a test asks for them, so every other
@@ -1155,6 +1160,132 @@ console.log('\n--- the format filter ---');
   press('ONA');
   await sleep(200);
   check('switching a format back on restores it', shown().includes('Web Release'), shown());
+}
+
+console.log('\n--- the year filter ---');
+{
+  const NAMES = ['Action', 'Fantasy'];
+  const mk = (r, i, t, y) => ({
+    r, i, t, y, ty: 'TV', th: [], d: [], s: 8, g: [0, 1], e: 12,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+
+  /* One entry has no year at all. 13 real ones are in that state, and they
+     have to survive the filter: that is a gap in MyAnimeList's data, not an
+     era anybody chose to leave out — the same rule as an entry with no type
+     surviving the format filter. */
+  const ERAS = {
+    built: '2026-08-19', count: 6, names: NAMES,
+    anime: [
+      mk(1, 900, 'Source Show', 2020),
+      mk(2, 901, 'An Old Classic', 1998),
+      mk(3, 902, 'A Modern Series', 2015),
+      mk(4, 903, 'Another Old One', 2004),
+      mk(5, 904, 'Another Modern One', 2021),
+      { ...mk(6, 905, 'An Undated Show', 2020), y: undefined },
+    ],
+  };
+
+  const dom = makeDom(ERAS);
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Source Show');
+  const w = dom.window;
+
+  const chip = () => body.querySelector('[data-action="modern"]');
+  const press = () => chip()?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const shown = () => {
+    const out = [];
+    for (const el of body.querySelectorAll('.mini-card-title, .hero h2')) out.push(el.textContent);
+    return out.join(' | ');
+  };
+
+  body.querySelector('[data-action="direction"][data-value="down"]')
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(200);
+
+  check('the year chip is offered', Boolean(chip()), body.querySelector('.controls')?.textContent);
+  check('and is off by default, so nothing is hidden until it is asked for',
+    chip().getAttribute('aria-pressed') === 'false', chip().outerHTML);
+  check('older shows are recommended with it off', shown().includes('Old'), shown());
+
+  /* The whole reason this is one chip rather than a fourth toggle row: three
+     rows already pushed the card most of a screen down at 360px. The chip
+     fits on the first row only because it sits directly after the direction
+     group -- appended at the end of .controls it wraps to a row of its own,
+     measured in a real browser at 320, 360, 375 and 414px. jsdom has no
+     layout, so this guards the DOM position that produces that result. */
+  const groups = [...body.querySelectorAll('.controls > .direction')];
+  check('the chip rides in the existing toggle row rather than adding one',
+    groups.length > 1 && groups[1].contains(chip()),
+    groups.map((g) => g.getAttribute('aria-label')).join(' | '));
+
+  press();
+  await sleep(200);
+  check('switching it on drops everything older', !shown().includes('Old'), shown());
+  check('and keeps everything from 2010 on', shown().includes('Modern'), shown());
+  /* A missing year is a data gap, not a choice. */
+  check('an entry with no year on record is kept rather than assumed old',
+    shown().includes('Undated'), shown());
+
+  check('the choice is remembered', w.localStorage.getItem('wanx:modern') === '1',
+    String(w.localStorage.getItem('wanx:modern')));
+
+  press();
+  await sleep(200);
+  check('switching it back off restores the older shows', shown().includes('Old'), shown());
+  check('and that is remembered too', w.localStorage.getItem('wanx:modern') === '0',
+    String(w.localStorage.getItem('wanx:modern')));
+
+  /* Same rule as the format and watched filters: it filters candidates, never
+     the anchor. "I watched this in 1998, what next" is exactly what the site
+     is for, so refusing the old show someone just typed would be baffling. */
+  press();
+  await sleep(200);
+  const oldAnchor = await pickAndRecommend(dom, 'An Old Classic');
+  await sleep(200);
+  check('an old show is still usable as an anchor with the filter on',
+    !oldAnchor.querySelector('.state'),
+    oldAnchor.querySelector('.state')?.textContent ?? 'got a card');
+}
+
+console.log('\n--- filters count what they actually removed ---');
+{
+  /* Both counters feed a sentence that says "shows that matched", so they
+     have to count matches. They used to be applied before the genre test, and
+     collectTiers walks the entire catalogue in each direction -- so the number
+     reported was really the size of the filter itself. A watched list of
+     nothing-in-common shows made the card claim every one of them matched,
+     and the year chip said 1,426, the whole pre-2010 catalogue. */
+  const NAMES = ['Action', 'Sports'];
+  const mk = (r, i, t, g, y) => ({
+    r, i, t, g, y, ty: 'TV', th: [], d: [], s: 8, e: 12,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+
+  const SPLIT = {
+    built: '2026-08-19', count: 5, names: NAMES,
+    anime: [
+      mk(1, 900, 'Source Show', [0], 2020),      // Action
+      mk(2, 901, 'A Shared Match', [0], 2021),   // Action  — matches
+      mk(3, 902, 'A Sports Thing', [1], 2021),   // Sports  — shares nothing
+      mk(4, 903, 'Another Sports Thing', [1], 2021),
+      mk(5, 904, 'A Third Sports Thing', [1], 2021),
+    ],
+  };
+
+  // Every non-matching entry is on the watched list; the one real match is not.
+  // Seeded through makeDom so it is in place before app.js reads it.
+  const dom = makeDom(SPLIT, { seedWatched: [902, 903, 904] });
+  const w = dom.window;
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Source Show');
+  body.querySelector('[data-action="direction"][data-value="down"]')
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(250);
+
+  const notes = [...body.querySelectorAll('.note')].map((n) => n.textContent).join(' ');
+  check('a watched show that shares no genre is not counted as a skipped match',
+    !/watched list/.test(notes), notes || '(no notes)');
 }
 
 /* ---------- link previews and crawler files ---------- */

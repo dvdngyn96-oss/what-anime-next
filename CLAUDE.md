@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 38.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.18 MB. 252 checks pass via `npm test`.
+**Build 39.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.18 MB. 266 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,7 +44,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 252 checks, jsdom against the real app.js and anime.json
+npm test          # 266 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -357,6 +357,98 @@ after switching ONA off reads as the toggle being broken.
 
 The last format on cannot be switched off; otherwise the card empties itself
 with no way back but a reload.
+
+### The year filter
+
+Build 39. **One chip — "2010 or later"** — off by default and remembered in
+`localStorage` under `wanx:modern`. 41% of the catalogue is older than 2010
+(1,427 entries against 2,053), and bouncing off older art and pacing is a real
+preference rather than a taste to be corrected.
+
+The matcher side is the well-trodden part: it filters *candidates* exactly like
+the format filter, so `npm run walks` comes out byte-identical apart from the
+build-number line. **The risk was vertical space**, and that is where the work
+went.
+
+**It rides in the existing toggle row, and the DOM position is what makes that
+true.** Three toggle rows on a 360px phone already pushed the card most of a
+screen down once, and the fix for that was cutting reserved space from three
+rows to two — a fourth row would have undone it. Measured in a real browser
+rather than guessed:
+
+| Where the chip sits | Toggle block at 360px |
+| --- | --- |
+| Appended at the end of `.controls` | 105px, three rows |
+| Second, straight after the direction group | **68px, two rows** |
+
+The direction toggle is 208px wide inside a 320px container, so 104px beside it
+was going spare; the chip is 89px. The axis and format groups keep sharing the
+line below. Checked with and without the chip at 360, 375, 414 and 1280px — the
+block is **the same height either way at every one of them**. A check asserts
+the chip is inside the second `.direction` group, because jsdom has no layout
+and DOM order is the thing that actually produces the result.
+
+That is also why the label is the full "2010 or later" rather than "2010+".
+Once it fits, the clear wording is free.
+
+**It filters candidates, not anchors** — the same rule as the format and
+watched filters. "I watched this in 1998, what next" is exactly what the site
+is for. "Surprise me" does respect it, because being handed a 1979 mecha right
+after asking for 2010 or later reads as the toggle being broken.
+
+**An entry with no year on record is kept.** 13 are in that state, and that is
+a gap in MyAnimeList's data rather than an era anybody chose to exclude — the
+same rule as an entry with no type surviving the format filter.
+
+**On is the loud state here, which is the opposite of the format chips and is
+deliberate.** Those default to on, so switching one *off* is the only choice
+being expressed and the only thing that should draw the eye. This one defaults
+to off, so switching it *on* is the choice — it takes the plain accent fill
+that direction and axis use, and needs no new CSS at all.
+
+**There is no "N shows were skipped" note, unlike the watched list.** The
+counter exists and an emptied walk names the filter, but nothing appears under
+an ordinary card. The watched list is invisible state built up over months, so
+its effect has to be explained; the chip is on screen directly above the card
+with its own state showing, and was just pressed. "684 shows released before
+2010 were skipped" tells nobody anything — and 684 is the ordinary size of that
+number, not an outlier. The format filter is visible in the same way and is
+silent for the same reason.
+
+**The chip alone cannot actually empty a walk**, which was worth checking
+rather than assuming. Ten anchors come out empty with it on, and all ten have
+no genres — and a genre-less *anchor* is already turned away earlier with its
+own message, so none of them reach the walk. The realistic empty is the chip
+plus a large watched list, and that branch names both: "877 already on your
+watched list, 684 released before 2010."
+
+Walking down from Cowboy Bebop with it on: Cyberpunk: Edgerunners, Pluto,
+Psycho-Pass, Uchuu Senkan Yamato 2199, Kaijuu 8-gou — against Captain Herlock,
+Space Cobra and Tenchi Muyou with it off.
+
+### Both filters count what they actually removed
+
+Build 39 fixed a bug the year chip made impossible to miss. `watchedSkipped`
+and `yearSkipped` feed a sentence that says "shows that **matched**", so they
+have to count matches — and they were being applied beside the format filter,
+*before* the genre test. `collectTiers` walks the entire catalogue in each
+direction, so the number reported was really the size of the filter itself.
+
+Marking 40 sports shows watched made Cowboy Bebop — Action, Award Winning,
+Sci-Fi — report "40 shows that matched are already on your watched list", when
+it shares a genre with exactly three of them. The year chip said **1,426**,
+which is the whole pre-2010 catalogue.
+
+Both counted filters now sit *after* the match test. The format filter is
+deliberately left where it was: it is uncounted and unreported, so its position
+cannot mislead anyone, and leaving it early keeps the scan cheap.
+
+**The first version of the check passed with the bug reinstated**, which is the
+`empty-tier` lesson again. The test seeded the watched list *after* `makeDom`,
+and `app.js` reads it into module scope on load — so the page ran on the
+defaults and the check proved nothing. `makeDom` now takes `seedWatched` and
+`seedModern` and sets them before the script boots. Both new guards were then
+broken on purpose and watched to fail.
 
 ### Kids is demoted
 
@@ -1010,31 +1102,15 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**Three jobs are queued, in this order.** Each is self-contained; the reasoning
-and the measurements are here so none of them starts from scratch.
+**Two jobs are queued, in this order.** Each is self-contained; the reasoning
+and the measurements are here so neither starts from scratch.
 
-### 1. A year filter — one chip, not a new row
+~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
+One chip reading "2010 or later", riding in the existing toggle row at no
+vertical cost, measured at 360, 375, 414 and 1280px. If 2000+ versus 2015+ is
+ever wanted, that is a second chip, not a redesign.
 
-**41% of the catalogue is pre-2010** (pre-1990 10%, 1990s 10%, 2000s 21%;
-2010+ is 2,053 entries). Bouncing off older art and pacing is a real
-preference and worth serving.
-
-The matcher side is well-trodden: it filters *candidates* exactly like the
-format filter, so it is a low-risk edit. **The risk is vertical space.** Three
-toggle rows on a 360px phone already pushed the card most of a screen down and
-the fix was cutting reservations from three to two — a fourth row would undo
-that work.
-
-So: **one chip in the existing toggle row**, reading "2010 or later", on or
-off, remembered in `localStorage` beside the format filter. Not a slider, not a
-range, not a new row. If 2000+ versus 2015+ is ever wanted that is a second
-chip, not a redesign.
-
-It can empty a walk for an older anchor. The messaging pattern already exists —
-`watchedSkipped` does exactly this for the watched list — so extend that rather
-than inventing something.
-
-### 2. Drop TMDB as the streaming source
+### 1. Drop TMDB as the streaming source
 
 **53% of cards already say "No listing found"** — 1,852 of 3,493. The feature
 fails more often than it works. It is also the only thing blocking the tip jar
@@ -1059,9 +1135,9 @@ Removing TMDB also means dropping `tm` and `wp` from the catalogue, the
 maintenance-table row — the region picker exists *only* to choose which TMDB
 listings to show.
 
-### 3. The tip jar — but email TMDB first, unless it is already gone
+### 2. The tip jar — but email TMDB first, unless it is already gone
 
-Covered under "A tip jar" below. **If job 2 lands first this stops being
+Covered under "A tip jar" below. **If job 1 lands first this stops being
 blocked at all**, since the constraint is entirely TMDB's terms. Doing them in
 this order is deliberate.
 
@@ -1455,6 +1531,12 @@ that, in the chat *and* in this file.
   guards were asserted against four anchors, and the empty-tier one passed with
   the guard deleted — none of those four could reach the case. Made in Abyss
   and Monster can, and now do.
+- **Seed `localStorage` before the app script boots, not after.** `app.js`
+  reads the watched list, the format filter and the year chip into module
+  scope on load, so a test that sets them after `makeDom` runs on the
+  defaults — and then passes whatever it was meant to catch. A check written
+  this way passed with the bug it targeted reinstated. `makeDom` takes
+  `seedWatched` and `seedModern` for exactly this.
 - **Dry-run any rule that deletes entries.** The recap patterns matched two
   real series (Special A, A Returner's Magic Should Be Special) on the first
   draft. A report-only mode costs nothing and caught it.

@@ -72,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 38;
+const BUILD = 39;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -186,6 +186,41 @@ function saveFormats() {
 }
 
 /**
+ * Whether to recommend only shows from 2010 onwards.
+ *
+ * 41% of the catalogue is older than that — 1,427 entries against 2,053 from
+ * 2010 on — and bouncing off older art and pacing is a real preference rather
+ * than a snobbery to be corrected. So it is one chip, off by default.
+ *
+ * **One chip, not a row, and not a slider.** Three toggle rows already pushed
+ * the card most of a screen down on a 360px phone, and the fix for that was
+ * cutting reserved space from three rows to two. A fourth row would undo it.
+ * This chip rides in the gap beside the direction toggle, which is 104px wide
+ * at 360px and was otherwise wasted, so the toggle block stays exactly 68px
+ * tall — measured, not assumed. If 2000+ or 2015+ is ever wanted, that is a
+ * second chip, not a redesign.
+ *
+ * Same rule as the format filter: it filters candidates, never the anchor.
+ * Refusing to accept an old show someone just typed would be baffling — "I
+ * watched this in 1998, what next" is a perfectly good question.
+ */
+const MODERN_KEY = 'wanx:modern';
+const MODERN_FROM = 2010;
+
+let modernOnly = (() => {
+  try {
+    return localStorage.getItem(MODERN_KEY) === '1';
+  } catch { /* private browsing */ }
+  return false;
+})();
+
+function saveModernOnly() {
+  try {
+    localStorage.setItem(MODERN_KEY, modernOnly ? '1' : '0');
+  } catch { /* not worth failing over */ }
+}
+
+/**
  * Shows you have already watched, so they stop being recommended.
  *
  * Same rule as the format filter: this filters candidates, never the anchor.
@@ -233,6 +268,11 @@ function clearWatched() {
    this, a walk emptied by the watched list would report "nothing shares these
    genres", which is false and would read as the matcher being broken. */
 let watchedSkipped = 0;
+
+/* And how many the "2010 or later" chip removed. Same reasoning as above, and
+   the same trap: a walk emptied by a filter has to name the filter, or the
+   page blames the matcher for a choice the viewer made. */
+let yearSkipped = 0;
 
 /**
  * Which ordering the walk climbs: MyAnimeList's score ranking, or how well a
@@ -753,9 +793,6 @@ function collectTiers(source, direction, exclude) {
     // that is a data gap, not a format they chose to exclude.
     if (candidate.type && !formats.has(candidate.type)) continue;
     if (exclude.has(candidate.id)) continue;                   // already seen this chain
-    // Shows you have marked as watched. Counted rather than silently skipped,
-    // so an emptied walk can say why it is empty.
-    if (watched.has(candidate.id)) { watchedSkipped += 1; continue; }
     if (sameFranchise(candidate, source)) continue;
 
     const shared = candidate.genres.filter((g) => want.has(g)).length;
@@ -774,6 +811,35 @@ function collectTiers(source, direction, exclude) {
      * whole catalogue. */
     const themeOnly = !candidate.genres.length;
     if (!shared && !themeOnly) continue;
+    // A genre-less entry is only really a match if it shares a theme; that is
+    // the sole basis on which it reaches buckets[0] below. Deciding it here
+    // rather than there changes nothing about what gets recommended — it just
+    // lets the two counters underneath be exact.
+    if (themeOnly && !(candidate.themes || []).some((t) => wantThemes.has(t))) continue;
+
+    /* The two filters the viewer controls are applied *here*, after the match
+       test, and counted.
+     *
+     * They used to be applied further up, beside the format filter, which
+     * made both counters wrong in the same way: they counted every entry the
+     * scan walked past rather than every entry that would otherwise have been
+     * recommended. collectTiers walks the whole catalogue in each direction,
+     * so the number the note reported was really the size of the filter.
+     * Marking 40 sports shows watched made Cowboy Bebop — Action, Award
+     * Winning, Sci-Fi — report "40 shows that matched", when it shares a genre
+     * with none of them and the true answer is none. The year chip showed the
+     * same bug far more loudly: 1,426, which is the whole pre-2010 catalogue.
+     *
+     * The format filter above is deliberately *not* moved. It is uncounted and
+     * unreported, so where it sits cannot mislead anyone, and leaving it early
+     * keeps the scan cheap. */
+    // Shows you have marked as watched. Counted rather than silently skipped,
+    // so an emptied walk can say why it is empty.
+    if (watched.has(candidate.id)) { watchedSkipped += 1; continue; }
+    /* The viewer's "2010 or later" chip. The 13 entries with no year on record
+       are kept, for the same reason as a missing type: that is a gap in the
+       data, not an era anyone chose to exclude. */
+    if (modernOnly && candidate.year && candidate.year < MODERN_FROM) { yearSkipped += 1; continue; }
 
     // Themes (School, Urban Fantasy, Isekai…) don't decide whether something
     // matches, but among equals they're the difference between "same genres"
@@ -987,6 +1053,7 @@ function collectTiers(source, direction, exclude) {
  */
 function walkRankings(source, direction, exclude = new Set()) {
   watchedSkipped = 0;
+  yearSkipped = 0;
   const otherDirection = direction === 'up' ? 'down' : 'up';
   const total = source.genres.length;
   const primary = collectTiers(source, direction, exclude);
@@ -1758,6 +1825,16 @@ function directionToggle(direction) {
         <button type="button" data-action="direction" data-value="up" aria-pressed="${direction === 'up'}">Ranked higher ↑</button>
         <button type="button" data-action="direction" data-value="down" aria-pressed="${direction === 'down'}">Ranked lower ↓</button>
       </div>
+      <!-- Second in the row on purpose. The direction toggle leaves 104px
+           spare beside it at 360px and the axis and format groups already
+           share the line below, so putting the chip here costs no vertical
+           space at all — the block stays 68px, measured in the browser at
+           320, 360, 375 and 414. Appended at the end it would wrap to a
+           third row, which is the thing this must not do. -->
+      <div class="direction" role="group" aria-label="Release years to recommend">
+        <button type="button" data-action="modern" aria-pressed="${modernOnly}"
+          title="Leave out anything released before ${MODERN_FROM} — 41% of the catalogue">${MODERN_FROM} or later</button>
+      </div>
       <div class="direction" role="group" aria-label="Which ranking to climb">
         <button type="button" data-action="axis" data-value="rank" aria-pressed="${axis === 'rank'}"
           title="MyAnimeList's score ranking">MAL rank</button>
@@ -1805,9 +1882,20 @@ function renderResult() {
 
   if (!hero) {
     const where = direction === 'up' ? 'higher up' : 'further down';
-    const why = watchedSkipped
-      ? `Everything ${where} the rankings that shares these genres is already on your watched list — ${watchedSkipped} of them. Try the other direction, or clear the list from the home page.`
-      : `Nothing ${where} the rankings shares these genres. Try the other direction.`;
+    /* An emptied walk has to name the filter that emptied it. "Nothing shares
+       these genres" is false when something did share them and a filter took
+       it away, and it reads as the matcher being broken rather than as a
+       choice the viewer made. Both filters can be responsible at once. */
+    let why;
+    if (watchedSkipped && yearSkipped) {
+      why = `Everything ${where} the rankings that shares these genres has been filtered out — ${watchedSkipped} already on your watched list, ${yearSkipped} released before ${MODERN_FROM}. Try the other direction, or relax one of those.`;
+    } else if (watchedSkipped) {
+      why = `Everything ${where} the rankings that shares these genres is already on your watched list — ${watchedSkipped} of them. Try the other direction, or clear the list from the home page.`;
+    } else if (yearSkipped) {
+      why = `Everything ${where} the rankings that shares these genres was released before ${MODERN_FROM} — ${yearSkipped} of them. Try the other direction, or switch off “${MODERN_FROM} or later”.`;
+    } else {
+      why = `Nothing ${where} the rankings shares these genres. Try the other direction.`;
+    }
     resultBody.innerHTML = `${because}<div class="state">${esc(why)}</div>`;
     wireResultControls();
     return;
@@ -1853,6 +1941,15 @@ function renderResult() {
    * served; the other three are better matches that lost on distance. The
    * honest claim is that they matched and you have seen them, not that they
    * were nearer. */
+  /* There is deliberately no matching note for the year chip, and the
+     asymmetry is the point. The watched list is invisible state built up over
+     months, so its effect has to be explained. The chip is on screen directly
+     above the card with its own state showing, and it was just pressed — so
+     "684 shows released before 2010 were skipped" tells nobody anything they
+     did not already know, and 684 is the ordinary size of that number rather
+     than an outlier. The format filter is visible in the same way and is
+     silent for the same reason. `yearSkipped` still exists, because an
+     *emptied* walk must name the filter that emptied it. */
   const watchedNote = hero && watchedSkipped
     ? `${watchedSkipped} ${watchedSkipped === 1 ? 'show that matched is' : 'shows that matched are'}`
       + ` already on your watched list, so ${watchedSkipped === 1 ? 'it was' : 'they were'} skipped.`
@@ -2066,6 +2163,16 @@ function wireResultControls() {
         if (formats.has(format)) formats.delete(format);
         else formats.add(format);
         saveFormats();
+        recommendFor(state.source, state.direction, { chain: true });
+        return;
+      }
+
+      if (action === 'modern') {
+        // No "last one on" guard is needed here, unlike the formats: turning
+        // this on can empty a walk, but turning it *off* always widens, so
+        // there is never a state with no way back.
+        modernOnly = !modernOnly;
+        saveModernOnly();
         recommendFor(state.source, state.direction, { chain: true });
         return;
       }
@@ -2480,10 +2587,12 @@ async function rollTheDice() {
     showError(catalogueTrouble(error), rollTheDice);
     return;
   }
-  // Respect the format filter here even though it is an anchor, not a
-  // recommendation: being handed a donghua right after switching ONA off
-  // would read as the toggle not working.
-  const pool = ranked.filter((a) => !a.type || formats.has(a.type));
+  // Respect the format and year filters here even though this is an anchor,
+  // not a recommendation: being handed a donghua right after switching ONA
+  // off, or a 1979 mecha right after asking for 2010 or later, would read as
+  // the toggle not working.
+  const pool = ranked.filter((a) => (!a.type || formats.has(a.type))
+    && !(modernOnly && a.year && a.year < MODERN_FROM));
   const pick = (pool.length ? pool : ranked)[Math.floor(Math.random() * (pool.length || ranked.length))];
   recommendFor(pick, state.direction);
 }

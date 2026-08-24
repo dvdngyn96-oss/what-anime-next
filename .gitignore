@@ -7,6 +7,9 @@ node_modules/
 # Machine-local Claude Code permissions, not project config
 .claude/settings.local.json
 
+# Local dev-server config for the preview browser, not project config
+.claude/launch.json
+
 # Catalogue build logs
 rebuild.log
 rebuild.err
