@@ -16,6 +16,14 @@
  */
 import { json, bad, animeId, voterId, MAX_BATCH } from './_shared.js';
 
+/* Most votes one DELETE will undo before asking the client to call again.
+ *
+ * Removal has the same 10ms CPU problem as a bulk import, from the other end:
+ * someone who shared a 500-title list has 500 rows and 500 aggregates to move,
+ * and doing that in one request would blow the budget. So it works in bites
+ * and reports what is left, and the client keeps calling until nothing is. */
+const MAX_FORGET = 100;
+
 /** Which aggregate column a vote lands in. The names are chosen here from a
  *  fixed set, never taken from the request, so they cannot become injection. */
 function column(vote) {
@@ -36,7 +44,80 @@ function column(vote) {
  * baffling to a person. */
 export function onRequest(context) {
   if (context.request.method === 'POST') return record(context);
-  return bad('This endpoint takes POST.', 405);
+  if (context.request.method === 'DELETE') return forget(context);
+  return bad('This endpoint takes POST or DELETE.', 405);
+}
+
+/**
+ * DELETE /api/vote — take back everything one voter has said.
+ *
+ * The privacy note promises this, and the promise is the reason the consent
+ * screen is credible, so it has to actually work rather than merely exist.
+ *
+ * It also has to be honest about its own limit: the only handle on a person's
+ * ratings is the random id in their browser. Clear that and the rows are
+ * genuinely unreachable — by them, by me, by anyone — which is what being
+ * properly anonymous costs. The note says so in those words.
+ */
+async function forget({ request, env }) {
+  if (!env.VOTES) return bad('Not available right now.', 503);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return bad('Expected JSON.');
+  }
+
+  const voter = voterId(body?.voter);
+  if (!voter) return bad('Missing or malformed voter id.');
+
+  let rows;
+  try {
+    const found = await env.VOTES
+      .prepare('SELECT anime, score, liked FROM votes WHERE voter = ? LIMIT ?')
+      .bind(voter, MAX_FORGET)
+      .all();
+    rows = found.results || [];
+  } catch {
+    return bad('Could not do that just now.', 503);
+  }
+
+  if (!rows.length) return json({ removed: 0, remaining: 0 });
+
+  const now = Math.floor(Date.now() / 1000);
+  const statements = [];
+  for (const row of rows) {
+    const from = column({ score: row.score, liked: row.liked });
+    if (from) {
+      statements.push(env.VOTES
+        .prepare(`UPDATE ratings SET ${from} = MAX(${from} - 1, 0), updated = ? WHERE anime = ?`)
+        .bind(now, row.anime));
+    }
+    statements.push(env.VOTES
+      .prepare('DELETE FROM votes WHERE voter = ? AND anime = ?')
+      .bind(voter, row.anime));
+  }
+
+  try {
+    await env.VOTES.batch(statements);
+  } catch {
+    return bad('Could not do that just now.', 503);
+  }
+
+  // Whether there is more to come, so the client knows to call again.
+  let remaining = 0;
+  try {
+    const left = await env.VOTES
+      .prepare('SELECT COUNT(*) AS n FROM votes WHERE voter = ?')
+      .bind(voter)
+      .first();
+    remaining = left?.n ?? 0;
+  } catch {
+    remaining = 0;
+  }
+
+  return json({ removed: rows.length, remaining });
 }
 
 async function record({ request, env }) {

@@ -24,6 +24,10 @@ Disallow: /schema.sql
 # crawler walking them would spend the daily request allowance on nobody.
 Disallow: /api/
 
+# privacy.html is deliberately NOT disallowed. It is content, it is the only
+# other real document on the site, and a page describing what is collected is
+# no use to anyone if it cannot be found.
+
 # app.js, styles.css and anime.json are deliberately NOT disallowed. The page
 # renders nothing without them, so blocking them would leave a crawler holding
 # an empty shell and judging the site on it.

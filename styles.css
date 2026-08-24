@@ -718,6 +718,70 @@ a { color: inherit; }
   font-size: 13px;
 }
 
+/* The share offer, raised after an import.
+ *
+ * It sits on the landing page next to the watched bar, which is the one part
+ * of that screen allowed to change height as you use it — there is no card
+ * here to keep still, so a block appearing costs nothing. */
+.share-offer {
+  max-width: 620px;
+  margin: 14px auto 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.share-lead { margin: 0 0 10px; color: var(--fg); }
+
+/* What is sent and what is not, at the same size as each other. Shrinking the
+   second half is how a consent box quietly becomes dishonest. */
+.share-detail {
+  margin: 0 0 14px;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+
+.share-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+
+.btn-sm { padding: 8px 14px; font-size: 13px; }
+
+.share-foot {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+/* The privacy page. Plain prose, the site's own typography, no separate
+   stylesheet to drift out of step with the rest. */
+.prose {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 20px 60px;
+  text-align: left;
+  line-height: 1.65;
+}
+
+.prose h1 { font-size: 28px; margin: 18px 0 10px; }
+.prose h2 { font-size: 17px; margin: 30px 0 8px; }
+.prose p { margin: 0 0 12px; color: var(--fg-dim); }
+.prose .lede { font-size: 16px; color: var(--fg); }
+.prose ul { margin: 0 0 14px; padding-left: 20px; color: var(--fg-dim); }
+.prose li { margin: 0 0 6px; }
+.prose b { color: var(--fg); }
+
+@media (max-width: 620px) {
+  .share-offer { margin-left: 8px; margin-right: 8px; }
+}
+
 /* The recommend row: what other people said, and the ask.
  *
  * A fixed height, not a minimum. The figure arrives from /api/ratings after

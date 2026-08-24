@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 37.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.18 MB. 225 checks pass via `npm test`.
+**Build 38.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.18 MB. 252 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -44,7 +44,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 225 checks, jsdom against the real app.js and anime.json
+npm test          # 252 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -785,6 +785,92 @@ next card retries rather than inheriting the failure. Checks cover all of it,
 including that the buttons still work when ratings are unavailable — which is
 the state every title is in until somebody rates it.
 
+### Sharing an imported list
+
+Build 38, and it is the part that decides whether any of the rest matters. The
+floor is 30 ratings before a percentage appears, across 3,493 titles — that is
+more than a hundred thousand ratings, and nobody is clicking thumbs a hundred
+thousand times. One MyAnimeList export routinely carries several hundred scored
+titles. Everything else in stage two is machinery waiting for this.
+
+`parseExport` already walked every `<anime>` node reading the id and the
+status. `<my_score>` was in the same node, ignored.
+
+**Zero means "not rated", not "terrible."** MyAnimeList writes 0 for every
+unscored entry. Counting those as 0/10 would drag every figure on the site
+toward the floor while looking like genuine opinions. Only 1-10 is kept.
+
+**Only titles in the catalogue are kept.** A real list is mostly films, sequels
+and specials this site does not carry. Sending them wastes requests and — worse
+— overstates what someone is being asked to contribute.
+
+**The question is asked after the file is parsed, never before.** By then the
+export has been read entirely on the visitor's own machine and nothing has been
+sent, so the offer can name the real number. "312 scored titles" is checkable
+against your own file in a way that "help improve recommendations" is not.
+
+**Unticked, and asked again every time.** A remembered yes is a decision
+somebody made once and then stopped being aware of, which is the thing consent
+is meant to prevent.
+
+**Declining costs nothing, and the wording says so.** The watched list is
+already saved either way. A refusal that breaks something is not a refusal.
+
+**What is not sent is stated at the same size as what is.** Shrinking that half
+is how a consent box quietly becomes dishonest, so a check asserts both halves
+are present.
+
+Uploads chunk at 100. That is the client half of the server's `MAX_BATCH`, and
+both exist for the free tier's 10ms CPU budget rather than for tidiness. A
+whole list takes a few seconds, so it reports progress — a button that sits
+there looking broken is worse than a slow one that says what it is doing. A
+failure stops rather than hammering the endpoint, and says how much got
+through, because that is more use than a bare failure.
+
+### Taking it back
+
+`DELETE /api/vote` removes everything one voter id has said. It exists because
+the consent screen promises it, and that promise is what makes the rest of the
+screen credible.
+
+It works in bites of 100 and reports what is left, and the page keeps calling
+until nothing is — the same CPU budget that forces the upload to chunk, from
+the other end. The loop is bounded, so a server that kept claiming work
+remained could not spin forever.
+
+**It is a separate button from Clear.** Clearing the watched list is local and
+instant; removing ratings reaches the server and withdraws something you
+contributed. Rolling them into one would mean people tidying their list
+silently withdrew their ratings too.
+
+**Its limit is stated rather than hidden.** The only handle on a person's
+ratings is the random id in their browser, so clearing browsing data makes them
+genuinely unreachable — by them, by me, by anyone. That is what being properly
+anonymous costs, and the privacy note says so in those words rather than
+implying a recall that does not exist.
+
+### The privacy note
+
+`privacy.html`, linked from the credit line and from the consent screen. Plain
+prose, the site's own stylesheet, no separate design to drift out of step.
+
+It exists because **build 38 is the first time anything leaves the visitor's
+machine.** Until now the whole story was "nothing is uploaded, no cookies,
+nothing to consent to", and that was true — the analytics are cookieless and
+the import was read locally and never sent. A page that collects nothing needs
+no privacy note; the moment that changes, it does.
+
+It is deliberately specific about the third parties, which is the part most
+sites omit: the browser fetches posters from MyAnimeList's CDN and synopses
+from AniList on every card, so those companies see visitor IPs. Trailer embeds
+use `youtube-nocookie`. Saying so costs nothing and leaving it out would make
+the rest less believable.
+
+Checks assert the page covers what is stored, what is sent, how to take it
+back, the limit of taking it back, who else sees an IP, and where to ask — and
+that it stays crawlable, unlike every other file in the repo root, because a
+page describing what is collected is no use if it cannot be found.
+
 ## The vote backend
 
 **Built but not wired up.** The endpoints, the schema and the tests exist;
@@ -1091,10 +1177,12 @@ import. Still the only part of the original idea needing a backend.
   And it cannot be made abuse-proof without accounts: clearing local storage
   earns a fresh id. Rate limiting raises the cost, it does not close the door,
   so the numbers should read as soft rather than as survey data.
-- **Stage 3: imported lists feeding the ratings**, behind a clear opt-in. This
-  is the part that makes the numbers real: roughly 177,000 votes are needed for
-  meaningful per-title percentages, which is why list import matters — a few
-  hundred uploads does what millions of pageviews would.
+- ~~**Stage 3: imported lists feeding the ratings.**~~ Shipped in build 38 —
+  see "Sharing an imported list" above. Roughly 105,000 ratings are needed for
+  meaningful per-title percentages (30 across 3,493 titles), which is why the
+  import matters: a few hundred uploads does what millions of pageviews would.
+  **What is left is nobody knowing the site exists.** The machinery is done;
+  the numbers now need people.
 
 **A percentage needs a floor before it is shown.** "100% would recommend" from
 one vote is worse than no number at all. Nothing should display a percentage

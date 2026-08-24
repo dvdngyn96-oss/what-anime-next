@@ -41,7 +41,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
        change, otherwise a stale script keeps running against fresh data. -->
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="stylesheet" href="styles.css?v=38">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍥</text></svg>">
 </head>
 <body>
@@ -89,10 +89,17 @@
         <span id="watched-count">Nothing marked as watched yet</span>
         <button id="import-btn" class="linkish" type="button">Import your MyAnimeList list</button>
         <button id="clear-watched-btn" class="linkish" type="button" hidden>Clear</button>
+        <button id="forget-ratings-btn" class="linkish" type="button">Remove my ratings</button>
         <input id="import-input" type="file" accept=".xml,.gz" hidden>
       </p>
 
-      <p class="credit">Rankings from <a href="https://myanimelist.net/topanime.php" target="_blank" rel="noopener">MyAnimeList</a> · genres from <a href="https://anilist.co" target="_blank" rel="noopener">AniList</a></p>
+      <!-- Raised after an import, once the file has been read on this machine
+           and there is a real number to put in the question. Hidden until then,
+           and it lives here rather than in the card because the watched bar is
+           the one part of this page allowed to change height. -->
+      <div id="share-offer" class="share-offer" hidden></div>
+
+      <p class="credit">Rankings from <a href="https://myanimelist.net/topanime.php" target="_blank" rel="noopener">MyAnimeList</a> · genres from <a href="https://anilist.co" target="_blank" rel="noopener">AniList</a> · <a href="privacy.html">Privacy</a></p>
     </section>
 
     <!-- Results view -->
@@ -111,7 +118,7 @@
     </section>
   </main>
 
-  <script src="app.js?v=37"></script>
+  <script src="app.js?v=38"></script>
 
   <!-- Cloudflare Web Analytics. Cookieless: no cookies, no fingerprinting, no
        cross-site identifier, so there is nothing to put a consent banner in

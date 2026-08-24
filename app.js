@@ -72,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 37;
+const BUILD = 38;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -2224,6 +2224,7 @@ function parseExport(xml) {
   if (!entries.length) throw new Error('No anime entries found in that file.');
 
   const ids = [];
+  const scored = [];
   let planned = 0;
   for (const node of entries) {
     const id = Number(node.querySelector('series_animedb_id')?.textContent);
@@ -2231,8 +2232,160 @@ function parseExport(xml) {
     if (!Number.isFinite(id) || id <= 0) continue;
     if (status && !WATCHED_STATUSES.has(status)) { planned += 1; continue; }
     ids.push(id);
+
+    /* The score was sitting in this same node all along, ignored.
+     *
+     * **Zero means "not rated", not "terrible."** MyAnimeList writes 0 for
+     * every unscored entry, and counting those as a 0/10 would drag every
+     * average on the site toward the floor while looking like real opinions.
+     *
+     * Only titles in the catalogue are kept. A full list is mostly films,
+     * sequels and specials this site does not carry, and there is no point
+     * sending rows the server would discard -- or showing someone a number
+     * that overstates what they are actually contributing. */
+    const score = Number(node.querySelector('my_score')?.textContent);
+    if (Number.isInteger(score) && score >= 1 && score <= 10 && byId.has(id)) {
+      scored.push({ anime: id, score });
+    }
   }
-  return { ids, planned };
+  return { ids, planned, scored };
+}
+
+/**
+ * Ask whether to share the scores just read out of an import.
+ *
+ * **Asked after the file is parsed, never before.** By this point the export
+ * has been read entirely on this machine and nothing has been sent, so the
+ * question can name the real number — "312 scored titles" is checkable against
+ * your own file in a way that "help improve recommendations" is not.
+ *
+ * Unticked, and asked again on every import. A remembered yes is a decision
+ * somebody made once and then stopped being aware of, which is the thing
+ * consent is supposed to prevent.
+ *
+ * Declining costs nothing: the watched list is already saved either way, and
+ * the wording says so. A refusal that breaks something is not a refusal.
+ */
+function offerToShare(scored) {
+  const host = document.getElementById('share-offer');
+  if (!host) return;
+
+  host.innerHTML = `
+    <p class="share-lead"><b>${scored.length.toLocaleString()}</b> of them have a score and are in this catalogue.
+    Sharing those anonymously is what turns the ratings here into real numbers —
+    a title needs ${VOTE_FLOOR} ratings before it shows a percentage at all.</p>
+    <p class="share-detail"><b>Sent:</b> the show ids and your scores, labelled with a random id kept in this browser.
+    <b>Not sent:</b> your name, your account, the file itself, your plan-to-watch,
+    or anything not in this catalogue. You can remove them again at any time.</p>
+    <p class="share-actions">
+      <button class="btn btn-sm" type="button" data-share="yes">Share my ${scored.length.toLocaleString()} scores</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-share="no">No thanks</button>
+    </p>
+    <p class="share-foot">Either way, they are marked as watched on this device only.
+      <a href="privacy.html">What this site stores</a></p>`;
+  host.hidden = false;
+
+  host.querySelector('[data-share="no"]').addEventListener('click', () => {
+    host.hidden = true;
+    host.innerHTML = '';
+  });
+  host.querySelector('[data-share="yes"]').addEventListener('click', () => {
+    shareScores(scored, host);
+  });
+}
+
+/**
+ * Upload scores in chunks, reporting as it goes.
+ *
+ * Chunked because the free Workers tier allows 10ms of CPU per request and a
+ * few hundred inserts would exceed it — the server caps a batch at 100 and
+ * this is the client half of that same limit. A whole list can take a few
+ * seconds, and a button that sits there looking broken is worse than a slow
+ * one that says what it is doing.
+ */
+async function shareScores(scored, host) {
+  const total = scored.length;
+  let sent = 0;
+  host.innerHTML = '<p class="share-lead" id="share-progress">Sharing…</p>';
+  const progress = document.getElementById('share-progress');
+
+  for (let at = 0; at < scored.length; at += 100) {
+    const chunk = scored.slice(at, at + 100);
+    try {
+      const res = await fetch('api/vote', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ voter: voterId(), votes: chunk }),
+      });
+      if (!res.ok) throw new Error('rejected');
+      sent += chunk.length;
+      for (const v of chunk) rememberVote(v.anime, v.score >= 7);
+    } catch {
+      /* Stop rather than hammering an endpoint that is not answering. What
+         went through has gone through, and saying how much is more use than
+         a bare failure. */
+      if (progress) {
+        progress.textContent = sent
+          ? `Shared ${sent.toLocaleString()} of ${total.toLocaleString()} before the connection dropped. Try again later from the same browser.`
+          : 'Could not share those just now. Your list is still saved on this device.';
+      }
+      renderWatchedBar();
+      return;
+    }
+    if (progress) progress.textContent = `Sharing… ${sent.toLocaleString()} of ${total.toLocaleString()}`;
+  }
+
+  if (progress) {
+    progress.innerHTML = `Shared ${total.toLocaleString()} scores. Thank you — that is a real dent in the ${VOTE_FLOOR}-rating floor. `
+      + '<a href="privacy.html">How to remove them</a>';
+  }
+  ratingCache.clear();          // the figures on cards are now out of date
+  renderWatchedBar();
+}
+
+/**
+ * Take back every rating this browser has given.
+ *
+ * The privacy note promises this, and the promise is what makes the consent
+ * screen credible, so it has to work rather than merely exist.
+ *
+ * Looped because the server removes a hundred at a time — the same 10ms CPU
+ * budget that forces the upload to chunk, from the other end. Bounded so a
+ * server that kept reporting work left could not spin here forever.
+ */
+async function forgetRatings(label) {
+  let removed = 0;
+  for (let pass = 0; pass < 60; pass++) {
+    let data;
+    try {
+      const res = await fetch('api/vote', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ voter: voterId() }),
+      });
+      if (!res.ok) throw new Error('rejected');
+      data = await res.json();
+    } catch {
+      if (label) {
+        label.textContent = removed
+          ? `Removed ${removed.toLocaleString()} before the connection dropped. Try again.`
+          : 'Could not reach the server just now. Nothing was removed.';
+      }
+      return;
+    }
+    removed += data.removed || 0;
+    if (label && removed) label.textContent = `Removing… ${removed.toLocaleString()}`;
+    if (!data.remaining) break;
+  }
+
+  myVotes = new Map();
+  try { localStorage.removeItem(MY_VOTES_KEY); } catch { /* private browsing */ }
+  ratingCache.clear();
+  if (label) {
+    label.textContent = removed
+      ? `Removed ${removed.toLocaleString()} rating${removed === 1 ? '' : 's'}. They are gone from the totals.`
+      : 'You have no ratings to remove.';
+  }
 }
 
 function watchedSummary() {
@@ -2262,13 +2415,18 @@ function wireWatchedBar() {
     if (!file) return;
     label.textContent = 'Reading your list…';
     try {
-      const { ids, planned } = parseExport(await readExportFile(file));
+      const { ids, planned, scored } = parseExport(await readExportFile(file));
       const added = markWatched(ids);
       const skipped = ids.length - added;
       label.textContent = `Added ${added.toLocaleString()} title${added === 1 ? '' : 's'}`
         + (skipped ? `, ${skipped.toLocaleString()} already on the list` : '')
         + (planned ? `. ${planned.toLocaleString()} plan-to-watch left out` : '.');
       clearBtn.hidden = watched.size === 0;
+      renderWatchedBar();
+      /* Ask only now, with the file already read on this machine and a real
+         number to show. Asking beforehand would mean asking about a quantity
+         neither of us knows yet. */
+      if (scored.length) offerToShare(scored);
     } catch (error) {
       label.textContent = error.message;
     } finally {
@@ -2281,6 +2439,20 @@ function wireWatchedBar() {
     clearWatched();
     renderWatchedBar();
   });
+
+  /* Separate from Clear on purpose. Clearing the watched list is local and
+     instant; removing ratings reaches the server and undoes something you
+     contributed, and rolling the two into one button would mean people who
+     wanted to tidy their list quietly withdrew their ratings too. */
+  const forgetBtn = document.getElementById('forget-ratings-btn');
+  if (forgetBtn) {
+    forgetBtn.addEventListener('click', async () => {
+      forgetBtn.disabled = true;
+      label.textContent = 'Removing your ratings…';
+      await forgetRatings(label);
+      forgetBtn.disabled = false;
+    });
+  }
 
   renderWatchedBar();
 }

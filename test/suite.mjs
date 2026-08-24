@@ -75,7 +75,8 @@ function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HI
 window.__signatureThemes = () => [...signatureThemes];
 window.__collectTiers = collectTiers;
 window.__positionOf = positionOf;
-window.__lengthOf = lengthOf;`);
+window.__lengthOf = lengthOf;
+window.__parseExport = parseExport;`);
   return dom;
 }
 
@@ -1359,13 +1360,28 @@ console.log('\n--- the watched list ---');
   /* Its own factory rather than makeDom, so the module-scope helpers can be
      reached from the test, and so the watched list can be seeded before the
      script boots and reads it. */
-  function boot(seed) {
+  function boot(seed, wire) {
     const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
     dom.window.scrollTo = () => {};
     if (seed) dom.window.localStorage.setItem('wanx:watched:v1', JSON.stringify(seed));
-    dom.window.fetch = (t) => (String(t).includes('anilist')
+    dom.window.fetch = (t, o) => {
+      const href = String(t);
+      if (href.includes('api/ratings')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ratings: {}, floor: 30 }) });
+      }
+      if (href.includes('api/vote')) {
+        const body = JSON.parse(o?.body || '{}');
+        if (o?.method === 'DELETE') {
+          const answer = wire?.onForget ? wire.onForget(body) : { removed: 0, remaining: 0 };
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(answer) });
+        }
+        wire?.onShare?.(body);
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ recorded: body.votes?.length || 1 }) });
+      }
+      return String(t).includes('anilist')
       ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: { Page: { media: [] } } }) })
-      : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) }));
+      : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) });
+    };
     dom.window.eval(`${appSource}
       window.__parseExport = parseExport;
       window.__markWatched = markWatched;
@@ -1946,6 +1962,199 @@ console.log('\n--- the recommend row ---');
   check('the vote is remembered in local storage',
     (w.localStorage.getItem('wanx:myvotes:v1') || '').includes('false'),
     w.localStorage.getItem('wanx:myvotes:v1'));
+}
+
+/* ---------- sharing imported scores ---------- */
+
+console.log('\n--- sharing imported scores ---');
+{
+  const real = JSON.parse(readFileSync(`${ROOT}/anime.json`, 'utf8'));
+  const known = real.anime.slice(0, 40).map((a) => a.i);
+
+  /* An export shaped like a real one: scored entries, unscored entries, a
+     plan-to-watch, and a film that is not in this catalogue. */
+  const rows = known.map((id, n) =>
+    `<anime><series_animedb_id>${id}</series_animedb_id><my_status>Completed</my_status>`
+    + `<my_score>${n % 4 === 0 ? 0 : (n % 10) + 1}</my_score></anime>`);
+  rows.push('<anime><series_animedb_id>999999</series_animedb_id><my_status>Completed</my_status><my_score>9</my_score></anime>');
+  rows.push('<anime><series_animedb_id>4224</series_animedb_id><my_status>Plan to Watch</my_status><my_score>8</my_score></anime>');
+  const XML = `<?xml version="1.0"?><myanimelist>${rows.join('')}</myanimelist>`;
+
+  const dom = makeDom(real);
+  await sleep(500);
+  const parsed = dom.window.eval(`window.__parseExport(${JSON.stringify(XML)})`);
+
+  /* Zero means "not rated" in a MyAnimeList export, not "terrible". Counting
+     those as a 0/10 would drag every figure on the site toward the floor while
+     looking like real opinions. */
+  check('a score of zero is treated as unrated, not as a nought',
+    parsed.scored.every((v) => v.score >= 1), JSON.stringify(parsed.scored.slice(0, 3)));
+  check('scores are read from the export at all',
+    parsed.scored.length > 0 && parsed.scored.length < parsed.ids.length,
+    `${parsed.scored.length} of ${parsed.ids.length}`);
+  /* A full list is mostly films, sequels and specials this site does not
+     carry. Sending them would waste requests and overstate what someone is
+     actually contributing. */
+  check('titles outside this catalogue are not sent',
+    !parsed.scored.some((v) => v.anime === 999999));
+  check('and plan-to-watch is left out of the scores too',
+    !parsed.scored.some((v) => v.anime === 4224));
+}
+
+{
+  const CAT = {
+    built: '2026-08-23', count: 3, names: ['Action', 'Fantasy'],
+    anime: [501, 502, 503].map((i, n) => ({
+      r: n + 1, i, t: `Show ${i}`, ty: 'TV', th: [], d: [], s: 8, g: [0, 1],
+      e: 12, y: 2020, m: 100000, im: 'x/y.jpg', st: 'fin',
+      stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+    })),
+  };
+  const XML = `<?xml version="1.0"?><myanimelist>
+    <anime><series_animedb_id>501</series_animedb_id><my_status>Completed</my_status><my_score>9</my_score></anime>
+    <anime><series_animedb_id>502</series_animedb_id><my_status>Completed</my_status><my_score>4</my_score></anime>
+    <anime><series_animedb_id>503</series_animedb_id><my_status>Completed</my_status><my_score>0</my_score></anime>
+  </myanimelist>`;
+
+  const boot = (wire) => {
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
+    dom.window.scrollTo = () => {};
+    dom.window.fetch = (t, o) => {
+      const href = String(t);
+      if (href.includes('api/ratings')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ratings: {}, floor: 30 }) });
+      if (href.includes('api/vote')) {
+        const body = JSON.parse(o?.body || '{}');
+        if (o?.method === 'DELETE') return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(wire.onForget(body)) });
+        wire.onShare(body);
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ recorded: body.votes.length }) });
+      }
+      if (href.includes('anilist')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ data: { Page: { media: [] } } }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) });
+    };
+    dom.window.eval(`${appSource}\nwindow.__offer = offerToShare;\nwindow.__forget = forgetRatings;`);
+    return dom;
+  };
+
+  /* The question is asked after the file is read and names the real number, so
+     it can be checked against your own list. Asking beforehand would mean
+     asking about a quantity neither side knows yet. */
+  const shared = [];
+  let dom = boot({ onShare: (b) => shared.push(b), onForget: () => ({ removed: 0, remaining: 0 }) });
+  await sleep(300);
+  let w = dom.window;
+  w.eval(`window.__offer([{anime:501,score:9},{anime:502,score:4}])`);
+  await sleep(80);
+  const offer = w.document.getElementById('share-offer');
+  check('the offer appears after an import, not before', offer && !offer.hidden);
+  check('and names the real number from the file',
+    /\b2\b/.test(offer.textContent), offer.textContent.slice(0, 80));
+  /* What is not sent, said at the same size as what is. Shrinking that half is
+     how a consent box quietly becomes dishonest. */
+  check('it says what is not sent as well as what is',
+    /Not sent/i.test(offer.textContent) && /your name/i.test(offer.textContent));
+  check('and it links to the privacy page', !!offer.querySelector('a[href="privacy.html"]'));
+  check('declining is a real button, not a greyed-out link',
+    !!offer.querySelector('[data-share="no"]:not([disabled])'));
+
+  // Declining sends nothing at all.
+  offer.querySelector('[data-share="no"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(120);
+  check('declining sends nothing', shared.length === 0, JSON.stringify(shared));
+  check('and puts the question away', offer.hidden);
+
+  // Accepting sends exactly the scores, under a random id.
+  w.eval(`window.__offer([{anime:501,score:9},{anime:502,score:4}])`);
+  await sleep(80);
+  w.document.querySelector('[data-share="yes"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(300);
+  check('accepting sends the scores', shared.length === 1 && shared[0].votes.length === 2,
+    JSON.stringify(shared));
+  check('under an anonymous id and nothing else',
+    /^[A-Za-z0-9_-]{16,64}$/.test(shared[0]?.voter || '')
+    && Object.keys(shared[0] || {}).sort().join(',') === 'voter,votes');
+
+  /* The free tier allows 10ms of CPU per request, so a few hundred inserts in
+     one call would exceed it. The server caps a batch at 100; this is the
+     client half of the same limit. */
+  const big = [];
+  for (let n = 0; n < 250; n++) big.push({ anime: 500000 + n, score: 8 });
+  shared.length = 0;
+  w.eval(`window.__offer(${JSON.stringify(big)})`);
+  await sleep(80);
+  w.document.querySelector('[data-share="yes"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(600);
+  check('a large list is chunked rather than sent in one request',
+    shared.length === 3 && shared.every((b) => b.votes.length <= 100),
+    shared.map((b) => b.votes.length).join('+'));
+}
+
+{
+  /* Removal has the same CPU problem from the other end, so the server works
+     in bites and the page keeps asking until nothing is left. The privacy note
+     promises this works, and the promise is what makes the consent screen
+     credible. */
+  const CAT = { built: '2026-08-23', count: 1, names: ['Action'],
+    anime: [{ r: 1, i: 501, t: 'Show', ty: 'TV', th: [], d: [], s: 8, g: [0], e: 12, y: 2020, m: 1000, im: 'x.jpg', st: 'fin', stats: { w: 1, c: 80, h: 1, d: 1, p: 1 } }] };
+  let left = 250;
+  const calls = [];
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
+  dom.window.scrollTo = () => {};
+  dom.window.fetch = (t, o) => {
+    const href = String(t);
+    if (href.includes('api/vote') && o?.method === 'DELETE') {
+      calls.push(JSON.parse(o.body));
+      const removed = Math.min(100, left);
+      left -= removed;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ removed, remaining: left }) });
+    }
+    if (href.includes('api/ratings')) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ratings: {}, floor: 30 }) });
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) });
+  };
+  dom.window.eval(`${appSource}\nwindow.__forget = forgetRatings;\nwindow.__myVotes = () => myVotes.size;`);
+  await sleep(300);
+  const w = dom.window;
+  w.localStorage.setItem('wanx:myvotes:v1', JSON.stringify({ 501: true }));
+
+  const label = w.document.getElementById('watched-count');
+  await w.eval('window.__forget(document.getElementById("watched-count"))');
+  await sleep(150);
+
+  check('removal keeps asking until the server says nothing is left',
+    calls.length === 3, `${calls.length} calls`);
+  check('and identifies the voter by the same anonymous id',
+    /^[A-Za-z0-9_-]{16,64}$/.test(calls[0]?.voter || '')
+    && Object.keys(calls[0] || {}).join(',') === 'voter');
+  check('it reports what it removed', /250/.test(label.textContent), label.textContent);
+  check('and forgets them locally too', w.__myVotes() === 0 && !w.localStorage.getItem('wanx:myvotes:v1'));
+}
+
+{
+  /* The page the consent screen points at. Broken or missing, the whole
+     arrangement is just a claim. */
+  /* Whitespace-normalised before matching: the page is hand-wrapped HTML, so
+     any phrase long enough to be worth asserting spans a line break. */
+  const privacy = readFileSync(`${ROOT}/privacy.html`, 'utf8').replace(/\s+/g, ' ');
+  const index = readFileSync(`${ROOT}/index.html`, 'utf8');
+  check('the privacy page exists and is linked from the site',
+    privacy.length > 500 && index.includes('href="privacy.html"'));
+  for (const [what, pattern] of [
+    ['what is kept in the browser', /watched list/i],
+    ['what is sent', /only the show ids and your scores/i],
+    ['how to take it back', /Remove my ratings/i],
+    ['the limit of taking it back', /cleared your browsing data/i],
+    ['who else sees an IP', /AniList/],
+    ['where to ask', /github\.com\/dvdngyn96-oss\/what-anime-next\/issues/],
+  ]) {
+    check(`the privacy page covers ${what}`, pattern.test(privacy));
+  }
+  /* It is content, not source, so it must stay crawlable -- unlike everything
+     else in the repo root, which robots.txt disallows by name. */
+  const robots = readFileSync(`${ROOT}/robots.txt`, 'utf8');
+  check('and it is crawlable, unlike the build scripts beside it',
+    !/Disallow: \/privacy/.test(robots));
+  const sitemap = readFileSync(`${ROOT}/sitemap.xml`, 'utf8');
+  check('and listed in the sitemap, being the only other real document',
+    sitemap.includes('/privacy.html'));
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
