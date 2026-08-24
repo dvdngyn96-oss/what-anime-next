@@ -1169,12 +1169,37 @@ Naruto (220) is 18x. That gap is wide enough to separate them — wider than
 anything separating the cases that defeated the affinity work above, which is
 the reason to think this one is tractable.
 
-**A tip jar — "buy me a coffee" or similar.** Not monetisation in the sense
-that matters legally: a donate link is not advertising, so it does not trip the
-line that would force revisiting the MyAnimeList non-commercial and TMDB
-personal-use registrations. **Check both registrations before adding anything
-that looks like a business**, though — TMDB's definition of commercial is
-broader than "makes money", and ads are the trigger, not deployment.
+**A tip jar — "buy me a coffee" or similar.** One link in the footer, outside
+`.hero` with the other explanatory notes so the card cannot move to accommodate
+it.
+
+**The two registrations were read rather than assumed, and this file had them
+wrong in both directions.** They do not say the same thing as each other.
+
+**MyAnimeList is fine with it, explicitly.** The API agreement defines
+non-commercial as "personal, educational, open source or communal" and says
+such applications may accept *"donations without any quotas"*. It also allows
+non-commercial apps *"some pay per click or pay per view advertising"* provided
+it does not disrupt the experience and complies with law — so the old note here
+was **too strict** about ads.
+
+**TMDB is the one to be careful with, and it is stricter than assumed.** Its
+terms say the licence "does not permit any commercial use", and commercial
+explicitly covers advertising revenue and *"indirect monetization through
+traffic generation"*. Then the line that matters:
+
+> Even unpaid activities like donations or volunteer projects may be considered
+> commercial if they generate revenue indirectly.
+
+So a donate link is *not* obviously outside their definition, which is the
+opposite of what this file used to claim. TMDB's own guidance is to ask them
+about the specific case, and commercial use needs "a separate written
+agreement".
+
+**So: ask TMDB before adding the tip jar, and do not bother asking MAL.** TMDB
+is not decorative — it powers the "Watch on" row for 1,641 entries — so losing
+the key would cost a real feature. One email, answered in writing, is cheaper
+than finding out afterwards.
 
 Practically it is one link in the footer next to the credit line. The card must
 not move to accommodate it, so it belongs outside `.hero` with the other
