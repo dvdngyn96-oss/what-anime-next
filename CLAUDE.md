@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 46.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 305 checks pass via `npm test`.
+**Build 47.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 309 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -42,7 +42,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 305 checks, jsdom against the real app.js and anime.json
+npm test          # 309 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~60 min
 npm run pages     # prerendered pages only, ~25 s
@@ -456,6 +456,53 @@ and `app.js` reads it into module scope on load — so the page ran on the
 defaults and the check proved nothing. `makeDom` now takes `seedWatched` and
 `seedModern` and sets them before the script boots. Both new guards were then
 broken on purpose and watched to fail.
+
+### When there is no tier to demote into
+
+Build 47. Both demotions — Kids, and the length mismatch — drop a candidate one
+tier so it surfaces once closer matches are exhausted. The floor is 1, because
+tier 0 holds entries with no genres at all matched on a shared theme alone, and
+a real genre match must never sink below those.
+
+**But when a candidate already shares exactly one genre, that move lands it
+back where it started and the rule silently does nothing.** A source with one
+genre has no tier above 1 at all, so for those anchors *neither demotion has
+ever fired*.
+
+**854 entries — 24.4% of the catalogue — have a single genre**, most commonly
+Comedy (241), Slice of Life (123) and Drama (87), and 758 of them have a
+6x-longer genre match somewhere in range. Two-genre sources are affected too,
+in their 1-of-2 tier.
+
+**Found by clicking the live site.** Kindaichi Shounen no Jikenbo — 148
+episodes, one genre — returned Meitantei Conan, whose length `lengthOf`
+estimates at 1,200 episodes from a run starting in 1996, against a threshold of
+148 × 6 = 888. It cleared the bar comfortably and nothing happened. Worse,
+build 35's own measurement table already listed **Ame to Kimi to (12) reaching
+Chi's Sweet Home (104) at 8.7x** as a case to demote — and it was sitting
+*second* in the shipped walk the whole time.
+
+**The fix is to demote within the tier rather than out of it.** A clashing
+candidate that cannot move down sorts to the back of its own bucket, behind
+everything that did not clash. Same intent, one step smaller, and the floor
+stays exactly where it was.
+
+**Applied after `preferLocally`, not before**, which matters: sorting the
+clashes to the back first would let the affinity lookahead pull one forward
+again, and the rule would half-fire.
+
+**The flag is cleared for every surviving candidate**, because these are the
+shared catalogue objects and genre-less entries never reach the clash site —
+a value left over from the previous walk would sink an entry for no reason.
+
+**One line of the 19 known anchors moved.** Ame to Kimi to's second result went
+from Chi's Sweet Home (104 episodes, 8.7x) to Kanojo to Kanojo no Neko (4
+episodes, 0.3x), and Chi's Sweet Home moved to position 26 of 108 — demoted,
+not deleted, which is the whole design. Everything else, including Haikyuu!!
+and its legitimate run to Slam Dunk and Hajime no Ippo at 4.0x, came out
+byte-identical. Ame to Kimi to's demoted set reads correctly too: Aikatsu!
+(178), PriPara (140), Aikatsu Stars! (100) — and Rilakkuma to Kaoru-san at 13
+episodes, which is the *Kids* rule firing, equally dead until now.
 
 ### Kids is demoted
 
@@ -1371,8 +1418,8 @@ but never corrupts the existing catalogue.
 below with what shipped, because the reasoning behind each is still the record
 of why it was done that way.
 
-**One job is queued** — the tier floor below. Everything else outstanding is a
-decision or a thing only a human can do, listed at the end of this section.
+**Nothing is queued.** Everything outstanding is a decision or a thing only a
+human can do, listed at the end of this section.
 
 ~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
 One chip reading "2010 or later", riding in the existing toggle row at no
@@ -1389,47 +1436,8 @@ toggle, `tm`/`wp`, the `providers` table, `add-watch-providers.mjs` and the
 ~~**3. The tip jar.**~~ Built in build 41 and **deliberately not launched** —
 see "The tip jar" below. One constant turns it on.
 
-### 1. A single genre means neither demotion can fire
-
-**Found by clicking the live site, and not yet fixed.** Kindaichi Shounen no
-Jikenbo — 148 episodes, one genre, Mystery — returns **Meitantei Conan** as its
-top result. Conan has no episode count, so `lengthOf` estimates it from a run
-starting in 1996 at **1,200 episodes**, against a threshold of 148 × 6 = **888**.
-It clears the bar comfortably. The demotion still does nothing.
-
-The reason is one expression:
-
-```js
-buckets[audienceClash || lengthClash ? Math.max(1, shared - 1) : shared].push(candidate);
-```
-
-With a single-genre source, `shared` is 1 and `Math.max(1, 0)` is 1 — the
-candidate is "demoted" into the tier it already occupies. **For a single-genre
-anchor neither the length rule nor the Kids rule can ever fire**, silently.
-
-**The floor is there for a good reason**, which is why this is not a one-line
-change: tier 0 is the genre-less tier that matches on themes alone, and a real
-genre match must not sink below it. A fix needs somewhere new to put these, not
-a smaller floor.
-
-**It is not a rare shape.** 854 entries — **24.4% of the catalogue** — have
-exactly one genre, most commonly Comedy (241), Slice of Life (123) and Drama
-(87). **758 of them have a 6×-longer genre match** sitting somewhere in the
-catalogue that the rule cannot touch.
-
-**The symptom that found it is arguably not even wrong**, and that is worth
-saying before anyone rushes at this. Conan for a Kindaichi viewer is a
-defensible recommendation — they are the two canonical detective series. The
-problem is the rule quietly not firing across a quarter of the catalogue, not
-that this particular answer is bad.
-
-**Treat it as a matcher change**, with everything that implies: capture a walks
-baseline, change one thing, read the diff anchor by anchor. Yuru Camp and
-Haikyuu!! are single-genre anchors already in the harness, chosen originally
-because single-genre buckets are the most sensitive case there is — so they
-will move, and their movement is the evidence.
-
----
+~~**1. A single genre means neither demotion can fire.**~~ Fixed in build 47 —
+see "When there is no tier to demote into" above.
 
 ### Not code
 

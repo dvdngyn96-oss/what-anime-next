@@ -1655,6 +1655,58 @@ console.log('\n--- prerendered pages stay in step with the catalogue ---');
     'urlFor may be dropping the trailing slash');
 }
 
+console.log('\n--- a single genre still demotes ---');
+{
+  /* Both demotions drop a candidate one tier, and the floor is 1 — so when a
+     candidate already shares exactly one genre the move lands it back where it
+     started and the rule silently does nothing. A source with one genre has no
+     tier above 1 at all, which is 854 entries, a quarter of the catalogue.
+     The demotion now applies inside the tier instead. */
+  const NAMES = ['Slice of Life', 'Kids'];
+  const mk = (r, i, t, e, extra = {}) => ({
+    r, i, t, e, s: 8, g: [0], th: [], d: [], ty: 'TV', y: 2015,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 }, ...extra,
+  });
+
+  /* One genre between them, so every match is a 1-of-1 and there is nowhere
+     above tier 1 to demote into. The long one is nearest, so without the fix
+     proximity puts it first. */
+  const CAT = {
+    built: '2026-08-24', count: 4, names: NAMES,
+    anime: [
+      mk(1, 810, 'Distant Short Show', 12),
+      mk(2, 811, 'Nearer Short Show', 10),
+      mk(3, 812, 'Nearest Long Show', 200),
+      mk(4, 813, 'Source Show', 12),
+    ],
+  };
+
+  const dom = makeDom(CAT);
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Source Show');
+  await sleep(200);
+
+  const order = [...body.querySelectorAll('.hero h2, .mini-card-title')].map((e) => e.textContent);
+  const longAt = order.findIndex((t) => /Nearest Long Show/.test(t));
+  const shortAt = order.findIndex((t) => /Nearer Short Show/.test(t));
+
+  check('a 6x-longer show does not lead a single-genre walk just for being nearest',
+    !/Nearest Long Show/.test(body.querySelector('.hero h2')?.textContent || ''),
+    body.querySelector('.hero h2')?.textContent);
+  check('it sorts behind the closer-sized matches in its own tier',
+    longAt === -1 || (shortAt !== -1 && shortAt < longAt), order.join(' | '));
+  /* Demoted, not deleted — the whole point is that it surfaces once
+     closer-sized matches run out. */
+  check('but is still reachable rather than dropped',
+    order.some((t) => /Nearest Long Show/.test(t)), order.join(' | '));
+
+  /* The floor exists so a real genre match never sinks below tier 0, which
+     holds entries with no genres at all matched on a theme alone. */
+  const app = readFileSync(`${ROOT}/app.js`, 'utf8');
+  check('and nothing was demoted into the genre-less tier to achieve it',
+    app.includes('Math.max(1, shared - 1)'), 'the tier floor of 1 was removed');
+}
+
 /* ---------- link previews and crawler files ---------- */
 /* A wrong og:image fails silently — the scraper simply shows no picture, and
    you find out from someone else's timeline. These assert the two things that

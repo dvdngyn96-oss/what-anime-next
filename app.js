@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 46;
+const BUILD = 47;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -912,6 +912,12 @@ function collectTiers(source, direction, exclude) {
      * episodes, same three genres, 48 places away, so proximity hands it the
      * top spot. It affects 54 anchors. Demoted a tier rather than excluded,
      * so it can still surface once closer matches run out. */
+    /* Cleared for every candidate that gets this far. It is set at the clash
+       site below, which genre-less entries never reach — and these are the
+       shared catalogue objects, so a value left over from the previous walk
+       would sink an entry for no reason. */
+    candidate.demotedWithinTier = false;
+
     // A genre-less entry earns its place only if a theme actually matches.
     if (themeOnly) {
       if (candidate.sharedThemes.length) buckets[0].push(candidate);
@@ -990,7 +996,31 @@ function collectTiers(source, direction, exclude) {
     candidate.matchLengthClash = lengthClash;
 
     const audienceClash = candidate.demographic === 'Kids' && source.demographic !== 'Kids';
-    buckets[audienceClash || lengthClash ? Math.max(1, shared - 1) : shared].push(candidate);
+
+    /* Both demotions drop a candidate one tier, so it surfaces once
+     * closer-sized matches are exhausted — except that the floor is 1, and
+     * when `shared` is already 1 that lands it back where it started and the
+     * rule quietly does nothing.
+     *
+     * **That is not an edge case.** A source with one genre has no tier above
+     * 1 at all, and 854 entries — a quarter of the catalogue — are shaped that
+     * way. Kindaichi Shounen no Jikenbo (148 episodes, one genre) returned
+     * Meitantei Conan, estimated at 1,200 episodes against a threshold of 888:
+     * it cleared the bar and nothing happened. Build 35's own measurement
+     * table lists Ame to Kimi to (12) reaching Chi's Sweet Home (104) at 8.7x
+     * as a case to demote, and it was sitting second in the shipped walk.
+     *
+     * **The floor cannot simply be lowered.** Tier 0 holds entries with no
+     * genres at all, matched on a shared theme alone; a real genre match must
+     * never sink below those.
+     *
+     * So the demotion is applied *within* the tier instead: the candidate
+     * sorts to the back of its own bucket, behind everything that did not
+     * clash, which is the same intent one step smaller. */
+    const clashes = audienceClash || lengthClash;
+    const tier = clashes ? Math.max(1, shared - 1) : shared;
+    candidate.demotedWithinTier = clashes && tier === shared;
+    buckets[tier].push(candidate);
 
     if (buckets[total].length >= MAX_PER_TIER) break;
   }
@@ -1057,7 +1087,16 @@ function collectTiers(source, direction, exclude) {
     return out;
   };
 
-  return buckets.map((bucket) => preferLocally(bucket).slice(0, MAX_PER_TIER));
+  /* Sunk after preferLocally rather than before it: ordering first and then
+     moving the clashes to the back makes the demotion absolute within the
+     tier. Sorting them to the back first would let the affinity lookahead pull
+     one forward again, which is the rule half-firing. */
+  return buckets.map((bucket) => {
+    const ordered = preferLocally(bucket);
+    const kept = ordered.filter((a) => !a.demotedWithinTier);
+    const sunk = ordered.filter((a) => a.demotedWithinTier);
+    return (sunk.length ? [...kept, ...sunk] : ordered).slice(0, MAX_PER_TIER);
+  });
 }
 
 /**
