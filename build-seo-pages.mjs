@@ -64,9 +64,15 @@ function slugify(title) {
     .replace(/-+$/, '');
 }
 
+/* With the trailing slash, because that is the form Cloudflare Pages actually
+   serves. A page written to anime/<id>/<slug>/index.html answers 200 at
+   "/anime/<id>/<slug>/" and 308-redirects "/anime/<id>/<slug>" to it — so
+   without the slash the sitemap, the canonical and every internal link would
+   point at a redirect. Found by calling the deployed site rather than by
+   reading the code, which is how most real bugs here get found. */
 const pathFor = (a) => {
   const slug = slugify(a.title);
-  return slug ? `/anime/${a.id}/${slug}` : `/anime/${a.id}`;
+  return slug ? `/anime/${a.id}/${slug}/` : `/anime/${a.id}/`;
 };
 
 /* ---------- boot the real app once ---------- */

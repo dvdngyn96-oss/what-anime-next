@@ -118,7 +118,7 @@ console.log('--- synthetic catalogue ---');
   /* Results live at /anime/<id>/<slug> now rather than /?id=N — one real
      document each, so a crawler has something to index and the slug carries
      the words somebody actually searched. */
-  check('URL is shareable', w.location.pathname === '/anime/106/source-show',
+  check('URL is shareable', w.location.pathname === '/anime/106/source-show/',
     w.location.pathname + w.location.search);
 
   // direction: down
@@ -1578,7 +1578,7 @@ console.log('\n--- prerendered pages ---');
   const withBlock = html.replace('<main id="app">',
     '<main id="app"><div id="seo-content"><h1>What to watch after Source Show</h1></div>');
   const dom = new JSDOM(withBlock, {
-    runScripts: 'dangerously', url: 'https://example.com/anime/701/source-show', pretendToBeVisual: true,
+    runScripts: 'dangerously', url: 'https://example.com/anime/701/source-show/', pretendToBeVisual: true,
   });
   dom.window.scrollTo = () => {};
   dom.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) });
@@ -1640,6 +1640,19 @@ console.log('\n--- prerendered pages stay in step with the catalogue ---');
   check('and carries its own canonical rather than the site root',
     page.includes(`<link rel="canonical" href="https://whatanimeshouldiwatchnext.com${first}">`),
     /<link rel="canonical"[^>]*>/.exec(page)?.[0]);
+
+  /* Every one of these must be the URL Pages actually serves. A page written
+     to anime/<id>/<slug>/index.html answers 200 at the trailing-slash form and
+     308s the bare path to it — so without the slash the sitemap would point a
+     crawler at 3,462 redirects, which spends crawl budget and dilutes the
+     signal on arrival. Shipped that way once and caught by calling the live
+     site, not by reading the file. */
+  check('every prerendered URL is the form the server answers 200 for',
+    animeLocs.every((u) => u.endsWith('/')),
+    animeLocs.filter((u) => !u.endsWith('/')).slice(0, 3).join(', '));
+  check('and app.js writes that same form into the address bar',
+    /`\/anime\/\$\{anime\.id\}\/\$\{slug\}\/`/.test(readFileSync(`${ROOT}/app.js`, 'utf8')),
+    'urlFor may be dropping the trailing slash');
 }
 
 /* ---------- link previews and crawler files ---------- */

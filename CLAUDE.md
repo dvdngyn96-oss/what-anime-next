@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 45.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 303 checks pass via `npm test`.
+**Build 46.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 305 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -42,7 +42,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 303 checks, jsdom against the real app.js and anime.json
+npm test          # 305 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~60 min
 npm run pages     # prerendered pages only, ~25 s
@@ -729,6 +729,15 @@ means the page still says something useful without it.
 decorative to the app, which routes on the id alone, so a stale or mistyped
 slug still resolves — and duplicate slugs across different entries (`cat-s-eye`,
 `digimon-adventure`) are harmless for the same reason.
+
+**Every URL carries a trailing slash, and shipping without it was a real bug.**
+A page written to `anime/<id>/<slug>/index.html` answers 200 at
+`/anime/<id>/<slug>/` and **308-redirects** the bare path to it. Build 45 put
+the bare form in the sitemap, the canonical and every internal link — so the
+sitemap pointed a crawler at 3,462 redirects, which spends crawl budget and
+weakens the signal that arrives. Found by calling the deployed site rather than
+by reading the file, which is how most real bugs here get found. Two checks
+guard it and one was broken on purpose to watch it name the offending URLs.
 
 **The sitemap is generated, not hand-written**, because it has to list exactly
 what was produced or it points crawlers at documents that are not there. It

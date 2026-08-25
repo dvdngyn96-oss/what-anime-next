@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 45;
+const BUILD = 46;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -2702,7 +2702,10 @@ function slugify(title) {
 
 function urlFor(anime, direction) {
   const slug = slugify(anime.title);
-  const path = slug ? `/anime/${anime.id}/${slug}` : `/anime/${anime.id}`;
+  /* Trailing slash: Pages serves the directory form and 308s the bare path to
+     it, so writing it without would put a redirect in the address bar and in
+     every link anyone copies out of it. */
+  const path = slug ? `/anime/${anime.id}/${slug}/` : `/anime/${anime.id}/`;
   return direction === 'down' ? `${path}?dir=down` : path;
 }
 
