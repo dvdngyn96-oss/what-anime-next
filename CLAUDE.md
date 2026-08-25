@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 42.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 283 checks pass via `npm test`.
+**Build 43.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 287 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -42,7 +42,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 283 checks, jsdom against the real app.js and anime.json
+npm test          # 287 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -803,10 +803,56 @@ Gone with it: `tm` and `wp` on every entry, the `providers` table,
 the `.tmdb-key` requirement. The catalogue dropped 76 KB, from 1.15 MB to
 1.08 MB, and `npm run walks` came out byte-identical.
 
+### The wordmark borrows the joke, not the brand
+
+Build 43. The multicolour wordmark over a search box is a deliberate nod to a
+certain search page, and it should stay that way — it says what this site is
+before you read a word.
+
+**But two of its six colours were that company's registered brand hexes
+verbatim**: `#4285F4` and `#34A853`, in their exact order, over a centred
+search box with two buttons under it. Each of those on its own is nothing; the
+combination is the part that stops being a pastiche and starts being a copy.
+
+**Copyright was never the risk and it is worth being clear why.** Colours are
+not copyrightable and neither is a sequence of them — there is no original
+expression in "blue, red, yellow, blue, green, red". The real question is
+trademark, which is about whether anyone might infer an affiliation, and the
+honest answer is that the practical risk was very low. It was changed because
+the fix costs nothing, not because a letter was expected.
+
+The blue moved to `#2f7fd6` and the green to `#1f9d55`. They read the same at
+a glance, and both actually gained contrast on the light theme. **The yellow
+and the red were already their own values** — `#f5b301` against `#FBBC05`, and
+the site accent against `#EA4335` — so they stayed, and the red stays tied to
+`--accent` so it tracks the rest of the site. A check asserts the two brand
+hexes never come back, and a second one asserts all six letters still have a
+colour, so the first cannot be satisfied by the palette quietly vanishing.
+
+**The first version of that check passed for the wrong reason**, which is the
+`empty-tier` lesson wearing new clothes. It built its pattern with
+`new RegExp(\`color:\s*${h}\`)` inside a heredoc, the heredoc halved the
+backslashes, and `\s` in a template literal is just `s` — so the pattern was
+`color:s*#4285f4`, matched nothing, and reported a clean palette while the
+brand hexes were still in the file. Both checks now do plain string work with
+no escapes at all, and the guard was broken on purpose and watched to name the
+offending hex. Comments are stripped first, because the stylesheet mentions
+both old values in the note explaining why they moved.
+
+**One thing knowingly left alone:** the yellow scores 1.85:1 on the light
+theme, which fails even the large-text bar. It is pre-existing, it is the
+nature of yellow on white, and darkening it enough to pass would change the
+look of the wordmark. Worth knowing rather than worth silently fixing.
+
 ### Saying nothing when there is nothing to say
 
 Build 42, three small ones found by looking at the live pages rather than the
 tests.
+
+**The housekeeping links lost their underline**, keeping it on hover. They sit
+directly beneath the two buttons the page exists for, and underlined in the
+accent colour they were the third-loudest thing on the screen. The colour is
+enough to say "clickable".
 
 **"Remove my ratings" hid itself only after this.** Clear already had the rule
 — hidden until the watched list has something in it — and the button that

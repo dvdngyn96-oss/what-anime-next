@@ -78,11 +78,23 @@ a { color: inherit; }
   word-break: break-word;
 }
 
-.w-what   { color: #4285f4; }
+/* The wordmark is a nod to a certain search page, and that is the whole idea —
+ * six playful colours over a search box says what this site is before you read
+ * a word. But two of these were that company's *registered brand hexes
+ * verbatim*: #4285F4 and #34A853, in their exact order, over a centred search
+ * box with two buttons under it. Colours are not copyrightable, so that was
+ * never the risk; using another company's actual brand values is a trademark
+ * question, and it costs nothing to avoid.
+ *
+ * So the blue and the green moved. They read the same at a glance and are
+ * nobody's brand. The yellow and the red were already their own values —
+ * #f5b301 against #FBBC05, and the site accent against #EA4335 — so they stay,
+ * and the red stays tied to --accent so it tracks the rest of the site. */
+.w-what   { color: #2f7fd6; }
 .w-anime  { color: var(--accent); }
 .w-should { color: #f5b301; }
-.w-i      { color: #4285f4; }
-.w-watch  { color: #34a853; }
+.w-i      { color: #2f7fd6; }
+.w-watch  { color: #1f9d55; }
 .w-next   { color: var(--accent); }
 
 .tagline {
@@ -1013,17 +1025,24 @@ a.service:hover {
   justify-content: center;
 }
 
+/* No underline at rest. These sit just under the two buttons the page is
+ * actually for, and underlining them made housekeeping the third-loudest thing
+ * on the screen. The accent colour is enough to say "this is clickable"; the
+ * underline comes back on hover so it still behaves like a link. */
 .linkish {
   border: none;
   background: none;
   padding: 0;
   font: inherit;
   color: var(--accent);
+  text-decoration: none;
+}
+
+.linkish:hover {
+  opacity: 0.75;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-
-.linkish:hover { opacity: 0.75; }
 
 .state {
   text-align: center;

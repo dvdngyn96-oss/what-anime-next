@@ -1445,6 +1445,48 @@ console.log('\n--- housekeeping row and stat honesty ---');
     studio?.getAttribute('title'));
 }
 
+console.log('\n--- the wordmark palette ---');
+{
+  /* The wordmark is a deliberate nod to a certain search page, and that is the
+     point. But two of its six colours were that company's registered brand
+     hexes verbatim, in their exact order, over a centred search box. Colours
+     are not copyrightable so that was never the risk; shipping someone else's
+     actual brand values is a trademark question, and avoiding it costs
+     nothing. This guards the two that moved. */
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  /* Comments stripped first: the stylesheet names both old hexes in the note
+     explaining why they moved, and a hex in a comment is not a shipped
+     colour. */
+  const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const brandHexes = ['#4285f4', '#34a853'];
+  const lower = code.toLowerCase();
+  const found = brandHexes.filter((h) => lower.includes(h));
+  check('no other company\u2019s brand hex is used as a wordmark colour',
+    found.length === 0, found.join(', '));
+
+  /* All six letters still get a colour: the guard above must not be satisfied
+     by the palette quietly disappearing. */
+  const parts = ['w-what', 'w-anime', 'w-should', 'w-i', 'w-watch', 'w-next'];
+  /* Plain string work rather than a built regex: a heredoc halved the
+     backslashes in the first version of this file, which left the brand-hex
+     check matching nothing and passing for that reason alone. */
+  const coloured = parts.filter((p) => {
+    const at = code.indexOf(`.${p} `);
+    return at !== -1 && code.slice(at, at + 60).includes('color:');
+  });
+  check('and all six parts of the wordmark are still coloured',
+    coloured.length === 6, coloured.join(', '));
+
+  /* The housekeeping links sit directly under the two buttons the page exists
+     for. Underlining them made them the third-loudest thing on screen. */
+  const linkish = code.slice(code.indexOf('.linkish {'), code.indexOf('.linkish {') + 200);
+  check('the housekeeping links are not underlined at rest',
+    /text-decoration:\s*none/.test(linkish), linkish.replace(/\s+/g, ' '));
+  const hover = code.slice(code.indexOf('.linkish:hover'), code.indexOf('.linkish:hover') + 200);
+  check('but still underline on hover, so they read as links',
+    /text-decoration:\s*underline/.test(hover), hover.replace(/\s+/g, ' '));
+}
+
 /* ---------- link previews and crawler files ---------- */
 /* A wrong og:image fails silently — the scraper simply shows no picture, and
    you find out from someone else's timeline. These assert the two things that
