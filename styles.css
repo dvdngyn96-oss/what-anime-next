@@ -502,6 +502,55 @@ a { color: inherit; }
   text-decoration-thickness: 1px;
 }
 
+/* The prerendered block.
+ *
+ * This is what a crawler reads and what somebody with JavaScript off is left
+ * with, so it has to be readable rather than merely present. app.js removes it
+ * the moment it has a real card up, so a visitor never sees both — which is
+ * also why none of this needs to match the card's design. */
+.seo-content {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+  color: var(--fg-dim);
+}
+
+.seo-content h1 {
+  font-size: 24px;
+  line-height: 1.25;
+  margin: 0 0 12px;
+  color: var(--fg);
+}
+
+.seo-content h2 {
+  font-size: 16px;
+  margin: 28px 0 10px;
+  color: var(--fg);
+}
+
+.seo-lede { color: var(--fg); margin: 0 0 12px; }
+.seo-alt { color: var(--fg-dim); }
+
+.seo-list { margin: 0; padding-left: 22px; }
+
+.seo-list li { margin-bottom: 12px; }
+
+.seo-list a { color: var(--accent); text-decoration: none; }
+.seo-list a:hover { text-decoration: underline; }
+
+.seo-meta,
+.seo-why {
+  display: block;
+  font-size: 13px;
+  color: var(--fg-faint);
+}
+
+.seo-note {
+  margin-top: 24px;
+  font-size: 13px;
+  color: var(--fg-faint);
+}
+
 /* Hero card */
 
 /* The card takes its accent from the show's own cover art. --art-tint falls

@@ -115,7 +115,11 @@ console.log('--- synthetic catalogue ---');
   check('lists the further exact match', txt().includes('Great Action Fantasy Romance'));
   check('reports the rank distance climbed', txt().includes('2 places higher'), txt().slice(0, 200));
   check('attributes the source', txt().includes('Because you watched Source Show'));
-  check('URL is shareable', w.location.search === '?id=106&dir=up', w.location.search);
+  /* Results live at /anime/<id>/<slug> now rather than /?id=N — one real
+     document each, so a crawler has something to index and the slug carries
+     the words somebody actually searched. */
+  check('URL is shareable', w.location.pathname === '/anime/106/source-show',
+    w.location.pathname + w.location.search);
 
   // direction: down
   body.querySelector('[data-action="direction"][data-value="down"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
@@ -1522,6 +1526,122 @@ console.log('\n--- the wordmark palette ---');
     /text-decoration:\s*underline/.test(hover), hover.replace(/\s+/g, ' '));
 }
 
+console.log('\n--- prerendered pages ---');
+{
+  /* Results are prerendered one document per entry, which means the page is no
+     longer always served from the site root. Every path it fetches has to be
+     absolute or it resolves against /anime/<id>/<slug>/ and 404s — which is
+     exactly what happened the first time this was tried: the stylesheet, the
+     script, the catalogue and both API routes all broke at once, and the page
+     rendered as unstyled HTML with no app on it. */
+  const index = readFileSync(`${ROOT}/index.html`, 'utf8');
+  const app = readFileSync(`${ROOT}/app.js`, 'utf8');
+
+  check('the stylesheet is an absolute path', index.includes('href="/styles.css'),
+    /href="[^"]*styles\.css[^"]*"/.exec(index)?.[0]);
+  check('the script is an absolute path', index.includes('src="/app.js'),
+    /src="[^"]*app\.js[^"]*"/.exec(index)?.[0]);
+  check('the catalogue is fetched from an absolute path',
+    /CATALOGUE_URL = '\/anime\.json'/.test(app),
+    /CATALOGUE_URL = '[^']*'/.exec(app)?.[0]);
+  check('the vote endpoints are absolute',
+    !app.includes("fetch('api/vote'") && !app.includes('fetch(`api/ratings'),
+    'a relative api/ path survives');
+
+  /* Going home from /anime/<id>/<slug>/ must not resolve relative to it.
+     './' meant /anime/<id>/ and was harmless only while every URL sat at the
+     root. */
+  check('going home writes an absolute path',
+    !/history\.pushState\(\{\}, '', '\.\/'\)/.test(app), "goHome still pushes './'");
+
+  /* The generator must exist and must drive the real app rather than carry a
+     second copy of the matcher, which would drift where nobody looks. */
+  const gen = readFileSync(`${ROOT}/build-seo-pages.mjs`, 'utf8');
+  check('the page generator calls the real walkRankings',
+    gen.includes('walkRankings(') && gen.includes("readFileSync(join(ROOT, 'app.js')"),
+    'generator may be reimplementing the walk');
+}
+
+{
+  /* A prerendered page has to hydrate: the crawler block is replaced by the
+     real card, and a visitor never sees both. */
+  const NAMES = ['Action', 'Fantasy', 'Romance'];
+  const mk = (r, i, t) => ({
+    r, i, t, s: 8, g: [0, 1, 2], th: [], d: [], ty: 'TV', e: 12, y: 2013,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+  const CAT = {
+    built: '2026-08-24', count: 2, names: NAMES,
+    anime: [mk(1, 700, 'Higher Show'), mk(2, 701, 'Source Show')],
+  };
+
+  const withBlock = html.replace('<main id="app">',
+    '<main id="app"><div id="seo-content"><h1>What to watch after Source Show</h1></div>');
+  const dom = new JSDOM(withBlock, {
+    runScripts: 'dangerously', url: 'https://example.com/anime/701/source-show', pretendToBeVisual: true,
+  });
+  dom.window.scrollTo = () => {};
+  dom.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) });
+  dom.window.eval(appSource);
+  await sleep(400);
+
+  const doc = dom.window.document;
+  check('a path URL routes to the right anime without a query string',
+    /Because you watched Source Show/.test(doc.getElementById('result-body')?.textContent || ''),
+    doc.getElementById('result-body')?.textContent?.slice(0, 80));
+  check('and the crawler block is removed once the card is up',
+    !doc.getElementById('seo-content'), 'seo-content survived hydration');
+}
+
+console.log('\n--- prerendered pages stay in step with the catalogue ---');
+{
+  /* A stale page is worse than no page: it points a crawler at a title that
+     may no longer be in the catalogue, and it advertises recommendations the
+     site would not give. Nothing here catches a *subtly* stale page, but these
+     catch the two ways it goes obviously wrong — pages missing entirely, and
+     a sitemap that disagrees with what was written. */
+  const shipped = JSON.parse(readFileSync(`${ROOT}/anime.json`, 'utf8'));
+  const withGenres = shipped.anime.filter((a) => (a.g || []).length);
+  const sitemap = readFileSync(`${ROOT}/sitemap.xml`, 'utf8');
+  const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  const animeLocs = locs.filter((u) => u.includes('/anime/'));
+
+  check('every entry with genres has a prerendered page',
+    animeLocs.length === withGenres.length,
+    `${animeLocs.length} pages vs ${withGenres.length} entries with genres`);
+
+  check('the sitemap also lists the home page and the privacy page',
+    locs.some((u) => u.endsWith('.com/')) && locs.some((u) => u.endsWith('/privacy')),
+    locs.slice(0, 2).join(' '));
+
+  /* Sampled rather than exhaustive: reading 3,462 files would dominate the
+     suite's runtime for a check whose failure mode is all-or-nothing. */
+  const sample = [0, 1, 7, 40, 200, 900, 2000, 3000].map((i) => withGenres[i]).filter(Boolean);
+  const missing = [];
+  for (const row of sample) {
+    const hit = animeLocs.find((u) => u.includes(`/anime/${row.i}/`) || u.endsWith(`/anime/${row.i}`));
+    if (!hit) { missing.push(row.t); continue; }
+    const rel = hit.replace('https://whatanimeshouldiwatchnext.com', '');
+    let page;
+    try { page = readFileSync(`${ROOT}${rel}/index.html`, 'utf8'); } catch { missing.push(row.t); continue; }
+    if (!page.includes(`What to watch after ${row.t}`)) missing.push(row.t);
+  }
+  check('a sampled page exists on disk and names its own anime',
+    missing.length === 0, missing.join(', '));
+
+  /* The pages carry the walk's own output, so they must not contradict the
+     card. This asserts the shape rather than the content: every page links to
+     other entries, which is also what makes the catalogue crawlable at all. */
+  const first = animeLocs[0].replace('https://whatanimeshouldiwatchnext.com', '');
+  const page = readFileSync(`${ROOT}${first}/index.html`, 'utf8');
+  check('a page links onward to other anime, so a crawler can walk the catalogue',
+    (page.match(/href="\/anime\//g) || []).length >= 5,
+    String((page.match(/href="\/anime\//g) || []).length));
+  check('and carries its own canonical rather than the site root',
+    page.includes(`<link rel="canonical" href="https://whatanimeshouldiwatchnext.com${first}">`),
+    /<link rel="canonical"[^>]*>/.exec(page)?.[0]);
+}
+
 /* ---------- link previews and crawler files ---------- */
 /* A wrong og:image fails silently — the scraper simply shows no picture, and
    you find out from someone else's timeline. These assert the two things that
@@ -2504,7 +2624,7 @@ console.log('\n--- sharing imported scores ---');
      extensionless path and 308s the other, so naming the .html would make
      every link, the canonical and the sitemap entry point at a redirect. */
   check('the privacy page exists and is linked from the site',
-    privacy.length > 500 && index.includes('href="privacy"'));
+    privacy.length > 500 && index.includes('href="/privacy"'));
   check('and linked at the address Cloudflare actually serves',
     !index.includes('href="privacy.html"')
     && !readFileSync(`${ROOT}/app.js`, 'utf8').includes('href="privacy.html"'));

@@ -5,7 +5,8 @@
   "description": "Type an anime you've already watched; get the next one up the MyAnimeList rankings that shares its genres.",
   "type": "module",
   "scripts": {
-    "build": "node build-catalogue.mjs --depth 8000",
+    "build": "node build-catalogue.mjs --depth 8000 && node build-seo-pages.mjs",
+    "pages": "node build-seo-pages.mjs",
     "test": "node test/suite.mjs",
     "walks": "node test/walks.mjs",
     "serve": "python -m http.server 8777"

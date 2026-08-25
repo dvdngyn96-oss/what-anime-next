@@ -6,7 +6,11 @@
  * AniList on demand and remembered locally, so the catalogue grows with use.
  */
 
-const CATALOGUE_URL = 'anime.json';
+/* Absolute, like every other path the page fetches. Results are prerendered
+   at /anime/<id>/<slug>/ now, and a relative 'anime.json' from there resolves
+   to /anime/<id>/<slug>/anime.json — a 404 that would take the whole page
+   down. Nothing here is ever served from a subdirectory of its own. */
+const CATALOGUE_URL = '/anime.json';
 const EXTRAS_KEY = 'wanx:extras:v1';
 const MAX_RESULTS = 12;      // shown in the "others" grid
 /* Collected per tier, per direction. This used to be 24, which quietly capped
@@ -72,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 44;
+const BUILD = 45;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -1345,7 +1349,7 @@ async function loadRatings(ids) {
   if (!wanted.length) return;
 
   try {
-    const res = await fetch(`api/ratings?ids=${wanted.join(',')}`);
+    const res = await fetch(`/api/ratings?ids=${wanted.join(',')}`);
     if (!res.ok) return;
     const data = await res.json();
     if (data.unavailable) return;
@@ -1376,7 +1380,7 @@ async function castVote(id, liked) {
   }
 
   try {
-    await fetch('api/vote', {
+    await fetch('/api/vote', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ voter: voterId(), anime: Number(id), liked }),
@@ -1731,12 +1735,14 @@ function attachAutocomplete(input, list, onPick) {
 let state = { source: null, direction: 'up', list: [], index: 0, flipped: null };
 
 function showSearchView() {
+  dropPrerendered();
   resultView.hidden = true;
   searchView.hidden = false;
   searchInput.focus();
 }
 
 function showResultView() {
+  dropPrerendered();
   searchView.hidden = true;
   resultView.hidden = false;
 }
@@ -2324,8 +2330,10 @@ function recommendFor(source, direction = 'up', { push = true, chain = false } =
   }
 
   if (push) {
-    const url = `?id=${source.id}&dir=${direction}`;
-    if (location.search !== url) history.pushState({ id: source.id, dir: direction }, '', url);
+    const url = urlFor(source, direction);
+    if (location.pathname + location.search !== url) {
+      history.pushState({ id: source.id, dir: direction }, '', url);
+    }
   }
 
   const { list, flipped } = walkRankings(source, direction, chainHistory);
@@ -2336,7 +2344,10 @@ function recommendFor(source, direction = 'up', { push = true, chain = false } =
 }
 
 function goHome() {
-  history.pushState({}, '', './');
+  /* An absolute path, not './'. From /anime/52991/sousou-no-frieren a relative
+     './' resolves to /anime/52991/ — harmless only while every URL on the site
+     sat at the root. */
+  history.pushState({}, '', '/');
   $('mini-input').value = '';
   showSearchView();
 }
@@ -2461,7 +2472,7 @@ async function shareScores(scored, host) {
   for (let at = 0; at < scored.length; at += 100) {
     const chunk = scored.slice(at, at + 100);
     try {
-      const res = await fetch('api/vote', {
+      const res = await fetch('/api/vote', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ voter: voterId(), votes: chunk }),
@@ -2507,7 +2518,7 @@ async function forgetRatings(label) {
   for (let pass = 0; pass < 60; pass++) {
     let data;
     try {
-      const res = await fetch('api/vote', {
+      const res = await fetch('/api/vote', {
         method: 'DELETE',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ voter: voterId() }),
@@ -2662,9 +2673,52 @@ window.addEventListener('resize', () => {
   }, 120);
 });
 
+/* The shape of a result URL.
+ *
+ * Results used to live at /?id=N, which meant every one of them served the
+ * same document — same title, same description, and a canonical pointing back
+ * at the root, which tells a crawler outright not to index it separately.
+ * Google had one page to rank for a site whose whole domain is the question
+ * people type into it.
+ *
+ * They are prerendered at /anime/<id>/<slug> now, one real document each, with
+ * the title and the recommendations already in the HTML. The slug is the part
+ * that earns anything — "sousou-no-frieren" in the path matches what somebody
+ * searched. It is decorative to the app, which routes on the id alone, so a
+ * stale or mistyped slug still resolves.
+ *
+ * The old `?id=N` form keeps working, because links shared before this exist
+ * and must not rot. */
+function slugify(title) {
+  return String(title || '')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/, '');
+}
+
+function urlFor(anime, direction) {
+  const slug = slugify(anime.title);
+  const path = slug ? `/anime/${anime.id}/${slug}` : `/anime/${anime.id}`;
+  return direction === 'down' ? `${path}?dir=down` : path;
+}
+
+/* The prerendered block a crawler reads. Once the app has a real card up it is
+   removed — a visitor should never see both. Left alone when JavaScript never
+   runs, so the page still says something useful without it. */
+function dropPrerendered() {
+  document.getElementById('seo-content')?.remove();
+}
+
 async function routeFromUrl() {
   const params = new URLSearchParams(location.search);
-  const id = Number(params.get('id'));
+  /* Path first, query second: /anime/<id>/<slug> is the canonical form and
+     ?id=N is the legacy one that must keep resolving. */
+  const fromPath = /^\/anime\/(\d+)/.exec(location.pathname);
+  const id = fromPath ? Number(fromPath[1]) : Number(params.get('id'));
   const dir = params.get('dir') === 'down' ? 'down' : 'up';
 
   if (!id) {

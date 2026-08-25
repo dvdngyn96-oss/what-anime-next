@@ -13,6 +13,7 @@ Disallow: /add-anilist-tags.mjs
 Disallow: /backfill-genres.mjs
 Disallow: /patch-studios.mjs
 Disallow: /add-one.mjs
+Disallow: /build-seo-pages.mjs
 Disallow: /package.json
 Disallow: /package-lock.json
 Disallow: /make-og-image.html

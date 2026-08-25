@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 44.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 290 checks pass via `npm test`.
+**Build 45.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 303 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -42,9 +42,10 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 290 checks, jsdom against the real app.js and anime.json
+npm test          # 303 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
-npm run build     # full catalogue rebuild, ~60 min
+npm run build     # full catalogue rebuild + prerendered pages, ~60 min
+npm run pages     # prerendered pages only, ~25 s
 ```
 
 One credential file, gitignored, **build-time only** — nothing ships in the
@@ -675,6 +676,70 @@ To add one without a 60-minute rebuild: add the ID, then
 
 ## Shipped behaviour
 
+### The site is more than one page now
+
+Build 45. Until this, **Google had exactly one document to rank** for a site
+whose domain is the question people type into Google. Every result lived at
+`/?id=N`, the card was built by `app.js` after the crawler had gone, and the
+canonical on all 3,493 of them pointed back at the root — which tells a
+crawler outright not to index them separately. The sitemap listed two URLs and
+said so in a comment.
+
+**Results are prerendered now, one document per entry**, at
+`/anime/<id>/<slug>`. 3,462 pages — the 31 entries with no genres are skipped
+rather than shipped as pages with nothing on them. Each carries its own title,
+description, canonical, Open Graph tags, an `<h1>`, the anime's own facts, and
+eight recommendations with a line on why each matched.
+
+**The long tail is the point.** Nobody needs to find the home page: "what to
+watch after <show>" is thousands of low-competition queries this catalogue can
+already answer, and every page links onward to eight more, so a crawler can
+walk the whole catalogue from any entry point.
+
+**`build-seo-pages.mjs` drives the real `app.js` rather than reimplementing
+the walk.** The matcher is the highest-risk code here and a second copy would
+drift quietly somewhere nobody looks, so the generator boots `index.html` and
+`app.js` in jsdom exactly as `test/walks.mjs` does and calls the same
+`walkRankings`. That also keeps it honest: a crawler is served the same
+recommendations a visitor gets, which is the line between prerendering and
+cloaking.
+
+**It is wired into `npm run build`**, so a rebuild still ends with a
+release-ready site — the property build 40 bought by dropping TMDB, kept.
+`add-one.mjs` regenerates them too, rather than printing a reminder, because
+"a step you have to remember" is exactly the footgun that was removed. The
+whole pass takes about 25 seconds against the builder's 60 minutes.
+
+**Every path the page fetches had to become absolute, and finding that out is
+what the prototype was for.** The first attempt rendered as unstyled HTML with
+no app on it: `index.html` referenced `app.js` and `styles.css` relatively, and
+`app.js` fetched `anime.json`, `api/ratings` and `api/vote` relatively — so
+from `/anime/9253/steins-gate/` every one of them resolved into the
+subdirectory and 404'd at once. `goHome()` had the same bug, pushing `'./'`,
+which meant `/anime/9253/` instead of the home page. Five checks guard the
+absolute paths and two were broken on purpose to watch them fail.
+
+**Hydration replaces the crawler block rather than sitting beside it.** The
+prerendered `#seo-content` is removed the moment the app has a real card up,
+so nobody sees both — and it is left alone when JavaScript never runs, which
+means the page still says something useful without it.
+
+**`/?id=N` keeps working.** Links shared before this exist and must not rot, so
+`routeFromUrl` reads the path first and falls back to the query. The slug is
+decorative to the app, which routes on the id alone, so a stale or mistyped
+slug still resolves — and duplicate slugs across different entries (`cat-s-eye`,
+`digimon-adventure`) are harmless for the same reason.
+
+**The sitemap is generated, not hand-written**, because it has to list exactly
+what was produced or it points crawlers at documents that are not there. It
+lists 3,464 URLs now. The old comment explaining that listing them all would be
+duplicate content was true when every one served identical markup, and is not
+true any more.
+
+**Cost: 42 MB on disk across 3,462 directories, and about 1.3 MB in the pack.**
+Near-identical files delta-compress hard, so the repository grew far less than
+the working tree suggests.
+
 ### Link previews, crawlers and the preview image
 
 `index.html` carries Open Graph and Twitter card tags, and they are
@@ -735,10 +800,12 @@ test directory and `make-og-image.html` — Cloudflare serves the whole repo roo
 so those are all publicly fetchable. They hold no secrets, but they are source,
 not content.
 
-**`sitemap.xml` lists one URL.** There are 3,493 results, but all of them serve
-byte-identical HTML, so listing them would hand a crawler thousands of URLs with
-the same markup — which is what duplicate content means. The root is the only
-distinct document the site has.
+~~**`sitemap.xml` lists one URL.**~~ True until build 45, and the reasoning was
+sound while it lasted: every `/?id=N` served byte-identical HTML, so listing
+them would have handed a crawler thousands of URLs with the same markup, which
+is what duplicate content means. They are distinct documents now — see "The
+site is more than one page now" above — so the sitemap lists all 3,464 and is
+generated rather than hand-written.
 
 ### Where to watch
 

@@ -1,5 +1,6 @@
 /* One-off: insert a single title the allowlist now admits, without rebuilding. */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 const ID = Number(process.argv[2]);
 const MAL = readFileSync('.mal-client-id', 'utf8').trim();
@@ -62,3 +63,11 @@ console.log(`added #${entry.r}  ${entry.ty}  ${entry.t}`);
 console.log(`  genres: ${g.map(i=>c.names[i]).join(', ')||'—'}  themes: ${th.map(i=>c.names[i]).join(', ')||'—'}  demo: ${d.map(i=>c.names[i]).join(',')||'—'}`);
 console.log(`  colour: ${entry.cl?'#'+entry.cl:'—'}  banner: ${entry.bn?'yes':'no'}`);
 console.log(`  catalogue now ${c.count} entries`);
+
+/* Regenerate the prerendered pages rather than printing a reminder to.
+ * Adding an entry changes what the walk serves for its neighbours, so leaving
+ * this out would ship a catalogue whose pages disagree with it — and "a step
+ * you have to remember" is the exact footgun dropping TMDB removed from the
+ * rebuild. It costs about 25 seconds. */
+console.log('regenerating prerendered pages…');
+execSync('node build-seo-pages.mjs', { stdio: 'inherit' });
