@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 40.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 271 checks pass via `npm test`.
+**Build 41.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 278 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -42,7 +42,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 271 checks, jsdom against the real app.js and anime.json
+npm test          # 278 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -1032,6 +1032,40 @@ back, the limit of taking it back, who else sees an IP, and where to ask — and
 that it stays crawlable, unlike every other file in the repo root, because a
 page describing what is collected is no use if it cannot be found.
 
+### The tip jar
+
+Build 41. **Built but not launched**, the same shape as the vote backend was:
+the code is in, and with `TIP_JAR_URL` empty *nothing renders at all*, so the
+live page is byte for byte the page it was.
+
+**Launching it is one line.** Paste the URL into `TIP_JAR_URL` in `app.js`,
+bump the build, push. There is no other switch and nothing else to remember.
+A check asserts the unlaunched state renders nothing, and it was broken on
+purpose and watched to fail — with a URL set the credit line reads:
+
+> Rankings from MyAnimeList · genres from AniList · Privacy · Buy me a
+> coffee · build 41
+
+**It sits in the credit line, which exists only on the landing view.** That
+makes "the card cannot move to accommodate it" structural rather than a matter
+of styling — there is no card on that screen. The cost is that somebody
+arriving on a shared `/?id=N` link never sees it, which is the right trade:
+this project has moved a card under somebody's cursor once too often already.
+
+**The build marker stays last.** The link is inserted ahead of it, because the
+footer build number is the first thing to check when a result looks wrong and
+it should stay where it is looked for.
+
+**Nobody needed to be asked.** MyAnimeList's API agreement defines
+non-commercial as "personal, educational, open source or communal" and permits
+*"donations without any quotas"*. TMDB was the one that counted donations as
+possibly commercial, and it stopped being a dependency in build 40 — which is
+what unblocked this, and why the two jobs were queued in that order.
+
+**Creating the account is not something this repo can do**, and it is the only
+remaining step. Platform notes are in the working log below; the short version
+is Ko-fi, which takes no platform cut on one-off tips.
+
 ## The vote backend
 
 **Built but not wired up.** The endpoints, the schema and the tests exist;
@@ -1164,8 +1198,13 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**One job is queued.** It is self-contained; the reasoning and the
-measurements are here so it does not start from scratch.
+**All three queued jobs are done**, builds 39 to 41. They are struck through
+below with what shipped, because the reasoning behind each is still the record
+of why it was done that way.
+
+**What is left is nobody knowing the site exists**, which no amount of further
+code supplies — and, for the tip jar, one account that has to be made by a
+human.
 
 ~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
 One chip reading "2010 or later", riding in the existing toggle row at no
@@ -1179,24 +1218,10 @@ extra request, since the card was already fetching the synopsis. The region
 toggle, `tm`/`wp`, the `providers` table, `add-watch-providers.mjs` and the
 `.tmdb-key` requirement all went with it.
 
-### 1. The tip jar — and it is no longer blocked
+~~**3. The tip jar.**~~ Built in build 41 and **deliberately not launched** —
+see "The tip jar" below. One constant turns it on.
 
-**Nothing needs to be asked of anybody first.** This was queued behind the
-TMDB removal because TMDB's terms were the entire constraint: they counted
-"indirect monetization through traffic generation" as commercial and said
-donations *"may be considered commercial"*, so a donate link meant emailing
-them and waiting for a written answer. TMDB is no longer a dependency, so that
-email is moot.
-
-**MyAnimeList, the one credential left, permits this outright.** Its API
-agreement defines non-commercial as "personal, educational, open source or
-communal" and allows such applications to accept *"donations without any
-quotas"* — and even some advertising, provided it does not disrupt the
-experience.
-
-Practically it is one link in the footer next to the credit line. **It must
-sit outside `.hero`**, with the explanatory notes, so the card cannot move to
-accommodate it — the same rule that keeps `matchNote` below the card.
+**Nothing is queued.** The three jobs that were here are done.
 
 ---
 
@@ -1376,8 +1401,8 @@ Naruto (220) is 18x. That gap is wide enough to separate them — wider than
 anything separating the cases that defeated the affinity work above, which is
 the reason to think this one is tractable.
 
-**A tip jar — "buy me a coffee" or similar.** Covered in the Open section
-above; the reasoning that used to live here is kept below because the
+~~**A tip jar — "buy me a coffee" or similar.**~~ Built in build 41, not
+launched — see "The tip jar" above. The reasoning is kept below because the
 registrations were read rather than assumed, and this file had them wrong in
 both directions before.
 

@@ -1333,6 +1333,54 @@ console.log('\n--- filters count what they actually removed ---');
     !/watched list/.test(notes), notes || '(no notes)');
 }
 
+console.log('\n--- the tip jar ---');
+{
+  /* Built but not launched. The check that matters is the first one: while the
+     URL is empty the page must be exactly the page it was, because that is the
+     entire promise of shipping this switched off. */
+  const dom = makeDom(SYNTHETIC);
+  await sleep(200);
+  const credit = dom.window.document.querySelector('.credit');
+
+  check('nothing renders while the tip jar is unlaunched',
+    !credit.querySelector('.tip-jar'), credit.textContent);
+  check('and the build marker is still the last thing on the credit line',
+    credit.lastElementChild?.classList.contains('build'), credit.innerHTML.slice(-90));
+
+  /* Launching it is one constant. Booting a patched copy proves the switch is
+     real rather than trusting that an empty string is the only difference. */
+  function bootWith(url) {
+    const d = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
+    d.window.scrollTo = () => {};
+    d.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(SYNTHETIC) });
+    d.window.eval(appSource.replace("const TIP_JAR_URL = '';", `const TIP_JAR_URL = ${JSON.stringify(url)};`));
+    return d;
+  }
+
+  const live = bootWith('https://ko-fi.com/example');
+  await sleep(200);
+  const liveCredit = live.window.document.querySelector('.credit');
+  const link = liveCredit.querySelector('.tip-jar');
+
+  check('setting the URL is all it takes to launch it', Boolean(link), liveCredit.textContent);
+  check('it points where it was told to',
+    link?.getAttribute('href') === 'https://ko-fi.com/example', link?.getAttribute('href'));
+  check('and opens away from the page safely',
+    link?.getAttribute('target') === '_blank' && /noopener/.test(link?.getAttribute('rel') || ''),
+    link?.outerHTML);
+  check('the build marker stays last even once it is launched',
+    liveCredit.lastElementChild?.classList.contains('build'), liveCredit.innerHTML.slice(-90));
+
+  /* The card must not move to accommodate it. The credit line is on the landing
+     view only, so this is structural rather than a matter of styling — but it
+     is asserted, because "outside .hero" is the rule every addition to this
+     page has had to meet. */
+  check('it is nowhere near the card',
+    !live.window.document.querySelector('.hero .tip-jar')
+      && !live.window.document.querySelector('#result-view .tip-jar'),
+    'tip jar found inside the result view');
+}
+
 /* ---------- link previews and crawler files ---------- */
 /* A wrong og:image fails silently — the scraper simply shows no picture, and
    you find out from someone else's timeline. These assert the two things that

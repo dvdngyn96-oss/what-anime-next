@@ -72,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 40;
+const BUILD = 41;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -101,6 +101,27 @@ const MY_VOTES_KEY = 'wanx:myvotes:v1';
  * single vote looks like data and is not. The server sends its own floor; this
  * is the fallback for when the request never lands. */
 const VOTE_FLOOR = 30;
+
+/**
+ * The tip jar — built, deliberately not launched.
+ *
+ * **With `TIP_JAR_URL` empty nothing renders at all**, so the page is byte for
+ * byte the page it was. Launching it is pasting a URL in here and bumping the
+ * build; there is no other switch, and nothing else to remember.
+ *
+ * It goes in the credit line, which lives only on the landing view — so it is
+ * structurally impossible for it to move the card, which is the rule every
+ * addition to this page is measured against. The cost of that safety is that
+ * someone arriving on a shared `/?id=N` link never sees it.
+ *
+ * **MyAnimeList, the only credential left, permits this outright**: its API
+ * agreement defines non-commercial as "personal, educational, open source or
+ * communal" and allows *"donations without any quotas"*. TMDB was the awkward
+ * one — it counted donations as possibly commercial — and it stopped being a
+ * dependency in build 40, which is what unblocked this.
+ */
+const TIP_JAR_URL = '';
+const TIP_JAR_LABEL = 'Buy me a coffee';
 
 /** This browser's anonymous voter id, made once and kept. */
 const voterId = (() => {
@@ -2660,9 +2681,16 @@ async function routeFromUrl() {
 
 wireWatchedBar();
 
-// Stamp the running build onto the page and the console.
+// Stamp the running build onto the page and the console. The tip jar goes in
+// ahead of it, so the build marker stays last where it is looked for.
 const creditLine = document.querySelector('.credit');
-if (creditLine) creditLine.insertAdjacentHTML('beforeend', ` · <span class="build">build ${BUILD}</span>`);
+if (creditLine) {
+  if (TIP_JAR_URL) {
+    creditLine.insertAdjacentHTML('beforeend',
+      ` · <a class="tip-jar" href="${esc(TIP_JAR_URL)}" target="_blank" rel="noopener">${esc(TIP_JAR_LABEL)}</a>`);
+  }
+  creditLine.insertAdjacentHTML('beforeend', ` · <span class="build">build ${BUILD}</span>`);
+}
 console.info(`whatanimeshouldiwatchnext — build ${BUILD}`);
 
 // The rejection is handled inside loadCatalogue, which raises the notice; this
