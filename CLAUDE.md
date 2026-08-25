@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 41.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 278 checks pass via `npm test`.
+**Build 42.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 283 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -42,7 +42,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 278 checks, jsdom against the real app.js and anime.json
+npm test          # 283 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -803,6 +803,28 @@ Gone with it: `tm` and `wp` on every entry, the `providers` table,
 the `.tmdb-key` requirement. The catalogue dropped 76 KB, from 1.15 MB to
 1.08 MB, and `npm run walks` came out byte-identical.
 
+### Saying nothing when there is nothing to say
+
+Build 42, three small ones found by looking at the live pages rather than the
+tests.
+
+**"Remove my ratings" hid itself only after this.** Clear already had the rule
+— hidden until the watched list has something in it — and the button that
+reaches the server to withdraw something you contributed did not. A first-time
+visitor was being offered the deletion of data they had never given, in the
+accent colour, directly under the two buttons they were meant to press.
+
+**"? episodes" read as broken data.** A missing count means the show is still
+airing, which the cell immediately beside it already says. Every other unknown
+on that row renders as an em-dash, so this one does now too. The estimate
+`lengthOf` makes for the demotion rule is deliberately *not* shown — it is a
+guess for ordering, not a fact about the show.
+
+**The studio tooltip said "Animation studio".** The name is clipped at 15ch to
+keep the stat row from wrapping, so the tooltip was the only place the full
+name could survive — and it was spending itself repeating the label underneath.
+It now carries the name.
+
 ### The watched list
 
 Shows you have already seen, so they stop being recommended. This is **stage
@@ -1062,9 +1084,22 @@ non-commercial as "personal, educational, open source or communal" and permits
 possibly commercial, and it stopped being a dependency in build 40 — which is
 what unblocked this, and why the two jobs were queued in that order.
 
-**Creating the account is not something this repo can do**, and it is the only
-remaining step. Platform notes are in the working log below; the short version
-is Ko-fi, which takes no platform cut on one-off tips.
+**The Ko-fi page exists and is live**: `ko-fi.com/whatanimeshouldiwatchnext`,
+set to CAD, paying out through Stripe, with "Get all of Ko-fi" **off** — that
+toggle trades 5% of every tip for supporter-only posts and custom colours,
+none of which this uses, and 0% on tips was the whole reason for choosing
+Ko-fi. Stripe Radar is on the free Lite tier and Stripe Tax is off.
+
+**So nothing is left to build or set up. What remains is a decision**, taken
+deliberately and not yet taken: the owner asked to hold the launch rather than
+ship it the moment it worked. Launching is pasting that URL into
+`TIP_JAR_URL`, bumping the build, and pushing.
+
+**Nothing is given in return for a tip, and that is deliberate.** The site is
+identical whether or not you pay; there are no supporter-only posts and no
+perks. That keeps a tip a gift rather than a sale, which is the distinction
+deciding whether GST is a question at all — and is a second reason "Get all of
+Ko-fi" stays off.
 
 ## The vote backend
 

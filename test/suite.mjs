@@ -1381,6 +1381,70 @@ console.log('\n--- the tip jar ---');
     'tip jar found inside the result view');
 }
 
+console.log('\n--- housekeeping row and stat honesty ---');
+{
+  /* "Remove my ratings" reaches the server and undoes something you gave, so
+     it is the more alarming of the two housekeeping buttons -- and it was the
+     one that never hid itself. Clear had the rule; this did not. */
+  const dom = makeDom(SYNTHETIC);
+  await sleep(200);
+  const doc = dom.window.document;
+  const forget = doc.getElementById('forget-ratings-btn');
+  const clear = doc.getElementById('clear-watched-btn');
+
+  check('Remove my ratings is hidden when you have given none',
+    forget?.hidden === true, `hidden=${forget?.hidden}`);
+  check('and Clear is hidden when nothing is watched, as before',
+    clear?.hidden === true, `hidden=${clear?.hidden}`);
+
+  // With a rating stored before boot, it has something to remove and appears.
+  const d2 = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
+  d2.window.scrollTo = () => {};
+  d2.window.localStorage.setItem('wanx:myvotes:v1', JSON.stringify({ '100': true }));
+  d2.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(SYNTHETIC) });
+  d2.window.eval(appSource);
+  await sleep(200);
+  check('and it appears once there is a rating to remove',
+    d2.window.document.getElementById('forget-ratings-btn')?.hidden === false,
+    `hidden=${d2.window.document.getElementById('forget-ratings-btn')?.hidden}`);
+}
+
+{
+  /* A missing episode count means "still airing", which the cell beside it
+     already says. A question mark there reads as broken data instead. */
+  const NAMES = ['Action', 'Fantasy', 'Romance'];
+  const mk = (r, i, t, extra = {}) => ({
+    r, i, t, s: 8, g: [0, 1, 2], th: [], d: [], ty: 'TV', e: 12, y: 2013,
+    m: 200000, im: 'x/y.jpg', st: 'fin', su: [0],
+    stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 }, ...extra,
+  });
+  const CAT = {
+    built: '2026-08-24', count: 2, names: NAMES,
+    studios: ['TMS Entertainment'],
+    anime: [
+      mk(1, 980, 'Endless Ongoing Thing', { e: null, st: 'air', y: 1996 }),
+      mk(2, 981, 'Source Show'),
+    ],
+  };
+
+  const dom = makeDom(CAT);
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Source Show');
+  await sleep(200);
+
+  const stats = body.querySelector('.stats')?.textContent || '';
+  check('an unknown episode count renders as a dash, not a question mark',
+    /—episodes/.test(stats) && !/\?episodes/.test(stats), stats.replace(/\s+/g, ' '));
+
+  /* The studio is clipped to 15ch in CSS, so the tooltip is the only place the
+     full name survives -- and it used to say "Animation studio", which the
+     label under it already says. */
+  const studio = body.querySelector('.stat-studio');
+  check('the clipped studio name is recoverable from its tooltip',
+    /TMS Entertainment/.test(studio?.getAttribute('title') || ''),
+    studio?.getAttribute('title'));
+}
+
 /* ---------- link previews and crawler files ---------- */
 /* A wrong og:image fails silently — the scraper simply shows no picture, and
    you find out from someone else's timeline. These assert the two things that

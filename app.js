@@ -72,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 41;
+const BUILD = 42;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -2018,10 +2018,13 @@ function renderResult() {
         <div class="stats">
           <div><b>${esc(hero.score ?? '—')}</b>score</div>
           <div><b>${hero.rank ? `#${esc(hero.rank)}` : '—'}</b>ranked</div>
-          <div><b>${esc(hero.episodes ?? '?')}</b>episodes</div>
+          <!-- An em-dash, not a question mark: every other unknown on this row
+               renders as one, and the cell beside this already says "still
+               airing", which is the actual reason a count is missing. -->
+          <div><b>${esc(hero.episodes ?? '—')}</b>episodes</div>
           <div><b>${esc(hero.type ?? '—')}</b>${esc(hero.year ?? '')}</div>
           ${completionStat(hero)}
-          ${hero.studios.length ? `<div class="stat-studio" title="Animation studio"><b>${esc(hero.studios[0])}</b>studio</div>` : ''}
+          ${hero.studios.length ? `<div class="stat-studio" title="${esc(hero.studios[0])} — animation studio"><b>${esc(hero.studios[0])}</b>studio</div>` : ''}
         </div>
         </div>
         <div class="genre-row">
@@ -2543,8 +2546,14 @@ function watchedSummary() {
 function renderWatchedBar() {
   const label = document.getElementById('watched-count');
   const clear = document.getElementById('clear-watched-btn');
+  const forget = document.getElementById('forget-ratings-btn');
   if (label) label.textContent = watchedSummary();
   if (clear) clear.hidden = watched.size === 0;
+  /* Same rule as Clear, and it was missing here. Offering to delete ratings to
+     somebody who has never given one is noise at best — and since it is the
+     more alarming of the two buttons, it read as a warning on a page where
+     nothing has happened yet. */
+  if (forget) forget.hidden = myVotes.size === 0;
 }
 
 function wireWatchedBar() {
