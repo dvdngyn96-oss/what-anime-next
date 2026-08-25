@@ -1371,9 +1371,8 @@ but never corrupts the existing catalogue.
 below with what shipped, because the reasoning behind each is still the record
 of why it was done that way.
 
-**What is left is nobody knowing the site exists**, which no amount of further
-code supplies — and, for the tip jar, one account that has to be made by a
-human.
+**One job is queued** — the tier floor below. Everything else outstanding is a
+decision or a thing only a human can do, listed at the end of this section.
 
 ~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
 One chip reading "2010 or later", riding in the existing toggle row at no
@@ -1390,7 +1389,57 @@ toggle, `tm`/`wp`, the `providers` table, `add-watch-providers.mjs` and the
 ~~**3. The tip jar.**~~ Built in build 41 and **deliberately not launched** —
 see "The tip jar" below. One constant turns it on.
 
-**Nothing is queued.** The three jobs that were here are done.
+### 1. A single genre means neither demotion can fire
+
+**Found by clicking the live site, and not yet fixed.** Kindaichi Shounen no
+Jikenbo — 148 episodes, one genre, Mystery — returns **Meitantei Conan** as its
+top result. Conan has no episode count, so `lengthOf` estimates it from a run
+starting in 1996 at **1,200 episodes**, against a threshold of 148 × 6 = **888**.
+It clears the bar comfortably. The demotion still does nothing.
+
+The reason is one expression:
+
+```js
+buckets[audienceClash || lengthClash ? Math.max(1, shared - 1) : shared].push(candidate);
+```
+
+With a single-genre source, `shared` is 1 and `Math.max(1, 0)` is 1 — the
+candidate is "demoted" into the tier it already occupies. **For a single-genre
+anchor neither the length rule nor the Kids rule can ever fire**, silently.
+
+**The floor is there for a good reason**, which is why this is not a one-line
+change: tier 0 is the genre-less tier that matches on themes alone, and a real
+genre match must not sink below it. A fix needs somewhere new to put these, not
+a smaller floor.
+
+**It is not a rare shape.** 854 entries — **24.4% of the catalogue** — have
+exactly one genre, most commonly Comedy (241), Slice of Life (123) and Drama
+(87). **758 of them have a 6×-longer genre match** sitting somewhere in the
+catalogue that the rule cannot touch.
+
+**The symptom that found it is arguably not even wrong**, and that is worth
+saying before anyone rushes at this. Conan for a Kindaichi viewer is a
+defensible recommendation — they are the two canonical detective series. The
+problem is the rule quietly not firing across a quarter of the catalogue, not
+that this particular answer is bad.
+
+**Treat it as a matcher change**, with everything that implies: capture a walks
+baseline, change one thing, read the diff anchor by anchor. Yuru Camp and
+Haikyuu!! are single-genre anchors already in the harness, chosen originally
+because single-genre buckets are the most sensitive case there is — so they
+will move, and their movement is the evidence.
+
+---
+
+### Not code
+
+- **The tip jar is built and switched off.** The Ko-fi page is live. Launching
+  is one constant — see "The tip jar" above. Deliberately held.
+- **Nobody knows the site exists.** Build 45 made it indexable and the sitemap
+  is submitted and reading Success at 3,464 URLs, but indexing takes weeks and
+  ranking needs some signal the site exists. r/anime allows tool announcements
+  and needs 10 comment karma earned there first; Show HN is the other post
+  worth making. Neither is something this repo can do.
 
 ---
 
