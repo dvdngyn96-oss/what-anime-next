@@ -1441,13 +1441,63 @@ see "When there is no tier to demote into" above.
 
 ### Not code
 
-- **The tip jar is built and switched off.** The Ko-fi page is live. Launching
-  is one constant — see "The tip jar" above. Deliberately held.
-- **Nobody knows the site exists.** Build 45 made it indexable and the sitemap
-  is submitted and reading Success at 3,464 URLs, but indexing takes weeks and
-  ranking needs some signal the site exists. r/anime allows tool announcements
-  and needs 10 comment karma earned there first; Show HN is the other post
-  worth making. Neither is something this repo can do.
+**The search side is finished and needs nothing further.**
+
+- Google Search Console: verified as a **Domain property**, sitemap submitted,
+  reading **Success at 3,464 URLs**. It first showed "Couldn't fetch" and
+  resolved itself — Googlebot had not actually attempted the fetch yet, which
+  was confirmed by fetching as Googlebot (200, right content type, no BOM)
+  rather than guessing.
+- **A Domain property can only be verified by DNS**, so the HTML-file and
+  meta-tag methods do not exist for it and there is no second method to add.
+  Do not go looking for one. The protection is simply never deleting that TXT
+  record, and re-adding it if DNS ever moves.
+- Bing Webmaster Tools: imported from Search Console, which also covers
+  **DuckDuckGo, Yahoo and Ecosia** — those take Bing's index and have no
+  console of their own.
+- Cloudflare **Crawler Hints** is on. It pings IndexNow when content changes,
+  which suits a site that regenerates 3,462 pages per rebuild. Bing family
+  only; Google does not participate.
+
+**What is left is people, and none of it is code.**
+
+- **The tip jar is built and switched off.** The Ko-fi page is live at
+  `ko-fi.com/whatanimeshouldiwatchnext`. Launching is one constant — see "The
+  tip jar" above. Held deliberately.
+- **r/anime allows this, and the rules were read rather than assumed.**
+  Anime-related tools and websites "can be announced when they're released".
+  Three gates, in the order they bite: **10 comment karma earned in r/anime**
+  before you can post at all; the **"Do Not Sell Things" rule bans advertising
+  crowdfunding**, which is why the tip jar stays off until after the post; and
+  the announcement is a **one-shot** — minor updates are not allowed, major
+  functionality changes are case-by-case. Flair **Misc.** (there is no tool
+  flair and the rest are text-only or industry news), title of four or more
+  words, no link shorteners. Do not lead on the MAL rankings: posts *about*
+  database aggregate ratings are prohibited, and the tool merely uses them.
+- **Show HN** is the other post worth making, in a completely different
+  register — plain and factual, where the Reddit one is casual.
+
+### What the owner found by posting it
+
+Shared to a Discord community, and the first real feedback loop produced two
+things worth keeping.
+
+**"It doesn't work well with GOAT anime" is the wrong diagnosis, and the right
+one is already in this file.** Walking *up* from a top-ranked show runs out of
+things above it — Mushoku Tensei is #309 and exactly one of the 161 isekai in
+the catalogue ranks higher. The walk is not failing, it is correctly reporting
+that there is nowhere up to go, and it flips direction and says so. The useful
+line for a reader is **"if you type something highly ranked, hit Ranked
+lower"** — a tip rather than a caveat.
+
+**A heavily-watched account filters a great deal, and the card says so
+correctly.** With a full MyAnimeList import loaded, Mushoku Tensei reported
+**"366 shows that matched are already on your watched list, so they were
+skipped"**, which is the entire explanation for results feeling thin. That
+number is only trustworthy because of the build 39 fix: before it, the counter
+counted everything the scan walked past rather than everything that matched,
+and would have reported most of the list while meaning nothing. Working as
+designed, and arguably a selling point rather than a caveat.
 
 ---
 
