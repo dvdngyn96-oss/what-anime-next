@@ -15,6 +15,12 @@
   --hover: #f1f3f4;
   --accent: #e5484d;
   --accent-soft: rgba(229, 72, 77, 0.1);
+  /* Yellow is the one wordmark colour that cannot be the same in both themes.
+   * The vivid #f5b301 scores 1.85:1 on white, failing even the large-text bar,
+   * and darkening it far enough to pass would dull it on the dark theme where
+   * it currently sits at 9.59:1 and looks right. So it is a variable: a deeper
+   * amber here, the original there. 3.20:1 on white, 5.56:1 on the dark. */
+  --wordmark-yellow: #c98000;
   --shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
   --radius: 24px;
 }
@@ -32,6 +38,7 @@
     --hover: #303134;
     --accent: #ff6b6b;
     --accent-soft: rgba(255, 107, 107, 0.14);
+    --wordmark-yellow: #f5b301;
     --shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
   }
 }
@@ -92,7 +99,7 @@ a { color: inherit; }
  * and the red stays tied to --accent so it tracks the rest of the site. */
 .w-what   { color: #2f7fd6; }
 .w-anime  { color: var(--accent); }
-.w-should { color: #f5b301; }
+.w-should { color: var(--wordmark-yellow); }
 .w-i      { color: #2f7fd6; }
 .w-watch  { color: #1f9d55; }
 .w-next   { color: var(--accent); }

@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 43.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 287 checks pass via `npm test`.
+**Build 44.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 290 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -42,7 +42,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 287 checks, jsdom against the real app.js and anime.json
+npm test          # 290 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
@@ -839,10 +839,22 @@ no escapes at all, and the guard was broken on purpose and watched to name the
 offending hex. Comments are stripped first, because the stylesheet mentions
 both old values in the note explaining why they moved.
 
-**One thing knowingly left alone:** the yellow scores 1.85:1 on the light
-theme, which fails even the large-text bar. It is pre-existing, it is the
-nature of yellow on white, and darkening it enough to pass would change the
-look of the wordmark. Worth knowing rather than worth silently fixing.
+**The yellow moved in build 44, and it is the one colour that cannot be the
+same in both themes.** At `#f5b301` it scored **1.85:1** on white, failing even
+the 3:1 large-text bar — but that same value is 9.59:1 on the dark theme and
+looks right there, and darkening it far enough to pass on white would dull the
+theme most people actually see.
+
+So it became `--wordmark-yellow`: **`#c98000` on light (3.20:1)** and the
+original `#f5b301` on dark (9.59:1), using the variable-override block the
+stylesheet already had. Nothing else changed — the dark theme is byte for byte
+what it was.
+
+All six colours now sit between **3.20 and 4.10** on white, which is a tight
+enough band that the wordmark reads as one palette rather than one letter
+shouting. Three checks compute the ratios from the stylesheet rather than
+trusting an eyeball, so a future palette tweak cannot quietly drop below the
+bar; the light-theme one was broken on purpose and reported `1.85:1`.
 
 ### Saying nothing when there is nothing to say
 

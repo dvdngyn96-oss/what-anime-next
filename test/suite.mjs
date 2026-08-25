@@ -1477,6 +1477,41 @@ console.log('\n--- the wordmark palette ---');
   check('and all six parts of the wordmark are still coloured',
     coloured.length === 6, coloured.join(', '));
 
+  /* The wordmark is large display text, so the bar is 3:1. Yellow is the one
+     colour that cannot be the same in both themes: vivid enough to look right
+     on the dark background, it scores 1.85:1 on white and fails even that
+     bar. Computed here rather than eyeballed, so a future palette tweak
+     cannot quietly drop below it again. */
+  const luminance = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    const parts = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+      const x = v / 255;
+      return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2];
+  };
+  const contrast = (a, b) => {
+    const x = luminance(a); const y = luminance(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  const valueOf = (name, from) => {
+    const at = from.indexOf(name);
+    return at === -1 ? null : from.slice(at + name.length).match(/#[0-9a-f]{6}/i)?.[0];
+  };
+  const darkBlock = code.slice(code.indexOf('prefers-color-scheme: dark'));
+  const yellowLight = valueOf('--wordmark-yellow:', code);
+  const yellowDark = valueOf('--wordmark-yellow:', darkBlock);
+
+  check('the wordmark yellow clears 3:1 on the light theme',
+    yellowLight && contrast(yellowLight, '#ffffff') >= 3,
+    `${yellowLight} -> ${yellowLight ? contrast(yellowLight, '#ffffff').toFixed(2) : '?'}:1`);
+  check('and still clears it on the dark theme',
+    yellowDark && contrast(yellowDark, '#17181a') >= 3,
+    `${yellowDark} -> ${yellowDark ? contrast(yellowDark, '#17181a').toFixed(2) : '?'}:1`);
+  check('every other wordmark colour clears 3:1 on white too',
+    ['#2f7fd6', '#1f9d55', '#e5484d'].every((c) => contrast(c, '#ffffff') >= 3),
+    ['#2f7fd6', '#1f9d55', '#e5484d'].map((c) => `${c} ${contrast(c, '#ffffff').toFixed(2)}`).join(', '));
+
   /* The housekeeping links sit directly under the two buttons the page exists
      for. Underlining them made them the third-loudest thing on screen. */
   const linkish = code.slice(code.indexOf('.linkish {'), code.indexOf('.linkish {') + 200);
