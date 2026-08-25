@@ -53,32 +53,6 @@ if (col) entry.cl = col.replace('#','');
 const bn = /banner\/(.+)$/.exec(al?.data?.Media?.bannerImage || '')?.[1];
 if (bn) entry.bn = bn;
 
-// TMDB match + providers
-const TMDB = readFileSync('.tmdb-key','utf8').trim();
-const squash = x => (x||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
-for (const q of [entry.en, entry.t].filter(Boolean)) {
-  await sleep(200);
-  const res = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB}&query=${encodeURIComponent(q)}`).then(r=>r.json()).catch(()=>null);
-  const hit = (res?.results||[]).find(x => squash(x.name)===squash(q) || squash(x.original_name)===squash(q));
-  if (hit) { entry.tm = hit.id; break; }
-}
-if (entry.tm) {
-  await sleep(200);
-  const wp = await fetch(`https://api.themoviedb.org/3/tv/${entry.tm}/watch/providers?api_key=${TMDB}`).then(r=>r.json()).catch(()=>null);
-  const SUF = /\s+(?:with Ads|Amazon Channel|Apple TV Channel|Roku Premium Channel|Standard|Basic|Premium)$/i;
-  const base = s2 => { let o=s2.trim(); for(let i=0;i<4&&SUF.test(o);i++) o=o.replace(SUF,'').trim(); return o; };
-  const providerId = nm => { let i=c.providers.indexOf(nm); if(i===-1){c.providers.push(nm); i=c.providers.length-1;} return i; };
-  const watch = {};
-  for (const [k, reg] of [['u','US'],['c','CA']]) {
-    const seen=new Set(), out=[];
-    for (const p of wp?.results?.[reg]?.flatrate ?? []) {
-      const b = base(p.provider_name); if (seen.has(squash(b))) continue; seen.add(squash(b)); out.push(providerId(b));
-    }
-    if (out.length) watch[k]=out;
-  }
-  if (Object.keys(watch).length) entry.wp = watch;
-} else entry.tm = null;
-
 c.anime.push(entry);
 c.anime.sort((a,b)=>a.r-b.r);
 c.count = c.anime.length;
@@ -86,6 +60,5 @@ writeFileSync('anime.json', JSON.stringify(c));
 
 console.log(`added #${entry.r}  ${entry.ty}  ${entry.t}`);
 console.log(`  genres: ${g.map(i=>c.names[i]).join(', ')||'—'}  themes: ${th.map(i=>c.names[i]).join(', ')||'—'}  demo: ${d.map(i=>c.names[i]).join(',')||'—'}`);
-console.log(`  colour: ${entry.cl?'#'+entry.cl:'—'}  banner: ${entry.bn?'yes':'no'}  tmdb: ${entry.tm||'—'}`);
-console.log(`  streaming US: ${((entry.wp?.u)||[]).map(i=>c.providers[i]).join(', ')||'—'}`);
+console.log(`  colour: ${entry.cl?'#'+entry.cl:'—'}  banner: ${entry.bn?'yes':'no'}`);
 console.log(`  catalogue now ${c.count} entries`);

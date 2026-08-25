@@ -709,13 +709,49 @@ a { color: inherit; }
 
 /* Where to watch */
 
+/* Fixed height, not a minimum, and nowrap — the same trick as .synopsis and
+ * .recommend. The listings used to come from the catalogue and could wrap
+ * freely; they now arrive from AniList a moment after the card renders, so a
+ * row that grew when the request landed would shove every button below it.
+ * A title with more services than fit is capped at MAX_SERVICES and clipped,
+ * which is preferable to a second line appearing under the buttons' feet. */
 .watch {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  height: 26px;
   margin: 0 0 16px;
   font-size: 13px;
+}
+
+/* Scrollable rather than merely clipped. Four services do not fit a 360px
+ * phone — the overflow runs to about 120px, which is more than a whole chip —
+ * so hiding them outright would lose real options. Swiping the row reveals
+ * them; the scrollbar itself is hidden because it would eat into the 26px and
+ * break the reserved height. */
+.watch-services {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.watch-services::-webkit-scrollbar { display: none; }
+
+/* Four services do not fit a 360px phone — the fourth chip was being cut 26px
+ * through its own word, which reads as a broken card rather than as a list
+ * that ran out of room. The class is set from JS after the row fills, because
+ * only a measurement knows whether it overflowed: service names run from "iQ"
+ * to "Amazon Prime Video", so no count cap can promise a clean fit. */
+.watch-clipped {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 
 /* The share offer, raised after an import.
@@ -863,6 +899,8 @@ a { color: inherit; }
   margin-right: 2px;
 }
 
+/* Now a real outbound link rather than a plain name: AniList gives the URL of
+ * the title on the service, which TMDB never did. */
 .service {
   padding: 3px 10px;
   border-radius: 4px;
@@ -870,6 +908,12 @@ a { color: inherit; }
   color: var(--art-tint, var(--accent));
   font-weight: 500;
   white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+a.service:hover {
+  background: color-mix(in srgb, var(--art-tint, var(--accent)) 26%, transparent);
 }
 
 /* "We checked and it isn't there" reads differently from "we don't know". */
@@ -879,28 +923,6 @@ a { color: inherit; }
   font-weight: 400;
   border: 1px solid var(--border);
 }
-
-.watch-region {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--fg-dim);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
-}
-
-.watch-region:hover { color: var(--fg); border-color: var(--border-strong); }
-
-.watch-more {
-  color: var(--fg-faint);
-  font-size: 12px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.watch-more:hover { color: var(--fg-dim); }
 
 /* More list */
 

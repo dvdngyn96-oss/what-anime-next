@@ -577,52 +577,97 @@ console.log('\n--- trailers ---');
 
 console.log('\n--- where to watch ---');
 {
+  /* Streaming listings come from AniList now, on the same request that already
+     fetches the synopsis, rather than from TMDB fields baked into the
+     catalogue. So these drive the detail fetch, not the catalogue rows. */
   const NAMES = ['Action', 'Fantasy', 'Romance'];
-  const mk = (r, i, t, extra = {}) => ({
+  const mk = (r, i, t) => ({
     r, i, t, s: 8, g: [0, 1, 2], th: [], d: [], ty: 'TV', e: 12, y: 2013,
-    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 }, ...extra,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
   });
 
   const CAT = {
-    built: '2026-07-30', count: 3, names: NAMES,
-    providers: ['Netflix', 'Crunchyroll', 'Hulu'],
-    anime: [
-      mk(1, 970, 'Streams Both Regions', { tm: 111, wp: { u: [0, 2], c: [0] } }),
-      mk(2, 971, 'Matched But Not Streaming', { tm: 222 }),
-      mk(3, 972, 'Source Show', { tm: 333, wp: { u: [1] } }),
-    ],
+    built: '2026-07-30', count: 2, names: NAMES,
+    anime: [mk(1, 970, 'Streams In Places'), mk(2, 972, 'Source Show')],
   };
 
-  const dom = makeDom(CAT);
+  const withLinks = {
+    data: { Media: { description: 'A show.', trailer: null, externalLinks: [
+      { site: 'Official Site', url: 'https://x.jp/', type: 'INFO' },
+      { site: 'Crunchyroll', url: 'https://crunchyroll.com/x', type: 'STREAMING' },
+      { site: 'Netflix', url: 'https://netflix.com/x', type: 'STREAMING' },
+      // A title can carry the same service twice; it should be listed once.
+      { site: 'Netflix', url: 'https://netflix.com/x2', type: 'STREAMING' },
+      { site: 'Twitter', url: 'https://x.com/x', type: 'SOCIAL' },
+    ] } },
+  };
+
+  const dom = makeDom(CAT, { detail: withLinks });
   await sleep(200);
   const body = await pickAndRecommend(dom, 'Source Show');
-  const w = dom.window;
-  const services = () => [...body.querySelectorAll('.watch .service')].map((s) => s.textContent);
+  await sleep(600);   // the detail fetch is debounced by 220ms
 
-  // Climbing from #3 reaches #2 first — the matched-but-unavailable one.
-  check('a title with no listing says so rather than nothing',
-    /Not streaming in/.test(body.querySelector('.watch')?.textContent || ''),
-    body.querySelector('.watch')?.textContent);
-  check('it still links out for that title',
-    /themoviedb\.org\/tv\/222\/watch\?locale=US/.test(body.querySelector('.watch-more')?.getAttribute('href') || ''),
-    body.querySelector('.watch-more')?.getAttribute('href'));
+  const services = () => [...body.querySelectorAll('.watch .service')].map((x) => x.textContent);
 
-  body.querySelector('.hero [data-action="shuffle"]')?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-  await sleep(150);
+  check('streaming services are listed from AniList',
+    services().includes('Crunchyroll') && services().includes('Netflix'), services().join(', '));
+  check('and only the streaming links, not the social or info ones',
+    !services().includes('Twitter') && !services().includes('Official Site'), services().join(', '));
+  check('a service appearing twice is listed once',
+    services().filter((x) => x === 'Netflix').length === 1, services().join(', '));
 
-  check('streaming services are listed',
-    services().includes('Netflix') && services().includes('Hulu'), services().join(', '));
-  check('the link carries the right title and country',
-    /themoviedb\.org\/tv\/111\/watch\?locale=US/.test(body.querySelector('.watch-more')?.getAttribute('href') || ''),
-    body.querySelector('.watch-more')?.getAttribute('href'));
+  /* AniList gives the URL of the title on the service, which TMDB never did,
+     so the chip is a real outbound link rather than a plain name. */
+  const first = body.querySelector('.watch a.service');
+  check('each service links straight to the title on it',
+    first?.getAttribute('href') === 'https://crunchyroll.com/x', first?.outerHTML);
+  check('and opens away from the page safely',
+    first?.getAttribute('target') === '_blank' && /noopener/.test(first?.getAttribute('rel') || ''),
+    first?.outerHTML);
 
-  body.querySelector('[data-action="region"]')?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-  await sleep(150);
-  check('switching country changes the listing',
-    services().includes('Netflix') && !services().includes('Hulu'), services().join(', '));
-  check('the country choice is remembered',
-    w.localStorage.getItem('wanx:region') === 'c', w.localStorage.getItem('wanx:region'));
+  /* The row is a reserved single line because it now fills asynchronously.
+     It used to come from the catalogue and could wrap freely; a row that grew
+     when the request landed would shove every button below it. jsdom has no
+     layout, so this reads the rule out of the stylesheet. */
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  const watchRule = /\.watch \{[^}]*\}/.exec(css)?.[0] ?? '';
+  check('the row keeps a fixed height rather than growing when listings land',
+    /height:\s*26px/.test(watchRule) && /flex-wrap:\s*nowrap/.test(watchRule), watchRule);
+
+  // Nothing on record reads differently from "we could not ask".
+  const none = { data: { Media: { description: 'A show.', trailer: null, externalLinks: [] } } };
+  const dom2 = makeDom(CAT, { detail: none });
+  await sleep(200);
+  const body2 = await pickAndRecommend(dom2, 'Source Show');
+  await sleep(600);
+  check('a title with no listing says so rather than leaving the row blank',
+    /No listing found/.test(body2.querySelector('.watch')?.textContent || ''),
+    body2.querySelector('.watch')?.textContent);
+
+  /* The region toggle went with TMDB: it existed only to pick which of TMDB's
+     country listings to show, and AniList's links are not per-country. */
+  check('the region toggle is gone',
+    !body.querySelector('[data-action="region"]'), 'region button still present');
+  check('and nothing writes a region to storage any more',
+    dom.window.localStorage.getItem('wanx:region') === null,
+    String(dom.window.localStorage.getItem('wanx:region')));
+
+  /* No TMDB *call* survives in the shipped page — the credential is gone, so a
+     leftover request would fail quietly. Matched on the API host and the key
+     file rather than on the word, which still appears in the comments that
+     explain why the dependency was dropped. */
+  check('no TMDB request survives in app.js',
+    !/themoviedb\.org|api\.themoviedb|\.tmdb-key/i.test(appSource), 'app.js still calls TMDB');
+  /* And the real catalogue carries no provider fields: they were 76 KB that
+     every visitor downloaded, and a leftover would be dead weight nothing
+     reads. */
+  const shipped = JSON.parse(readFileSync(`${ROOT}/anime.json`, 'utf8'));
+  check('the shipped catalogue carries no TMDB fields any more',
+    !('providers' in shipped) && !('watchUpdated' in shipped)
+      && !shipped.anime.some((a) => 'tm' in a || 'wp' in a),
+    `providers:${'providers' in shipped} rows:${shipped.anime.filter((a) => 'tm' in a || 'wp' in a).length}`);
 }
+
 
 console.log('\n--- key-art theming ---');
 {

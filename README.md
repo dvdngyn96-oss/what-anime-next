@@ -220,17 +220,16 @@ next one along" thrown out entirely.
 
 ```bash
 npm run build                  # ~60 min
-node add-watch-providers.mjs   # ~20 min — REQUIRED after every rebuild
 ```
 
 The ranking scan itself is quick — 500 entries per request, sixteen calls. The
 hour goes on the prequel check, which needs one request per series and is what
-keeps season 2 out. Writes `anime.json` (~1.15 MB).
+keeps season 2 out. Writes `anime.json` (~1.08 MB).
 
-**It is a two-step job.** `build-catalogue.mjs` writes a catalogue with no TMDB
-ids and no streaming data at all, because it has none to carry forward. Run
-`add-watch-providers.mjs` straight after or the site ships with zero listings.
-The two must never run at once — both rewrite `anime.json` in place.
+**It is a one-step job now.** It used to need a second twenty-minute pass to
+attach streaming listings from TMDB. Those come from AniList at page-view time
+instead, on the request the card already makes for the synopsis, so a rebuild
+is finished when the builder is.
 
 AniList tags and the genre backfill happen inside the builder's art pass, so a
 rebuild collects them already. `add-anilist-tags.mjs` and `backfill-genres.mjs`
@@ -242,19 +241,17 @@ few positions.
 
 ### Credentials
 
-Two files, both gitignored, both **build-time only** — the shipped site
-contains no credentials:
+One file, gitignored, **build-time only** — the shipped site contains no
+credentials:
 
 - `.mal-client-id` — MyAnimeList, from <https://myanimelist.net/apiconfig>
   (App type: other, **non-commercial**)
-- `.tmdb-key` — TMDB v3, registered for **personal use**, for streaming
-  listings
 
-AniList needs no key at all, for either the build-time tag harvest or the
-runtime synopsis lookup.
+AniList needs no key at all, for the build-time tag harvest or for the runtime
+synopsis and streaming lookup.
 
-Both registrations are non-commercial. TMDB's definition of commercial is
-broader than "makes money" — deploying isn't the trigger, ads are.
+The registration is non-commercial, which MyAnimeList defines as personal,
+educational, open source or communal — and which explicitly permits donations.
 
 ## Other bits
 
@@ -267,7 +264,8 @@ broader than "makes money" — deploying isn't the trigger, ads are.
   short pause — so a card you skim past costs no request
 - Titles are searchable in both romaji and English
 - Light and dark themes follow the OS setting
-- Streaming listings for the US and Canada, from TMDB
+- Streaming listings from AniList, arriving with the synopsis, each one a
+  direct link to the title on that service
 - The card is a **constant height** by design: every block holds its space
   whether or not it has content, so clicking "show me another" repeatedly never
   moves the buttons out from under the cursor

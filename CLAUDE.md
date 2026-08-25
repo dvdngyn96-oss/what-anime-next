@@ -10,16 +10,14 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 39.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.18 MB. 266 checks pass via `npm test`.
+**Build 40.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
+about 1.08 MB. 271 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
 | Key-art colour | 3,266 |
 | Banner image | 2,357 |
 | Studio | 3,376 |
-| TMDB match | 3,149 |
-| US/CA streaming | 1,641 |
 | AniList tags | 3,245 (93%) |
 | Genres backfilled from AniList (`gs`) | 42 |
 | No genres (matched on themes only) | 31 |
@@ -44,19 +42,25 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 266 checks, jsdom against the real app.js and anime.json
+npm test          # 271 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild, ~60 min
 ```
 
-Two credential files, both gitignored, both **build-time only** — nothing ships
-in the browser:
+One credential file, gitignored, **build-time only** — nothing ships in the
+browser:
 
 - `.mal-client-id` — MyAnimeList API, registered **non-commercial**
-- `.tmdb-key` — TMDB v3, registered **personal use**
 
-Monetising later means revisiting both registrations. TMDB's definition of
-commercial is broader than "makes money"; deploying isn't the trigger, ads are.
+`.tmdb-key` is no longer read by anything as of build 40 and can be deleted.
+AniList needs no key, for the build-time tag harvest or the runtime lookups.
+
+**And that is the whole monetising constraint gone.** MyAnimeList's
+non-commercial terms define it as "personal, educational, open source or
+communal" and explicitly allow *"donations without any quotas"*, plus some
+advertising. TMDB was the strict one — it counted "indirect monetization
+through traffic generation" as commercial and said outright that donations
+*"may be considered commercial"* — and it is no longer a dependency.
 
 ### After changing app.js or styles.css
 
@@ -288,7 +292,9 @@ only feels right if the buttons don't move. Seven things used to move them:
 
 - **The streaming row was absent** for the 374 entries with no TMDB match. It
   now always renders, saying "No listing found" — honest, and the same line
-  either way.
+  either way. Since build 40 the listings arrive from AniList rather than the
+  catalogue, so the row is a *reserved* 26px line rather than one that wraps
+  freely — see "Where to watch" below.
 - **The Trailer button was injected after the fetch**, shifting every button
   beside it sideways, and was missing entirely on the 11% with no trailer. The
   slot is always rendered, hidden via `.btn-reserved` until there is something
@@ -734,6 +740,69 @@ byte-identical HTML, so listing them would hand a crawler thousands of URLs with
 the same markup — which is what duplicate content means. The root is the only
 distinct document the site has.
 
+### Where to watch
+
+Build 40, and it replaced TMDB outright. The row itself is unchanged in shape
+— that was the constraint, since `.watch` is part of the constant-height
+design and a check asserts it renders either way. What fills it changed.
+
+**TMDB failed more often than it worked.** It matched 3,149 titles but carried
+US or Canadian listings for only 1,641, so **53% of cards said "No listing
+found"**. It also cost a separate twenty-minute refresh pass whenever listings
+went stale, a second credential, and 76 KB in every visitor's download.
+
+**AniList carries the same thing on a request the card already makes.**
+`externalLinks` has a `type: STREAMING` entry per service with a real URL, and
+`fetchDetails` was already fetching the synopsis and trailer per card — so the
+listings cost **no extra request at all**. Measured on an even 600-title
+sample across the whole ranking range, not on famous titles:
+
+| Source | Coverage |
+| --- | --- |
+| AniList `externalLinks` | **69.0%** |
+| TMDB `wp` | 50.1% |
+
+AniList picks up 124 titles TMDB missed and loses 12. "No listing found" falls
+from about half of cards to 29%. The commonest services are Crunchyroll,
+YouTube, Hulu, Netflix, Bilibili TV and Prime Video.
+
+**It was verified before anything was designed around it.** The previous
+session recorded this field as *unconfirmed*, because AniList was answering
+`403 The AniList API has been temporarily disabled` at the time. The API is
+back; the query was run against Frieren and returned six streaming links
+before a line of code was written.
+
+**A chip is now a link.** TMDB gave a provider *name*; AniList gives the URL
+of the title on that service, so each chip goes straight there rather than
+bouncing through a "check current" link to TMDB.
+
+**The row had to become a reserved height, and that is the one real risk in
+this change.** It used to be filled synchronously from the catalogue, so
+`flex-wrap: wrap` was harmless. Now it fills a moment after the card renders,
+and a row that grows when the request lands shoves every button below it —
+exactly the jitter the card exists to avoid. It is `height: 26px`,
+`flex-wrap: nowrap`, capped at `MAX_SERVICES` (4) and clipped past that. A
+check reads the rule out of `styles.css`, because jsdom has no layout.
+
+**Services are shown in AniList's own order**, not re-sorted to a favourites
+list. Re-ranking them would be editorialising on no evidence, and the cap is
+what actually decides which four appear.
+
+**A failed lookup leaves `streams` undefined rather than empty**, so the next
+visit asks again — the same rule as a failed synopsis fetch, a failed
+catalogue fetch and a failed ratings fetch. "No listing found" is reserved for
+the case where AniList answered and had none. Both states are checked.
+
+**The region toggle went with it.** It existed only to choose between TMDB's
+US and Canadian listings; AniList's links are not per-country, so there is
+nothing left for it to pick. `wanx:region` is no longer written, and the
+privacy page no longer lists a region among the things kept in your browser.
+
+Gone with it: `tm` and `wp` on every entry, the `providers` table,
+`watchUpdated`, `add-watch-providers.mjs`, the TMDB half of `add-one.mjs`, and
+the `.tmdb-key` requirement. The catalogue dropped 76 KB, from 1.15 MB to
+1.08 MB, and `npm run walks` came out byte-identical.
+
 ### The watched list
 
 Shows you have already seen, so they stop being recommended. This is **stage
@@ -1068,26 +1137,19 @@ deployment, and that would take the site down rather than just the endpoints.
 | Task | Cadence | Time |
 | --- | --- | --- |
 | `npm run build` | once a season | ~60 min |
-| `node add-watch-providers.mjs` | whenever listings feel stale | ~20 min |
 | `node add-anilist-tags.mjs` | rarely — tags drift slowly | ~3 min |
 | `node backfill-genres.mjs` | after a rebuild only if it reports blanks | ~10 s |
 
-They're separate on purpose: TMDB ids never change, but streaming availability
-moves constantly, so refreshing listings shouldn't cost another hour of
-relation checks.
+**A rebuild is one step now.** It used to be two: the builder carried no
+provider data, so `add-watch-providers.mjs` had to run straight afterwards or
+the site shipped with zero listings, and the catalogue was not release-ready
+in between. Build 40 moved streaming to a page-view lookup, so a rebuild is
+finished when the builder is, and that whole class of half-built catalogue is
+gone.
 
-**A rebuild is a two-step job.** `build-catalogue.mjs` writes a fresh catalogue
-with **no `tm` and no `wp` fields at all** — it has no provider data to carry
-forward. Straight after `npm run build`, run `node add-watch-providers.mjs` or
-the site ships with zero streaming listings. The catalogue is not
-release-ready between the two, and they must never run concurrently: both
-rewrite `anime.json` in place, and the providers pass holds the whole catalogue
-in memory, so it will overwrite anything edited while it runs.
-
-Streaming is the *only* follow-up. AniList tags and genre backfill both happen
-inside the builder's art pass, so a rebuild carries them already —
-`add-anilist-tags.mjs` and `backfill-genres.mjs` exist for fixing an existing
-catalogue without paying the 60 minutes.
+AniList tags and genre backfill happen inside the builder's art pass, so a
+rebuild carries them already — `add-anilist-tags.mjs` and `backfill-genres.mjs`
+exist for fixing an existing catalogue without paying the 60 minutes.
 
 **Long builds must run detached**, or a Claude Code crash takes them with it:
 
@@ -1102,44 +1164,39 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**Two jobs are queued, in this order.** Each is self-contained; the reasoning
-and the measurements are here so neither starts from scratch.
+**One job is queued.** It is self-contained; the reasoning and the
+measurements are here so it does not start from scratch.
 
 ~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
 One chip reading "2010 or later", riding in the existing toggle row at no
 vertical cost, measured at 360, 375, 414 and 1280px. If 2000+ versus 2015+ is
 ever wanted, that is a second chip, not a redesign.
 
-### 1. Drop TMDB as the streaming source
+~~**2. Drop TMDB as the streaming source.**~~ Shipped in build 40 — see
+"Where to watch" above. AniList's `externalLinks` was confirmed working first
+(the 403 had cleared), and it covers 69% against TMDB's 50% while costing no
+extra request, since the card was already fetching the synopsis. The region
+toggle, `tm`/`wp`, the `providers` table, `add-watch-providers.mjs` and the
+`.tmdb-key` requirement all went with it.
 
-**53% of cards already say "No listing found"** — 1,852 of 3,493. The feature
-fails more often than it works. It is also the only thing blocking the tip jar
-(see below), it needs a separate ~20 minute refresh pass whenever listings go
-stale, and it is one of the two credentials to keep alive.
+### 1. The tip jar — and it is no longer blocked
 
-**Keep the row, replace what fills it.** `.watch` is part of the constant-height
-design and a check asserts it renders either way, so removing the row would move
-every button below it. A single outbound "Find where to stream" link keeps the
-geometry and drops the dependency.
+**Nothing needs to be asked of anybody first.** This was queued behind the
+TMDB removal because TMDB's terms were the entire constraint: they counted
+"indirect monetization through traffic generation" as commercial and said
+donations *"may be considered commercial"*, so a donate link meant emailing
+them and waiting for a written answer. TMDB is no longer a dependency, so that
+email is moot.
 
-**The better replacement is AniList's `externalLinks`**, which carries real
-per-title streaming links and needs no new credential, since the app already
-queries AniList for synopses. **This is unverified** — the API was returning
-`403 The AniList API has been temporarily disabled due to severe stability
-issues` when it was checked, so confirm the field exists and carries
-`type: STREAMING` before designing around it. If it does not, the outbound
-search link is the fallback and is fine.
+**MyAnimeList, the one credential left, permits this outright.** Its API
+agreement defines non-commercial as "personal, educational, open source or
+communal" and allows such applications to accept *"donations without any
+quotas"* — and even some advertising, provided it does not disrupt the
+experience.
 
-Removing TMDB also means dropping `tm` and `wp` from the catalogue, the
-`add-watch-providers.mjs` pass, the `.tmdb-key` file, the region toggle, and the
-maintenance-table row — the region picker exists *only* to choose which TMDB
-listings to show.
-
-### 2. The tip jar — but email TMDB first, unless it is already gone
-
-Covered under "A tip jar" below. **If job 1 lands first this stops being
-blocked at all**, since the constraint is entirely TMDB's terms. Doing them in
-this order is deliberate.
+Practically it is one link in the footer next to the credit line. **It must
+sit outside `.hero`**, with the explanatory notes, so the card cannot move to
+accommodate it — the same rule that keeps `matchNote` below the card.
 
 ---
 
@@ -1319,12 +1376,10 @@ Naruto (220) is 18x. That gap is wide enough to separate them — wider than
 anything separating the cases that defeated the affinity work above, which is
 the reason to think this one is tractable.
 
-**A tip jar — "buy me a coffee" or similar.** One link in the footer, outside
-`.hero` with the other explanatory notes so the card cannot move to accommodate
-it.
-
-**The two registrations were read rather than assumed, and this file had them
-wrong in both directions.** They do not say the same thing as each other.
+**A tip jar — "buy me a coffee" or similar.** Covered in the Open section
+above; the reasoning that used to live here is kept below because the
+registrations were read rather than assumed, and this file had them wrong in
+both directions before.
 
 **MyAnimeList is fine with it, explicitly.** The API agreement defines
 non-commercial as "personal, educational, open source or communal" and says
@@ -1333,23 +1388,20 @@ non-commercial apps *"some pay per click or pay per view advertising"* provided
 it does not disrupt the experience and complies with law — so the old note here
 was **too strict** about ads.
 
-**TMDB is the one to be careful with, and it is stricter than assumed.** Its
-terms say the licence "does not permit any commercial use", and commercial
-explicitly covers advertising revenue and *"indirect monetization through
-traffic generation"*. Then the line that matters:
+~~**TMDB is the one to be careful with.**~~ Moot since build 40: TMDB is no
+longer a dependency. Kept because it is the reason this job sat behind the
+streaming work, and because the terms are worth remembering if TMDB is ever
+reached for again. Its licence "does not permit any commercial use", and
+commercial explicitly covered advertising revenue and *"indirect monetization
+through traffic generation"*:
 
 > Even unpaid activities like donations or volunteer projects may be considered
 > commercial if they generate revenue indirectly.
 
-So a donate link is *not* obviously outside their definition, which is the
-opposite of what this file used to claim. TMDB's own guidance is to ask them
-about the specific case, and commercial use needs "a separate written
-agreement".
-
-**So: ask TMDB before adding the tip jar, and do not bother asking MAL.** TMDB
-is not decorative — it powers the "Watch on" row for 1,641 entries — so losing
-the key would cost a real feature. One email, answered in writing, is cheaper
-than finding out afterwards.
+So a donate link was *not* obviously outside their definition, which is the
+opposite of what this file once claimed — and their own guidance was to ask
+them about the specific case, with commercial use needing "a separate written
+agreement". Dropping the dependency was the cheaper answer than the email.
 
 Practically it is one link in the footer next to the credit line. The card must
 not move to accommodate it, so it belongs outside `.hero` with the other

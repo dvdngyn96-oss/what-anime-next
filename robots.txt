@@ -10,7 +10,6 @@ Allow: /
 Disallow: /test/
 Disallow: /build-catalogue.mjs
 Disallow: /add-anilist-tags.mjs
-Disallow: /add-watch-providers.mjs
 Disallow: /backfill-genres.mjs
 Disallow: /patch-studios.mjs
 Disallow: /add-one.mjs

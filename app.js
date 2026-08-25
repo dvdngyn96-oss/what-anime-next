@@ -72,7 +72,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 39;
+const BUILD = 40;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -82,7 +82,6 @@ let ranked = [];              // every anime, in MyAnimeList rank order
 let byCompletion = [];        // the same anime, ordered by length-adjusted completion
 let byId = new Map();
 let catalogueMeta = null;
-let providerNames = [];
 let studioNames = [];
 let signatureThemes = new Set();   // themes rare enough to count as a genre
 
@@ -102,9 +101,6 @@ const MY_VOTES_KEY = 'wanx:myvotes:v1';
  * single vote looks like data and is not. The server sends its own floor; this
  * is the fallback for when the request never lands. */
 const VOTE_FLOOR = 30;
-
-const REGION_KEY = 'wanx:region';
-const REGIONS = { u: 'US', c: 'CA' };
 
 /** This browser's anonymous voter id, made once and kept. */
 const voterId = (() => {
@@ -145,14 +141,6 @@ function rememberVote(id, liked) {
  * not leave a card permanently blank. */
 const ratingCache = new Map();
 let ratingFloor = VOTE_FLOOR;
-
-let region = (() => {
-  try {
-    const saved = localStorage.getItem(REGION_KEY);
-    if (saved === 'u' || saved === 'c') return saved;
-  } catch { /* private browsing */ }
-  return /-CA\b/i.test(navigator.language || '') ? 'c' : 'u';
-})();
 
 /**
  * Which formats may be *recommended*.
@@ -388,8 +376,6 @@ function expand(row, names) {
     demographic: (row.d || []).map((i) => names[i]).filter(Boolean)[0] || null,
     stats: row.stats || null,
     tags: unpackTags(row.tg),
-    tmdb: row.tm || null,
-    watch: row.wp || null,
     studios: (row.su || []).map((i) => studioNames[i]).filter(Boolean),
     url: `https://myanimelist.net/anime/${row.i}`,
     local: true,
@@ -460,7 +446,6 @@ function loadCatalogue() {
     const data = await res.json();
 
     catalogueMeta = { built: data.built, count: data.count, scanned: data.scanned };
-    providerNames = data.providers || [];
     studioNames = data.studios || [];
     ranked = data.anime.map((row) => expand(row, data.names));
     renumberRanked();
@@ -589,8 +574,16 @@ const DETAIL_QUERY = `query ($idMal: Int) {
   Media(idMal: $idMal, type: ANIME) {
     description(asHtml: false)
     trailer { id site }
+    externalLinks { site url type }
   }
 }`;
+
+/* How many services fit on the row. It is a single reserved line, and popular
+ * titles carry six or more — Frieren has Crunchyroll, Bilibili, YouTube,
+ * Netflix, Hulu and Prime Video — so past four they would be clipped
+ * mid-chip. Kept in AniList's own order rather than re-sorted to a favourite
+ * list, which would be editorialising on no evidence. */
+const MAX_SERVICES = 4;
 
 function fromAniList(media) {
   return {
@@ -631,12 +624,21 @@ async function fetchDetails(anime) {
   try {
     const data = await anilist(DETAIL_QUERY, { idMal: anime.id });
     const raw = data.Media?.trailer;
+    /* Where to watch, from the same request that fetches the synopsis — so
+       the listings cost nothing extra and are current, rather than being
+       baked into the catalogue and going stale between rebuilds. Deduped by
+       service, because a title can carry both "Bilibili" and "Bilibili TV". */
+    const seen = new Set();
+    const streams = (data.Media?.externalLinks || [])
+      .filter((l) => l.type === 'STREAMING' && l.site && l.url)
+      .filter((l) => !seen.has(l.site) && seen.add(l.site));
     const details = {
       synopsis: (data.Media?.description || '').replace(/<[^>]+>/g, '').trim(),
       // Only these two embed cleanly; anything else is treated as absent.
       trailer: raw?.id && ['youtube', 'dailymotion'].includes(raw.site)
         ? { id: raw.id, site: raw.site }
         : null,
+      streams,
     };
     detailCache.set(anime.id, details);
     return details;
@@ -648,7 +650,7 @@ async function fetchDetails(anime) {
      * "no synopsis" permanently for the session — and since the card now
      * reserves five lines for it, that showed as a hole rather than as
      * nothing. Leaving it uncached means the next visit tries again. */
-    return { synopsis: '', trailer: undefined, failed: true };
+    return { synopsis: '', trailer: undefined, streams: undefined, failed: true };
   }
 }
 
@@ -1304,14 +1306,6 @@ function heroTint(anime) {
 }
 
 /**
- * Where you can stream it, for the selected country.
- *
- * The stored listing is a snapshot from the last provider run, so it links out
- * to TMDB for live data rather than pretending to be current — titles leave
- * services regularly. Absent listings say so instead of rendering nothing,
- * since "we don't know" and "not streaming" are different answers.
- */
-/**
  * Ratings for a batch of titles, from /api/ratings.
  *
  * Batched because "show me another" walks the list, so fetching the next
@@ -1413,34 +1407,55 @@ function recommendText(id) {
     + ` · ${tally.total.toLocaleString()} ratings`;
 }
 
+/**
+ * Where to watch, from AniList's per-title streaming links.
+ *
+ * **It arrives with the synopsis rather than from the catalogue.** TMDB used
+ * to supply this at build time, which meant a separate twenty-minute refresh
+ * pass, a second credential, and listings that went stale between rebuilds.
+ * AniList carries the same thing on the request the card already makes for
+ * the synopsis, so it costs no extra call and is current — and it reaches
+ * 69% of titles against TMDB's 50%, measured on an even 600-title sample
+ * across the whole ranking range.
+ *
+ * **Which is why the row is a fixed height in the stylesheet.** It used to be
+ * filled synchronously from the catalogue, so it could wrap freely. Now it
+ * fills a moment later, and a row that grows when the request lands would
+ * shove every button under it — the jitter the whole card is built to avoid.
+ *
+ * Rendered from `anime.streams` when that is already known, so returning to
+ * a card whose details are cached shows the listings immediately rather than
+ * blinking through the empty state again.
+ */
 function watchRow(anime) {
-  /* 374 entries never matched to TMDB, so there is nothing to look up. Say so
-   * rather than omitting the row: dropping it moved every button below it,
-   * and "we don't know" is honest and takes the same line either way. */
-  if (!anime.tmdb) {
-    return `
-    <div class="watch">
-      <span class="watch-label">Watch on</span>
-      <span class="service service-none">No listing found</span>
-    </div>`;
-  }
-
-  const codes = anime.watch?.[region] ?? [];
-  const services = codes.map((i) => providerNames[i]).filter(Boolean);
-  const link = `https://www.themoviedb.org/tv/${anime.tmdb}/watch?locale=${REGIONS[region]}`;
-
-  const body = services.length
-    ? services.map((s) => `<span class="service">${esc(s)}</span>`).join('')
-    : `<span class="service service-none">Not streaming in ${REGIONS[region]}</span>`;
-
   return `
     <div class="watch">
       <span class="watch-label">Watch on</span>
-      ${body}
-      <button class="watch-region" type="button" data-action="region"
-        title="Show listings for ${region === 'u' ? 'Canada' : 'the United States'}">${REGIONS[region]}</button>
-      <a class="watch-more" href="${esc(link)}" target="_blank" rel="noopener">check current</a>
+      <span class="watch-services" id="hero-services">${servicesMarkup(anime.streams)}</span>
     </div>`;
+}
+
+/* Fade the right edge when the services run past the room available, so a chip
+   cut mid-word reads as "there is more" rather than as a broken card. Only a
+   measurement can tell: names run from "iQ" to "Amazon Prime Video", so no
+   count cap fits every case, and the row cannot grow a second line. */
+function markClipped(el) {
+  el.classList.toggle('watch-clipped', el.scrollWidth > el.clientWidth);
+}
+
+/** `undefined` means "not fetched yet" and renders as nothing; `[]` means asked and none. */
+function servicesMarkup(streams, failed = false) {
+  if (!streams) {
+    return failed
+      ? '<span class="service service-none">Listings unavailable just now</span>'
+      : '';
+  }
+  if (!streams.length) {
+    return '<span class="service service-none">No listing found</span>';
+  }
+  return streams.slice(0, MAX_SERVICES).map((l) =>
+    `<a class="service" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.site)}</a>`
+  ).join('');
 }
 
 /** Compact completion figure for the grid, so cards compare on the same axis. */
@@ -2070,10 +2085,20 @@ function renderResult() {
     setTimeout(() => {
       if (state.list[state.index]?.id !== hero.id) return;   // moved on already
 
-      fetchDetails(hero).then(({ synopsis, trailer, failed }) => {
+      fetchDetails(hero).then(({ synopsis, trailer, streams, failed }) => {
         if (state.list[state.index]?.id !== hero.id) return;
         hero.synopsis = synopsis;
         hero.trailer = trailer;
+        /* Left undefined on failure rather than set to empty, so the next
+           visit asks again instead of inheriting "no listing" for the rest of
+           the session — the same rule as the synopsis above it. */
+        if (streams) hero.streams = streams;
+
+        const services = $('hero-services');
+        if (services) {
+          services.innerHTML = servicesMarkup(streams, failed);
+          markClipped(services);
+        }
 
         const el = $('hero-synopsis');
         if (el) {
@@ -2134,13 +2159,6 @@ function wireResultControls() {
       }
 
       if (action === 'trailer') { playTrailer(); return; }
-
-      if (action === 'region') {
-        region = region === 'u' ? 'c' : 'u';
-        try { localStorage.setItem(REGION_KEY, region); } catch { /* fine */ }
-        renderResult();
-        return;
-      }
 
       if (action === 'direction') {
         if (el.dataset.value === state.direction) return;
@@ -2600,6 +2618,19 @@ async function rollTheDice() {
 $('home-btn').addEventListener('click', goHome);
 
 window.addEventListener('popstate', () => routeFromUrl());
+
+/* Whether the services overflow depends on the width, so the fade has to be
+   re-judged when that changes — rotating a phone or dragging a window narrower
+   otherwise leaves the row either faded when it fits or cut with no hint that
+   there is more. */
+let clipTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(clipTimer);
+  clipTimer = setTimeout(() => {
+    const services = $('hero-services');
+    if (services) markClipped(services);
+  }, 120);
+});
 
 async function routeFromUrl() {
   const params = new URLSearchParams(location.search);
