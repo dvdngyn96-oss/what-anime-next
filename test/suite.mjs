@@ -1348,51 +1348,57 @@ console.log('\n--- filters count what they actually removed ---');
 
 console.log('\n--- the tip jar ---');
 {
-  /* Built but not launched. The check that matters is the first one: while the
-     URL is empty the page must be exactly the page it was, because that is the
-     entire promise of shipping this switched off. */
+  /* Launched in build 49, after the r/anime post had gone up -- that sub bans
+     advertising crowdfunding and the announcement is a one-shot, so the order
+     mattered. The checks now assert the launched state, and that emptying the
+     constant still turns it off completely, which is the whole of the switch. */
   const dom = makeDom(SYNTHETIC);
   await sleep(200);
   const credit = dom.window.document.querySelector('.credit');
+  const link = credit.querySelector('.tip-jar');
 
-  check('nothing renders while the tip jar is unlaunched',
-    !credit.querySelector('.tip-jar'), credit.textContent);
-  check('and the build marker is still the last thing on the credit line',
+  check('the tip jar renders on the credit line', Boolean(link), credit.textContent);
+  check('and points at the Ko-fi page',
+    link?.getAttribute('href') === 'https://ko-fi.com/whatanimeshouldiwatchnext',
+    link?.getAttribute('href'));
+  check('and opens away from the page safely',
+    link?.getAttribute('target') === '_blank' && /noopener/.test(link?.getAttribute('rel') || ''),
+    link?.outerHTML);
+
+  /* The build marker is the first thing to check when a result looks wrong, so
+     it stays where it is looked for: last. */
+  check('the build marker is still the last thing on the credit line',
     credit.lastElementChild?.classList.contains('build'), credit.innerHTML.slice(-90));
 
-  /* Launching it is one constant. Booting a patched copy proves the switch is
-     real rather than trusting that an empty string is the only difference. */
+  /* The card must not move to accommodate it. The credit line is on the
+     landing view only, so this is structural rather than a matter of styling
+     -- but it is asserted, because "outside .hero" is the rule every addition
+     to this page has had to meet. */
+  check('it is nowhere near the card',
+    !dom.window.document.querySelector('.hero .tip-jar')
+      && !dom.window.document.querySelector('#result-view .tip-jar'),
+    'tip jar found inside the result view');
+
+  /* Turning it off is emptying the string, and nothing else. Booting a patched
+     copy proves that rather than trusting it. */
   function bootWith(url) {
     const d = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
     d.window.scrollTo = () => {};
     d.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(SYNTHETIC) });
-    d.window.eval(appSource.replace("const TIP_JAR_URL = '';", `const TIP_JAR_URL = ${JSON.stringify(url)};`));
+    d.window.eval(appSource.replace(
+      /const TIP_JAR_URL = '[^']*';/, `const TIP_JAR_URL = ${JSON.stringify(url)};`));
     return d;
   }
 
-  const live = bootWith('https://ko-fi.com/example');
+  const off = bootWith('');
   await sleep(200);
-  const liveCredit = live.window.document.querySelector('.credit');
-  const link = liveCredit.querySelector('.tip-jar');
-
-  check('setting the URL is all it takes to launch it', Boolean(link), liveCredit.textContent);
-  check('it points where it was told to',
-    link?.getAttribute('href') === 'https://ko-fi.com/example', link?.getAttribute('href'));
-  check('and opens away from the page safely',
-    link?.getAttribute('target') === '_blank' && /noopener/.test(link?.getAttribute('rel') || ''),
-    link?.outerHTML);
-  check('the build marker stays last even once it is launched',
-    liveCredit.lastElementChild?.classList.contains('build'), liveCredit.innerHTML.slice(-90));
-
-  /* The card must not move to accommodate it. The credit line is on the landing
-     view only, so this is structural rather than a matter of styling — but it
-     is asserted, because "outside .hero" is the rule every addition to this
-     page has had to meet. */
-  check('it is nowhere near the card',
-    !live.window.document.querySelector('.hero .tip-jar')
-      && !live.window.document.querySelector('#result-view .tip-jar'),
-    'tip jar found inside the result view');
+  const offCredit = off.window.document.querySelector('.credit');
+  check('emptying the constant removes it entirely',
+    !offCredit.querySelector('.tip-jar'), offCredit.textContent);
+  check('and the credit line still ends with the build marker when it is off',
+    offCredit.lastElementChild?.classList.contains('build'), offCredit.innerHTML.slice(-90));
 }
+
 
 console.log('\n--- housekeeping row and stat honesty ---');
 {
@@ -2839,6 +2845,64 @@ console.log('\n--- an exhausted chain says so ---');
     })(), 'restart note found above .hero');
 }
 
+
+
+console.log('\n--- the accent behind white text ---');
+{
+  /* Build 44 computed the wordmark's contrast from the stylesheet rather than
+     eyeballing it, and missed the controls. Every switched-on toggle chip --
+     direction, axis, and the "2010 or later" year chip -- is white text on the
+     accent, which was 3.91:1 on the light theme and 2.78:1 on the dark, both
+     under the 4.5:1 that 13px text needs. --accent-fill is a separate value
+     for that one job, so the wordmark red stays tied to --accent and keeps the
+     3.20-4.10 band build 44 tuned it to. */
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const contrast = (a, b) => {
+    const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+    return (x + 0.05) / (y + 0.05);
+  };
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+
+  const fill = (css.match(/--accent-fill:\s*(#[0-9a-f]{6})/i) || [])[1];
+  check('the stylesheet defines --accent-fill', Boolean(fill), fill || '(absent)');
+
+  const WHITE = [255, 255, 255];
+  const ratio = fill ? contrast(rgb(fill), WHITE) : 0;
+  check('white text on it clears 4.5:1, the bar for text under 18.66px',
+    ratio >= 4.5, `${fill} is ${ratio.toFixed(2)}:1`);
+
+  /* It has to stay visible as a chip too, against both page backgrounds --
+     passing the text bar by going nearly black would trade one failure for
+     another. */
+  const lightBg = (css.match(/--bg:\s*(#[0-9a-f]{6})/i) || [])[1];
+  const darkBg = (css.match(/--bg:\s*(#[0-9a-f]{6})/ig) || []).length > 1
+    ? [...css.matchAll(/--bg:\s*(#[0-9a-f]{6})/ig)][1][1] : null;
+  if (fill && lightBg) {
+    check('and the chip is still visible on the light page',
+      contrast(rgb(fill), rgb(lightBg)) >= 3,
+      `${fill} vs ${lightBg} is ${contrast(rgb(fill), rgb(lightBg)).toFixed(2)}:1`);
+  }
+  if (fill && darkBg) {
+    check('and on the dark page',
+      contrast(rgb(fill), rgb(darkBg)) >= 3,
+      `${fill} vs ${darkBg} is ${contrast(rgb(fill), rgb(darkBg)).toFixed(2)}:1`);
+  }
+
+  /* The filled rule must actually use it. Pointing --accent-fill at a passing
+     colour while the rule still says var(--accent) would satisfy every check
+     above and change nothing on the page. */
+  const rule = css.match(/\.direction button\[aria-pressed="true"\]\s*\{([^}]*)\}/);
+  check('and the switched-on chip actually uses it',
+    Boolean(rule) && /background:\s*var\(--accent-fill\)/.test(rule[1]),
+    rule ? rule[1].trim().replace(/\s+/g, ' ') : '(rule not found)');
+
+  /* --accent itself is untouched, so the wordmark keeps its tuning. */
+  check('--accent is left alone, so the wordmark palette is unaffected',
+    /--accent:\s*#e5484d/i.test(css), 'accent changed');
+}
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);

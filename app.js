@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 48;
+const BUILD = 49;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -107,11 +107,16 @@ const MY_VOTES_KEY = 'wanx:myvotes:v1';
 const VOTE_FLOOR = 30;
 
 /**
- * The tip jar — built, deliberately not launched.
+ * The tip jar — launched in build 49.
  *
- * **With `TIP_JAR_URL` empty nothing renders at all**, so the page is byte for
- * byte the page it was. Launching it is pasting a URL in here and bumping the
- * build; there is no other switch, and nothing else to remember.
+ * Held back deliberately until the r/anime announcement had gone up, because
+ * that subreddit's "Do Not Sell Things" rule bans advertising crowdfunding and
+ * the announcement is a one-shot. The post went out on 27 August 2026 with the
+ * site unambiguously non-commercial; this went live after it.
+ *
+ * **With `TIP_JAR_URL` empty nothing renders at all**, which is how it shipped
+ * for eight builds. That remains true, so emptying the string is the whole of
+ * turning it off again.
  *
  * It goes in the credit line, which lives only on the landing view — so it is
  * structurally impossible for it to move the card, which is the rule every
@@ -124,7 +129,7 @@ const VOTE_FLOOR = 30;
  * one — it counted donations as possibly commercial — and it stopped being a
  * dependency in build 40, which is what unblocked this.
  */
-const TIP_JAR_URL = '';
+const TIP_JAR_URL = 'https://ko-fi.com/whatanimeshouldiwatchnext';
 const TIP_JAR_LABEL = 'Buy me a coffee';
 
 /** This browser's anonymous voter id, made once and kept. */

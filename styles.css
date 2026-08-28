@@ -15,6 +15,16 @@
   --hover: #f1f3f4;
   --accent: #e5484d;
   --accent-soft: rgba(229, 72, 77, 0.1);
+  /* The accent behind white text, which is a different job from the accent as
+   * a colour. --accent is 3.91:1 against white on the light theme and the dark
+   * theme lightens it to #ff6b6b, which is 2.78:1 -- both under the 4.5:1 that
+   * 13px text needs, so every switched-on toggle chip was failing. This one is
+   * 4.70:1 and is deliberately the same in both themes: it only ever sits
+   * under white, so the page background behind it does not change what it
+   * needs to be. Kept separate from --accent because the wordmark red is tied
+   * to that, and its own contrast was tuned to a 3.20-4.10 band in build 44 --
+   * moving --accent would silently retune the wordmark too. */
+  --accent-fill: #d03e49;
   /* Yellow is the one wordmark colour that cannot be the same in both themes.
    * The vivid #f5b301 scores 1.85:1 on white, failing even the large-text bar,
    * and darkening it far enough to pass would dull it on the dark theme where
@@ -472,7 +482,7 @@ a { color: inherit; }
 }
 
 .direction button[aria-pressed="true"] {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
 }
 

@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 48.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
-about 1.33 MB. 318 checks pass via `npm test`.
+**Build 49.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
+about 1.33 MB. 324 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -52,7 +52,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 318 checks, jsdom against the real app.js and anime.json
+npm test          # 324 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~100 min
 npm run pages     # prerendered pages only, ~30 s
@@ -1197,6 +1197,52 @@ shouting. Three checks compute the ratios from the stylesheet rather than
 trusting an eyeball, so a future palette tweak cannot quietly drop below the
 bar; the light-theme one was broken on purpose and reported `1.85:1`.
 
+### The accent behind white text is its own colour
+
+Build 49, and it is the build 44 lesson finding the place build 44 did not
+look. That build computed the wordmark's contrast ratios from the stylesheet
+rather than trusting an eyeball, and fixed a yellow scoring 1.85:1. **It never
+checked the controls.**
+
+Every switched-on toggle chip — the direction toggle, the axis toggle and the
+"2010 or later" year chip, all of which share `.direction` — is white text on
+`--accent`. Measured in a real browser:
+
+| Theme | Accent | White on it |
+| --- | --- | --- |
+| Light | `#e5484d` | **3.91:1** |
+| Dark | `#ff6b6b` | **2.78:1** |
+
+The bar for text under 18.66px is 4.5:1, and those chips are 12-13px. Both
+themes failed, the dark one badly.
+
+**The fix is a separate variable rather than a new accent**, and that is the
+whole design. `--accent` carries the wordmark's red, whose contrast was tuned
+in build 44 to sit in a 3.20-4.10 band with the other five letters — moving it
+would silently retune the wordmark and break checks that have nothing to do
+with buttons. `--accent-fill` does one job: the background under white text.
+
+**`#d03e49`, and it is the same value in both themes**, which is worth stating
+because the rest of this stylesheet overrides everything per theme. It only
+ever sits under white, and white does not change between themes, so the page
+background behind it cannot change what the colour needs to be. It is 4.70:1
+against white, 4.70:1 against the light page and 3.78:1 against the dark one,
+so the chip stays visible as a chip in both.
+
+**It was searched for rather than picked.** The requirement is 4.5:1 on white,
+at least 3:1 against both page backgrounds, and as close to the shipped
+`#e5484d` as possible — a weighted-RGB distance over every red in range. A
+hue-locked search was tried first and returned `#df2026` and `#ef0000`, which
+pass and look like a fire alarm; letting saturation move as well as lightness
+gives something a viewer would struggle to tell from the old one.
+
+Six checks compute the ratios from `styles.css`, and two were broken on purpose
+to watch them fail. **The one that matters is the last**: it asserts the rule
+actually says `var(--accent-fill)`. Pointing the variable at a passing colour
+while the rule still read `var(--accent)` satisfies every other check in the
+block and changes nothing on the page — the same shape as the `empty-tier`
+guard that passed with the guard deleted.
+
 ### Saying nothing when there is nothing to say
 
 Build 42, three small ones found by looking at the live pages rather than the
@@ -1455,17 +1501,23 @@ page describing what is collected is no use if it cannot be found.
 
 ### The tip jar
 
-Build 41. **Built but not launched**, the same shape as the vote backend was:
-the code is in, and with `TIP_JAR_URL` empty *nothing renders at all*, so the
-live page is byte for byte the page it was.
-
-**Launching it is one line.** Paste the URL into `TIP_JAR_URL` in `app.js`,
-bump the build, push. There is no other switch and nothing else to remember.
-A check asserts the unlaunched state renders nothing, and it was broken on
-purpose and watched to fail — with a URL set the credit line reads:
+Built in build 41, **launched in build 49**. The credit line now reads:
 
 > Rankings from MyAnimeList · genres from AniList · Privacy · Buy me a
-> coffee · build 41
+> coffee · build 49
+
+**The eight builds it spent switched off were the point, not a delay.**
+r/anime's "Do Not Sell Things" rule bans advertising crowdfunding, and the
+announcement post is a one-shot — so a live donate link on the page when that
+post went up would have risked the one attempt at the audience. The post went
+out on 27 August 2026 with the site unambiguously non-commercial, and this
+followed it. **If there is ever another launch of this kind, that is the
+ordering: the post first, the ask afterwards.**
+
+With `TIP_JAR_URL` empty *nothing renders at all*, which is how it shipped for
+those eight builds and is still true — emptying the string is the whole of
+turning it off again, and a check boots a patched copy to prove that rather
+than trusting it.
 
 **It sits in the credit line, which exists only on the landing view.** That
 makes "the card cannot move to accommodate it" structural rather than a matter
@@ -1651,8 +1703,9 @@ extra request, since the card was already fetching the synopsis. The region
 toggle, `tm`/`wp`, the `providers` table, `add-watch-providers.mjs` and the
 `.tmdb-key` requirement all went with it.
 
-~~**3. The tip jar.**~~ Built in build 41 and **deliberately not launched** —
-see "The tip jar" below. One constant turns it on.
+~~**3. The tip jar.**~~ Built in build 41, **launched in build 49** — see
+"The tip jar" below. It was held until the r/anime post had gone up, because
+that sub bans advertising crowdfunding and the announcement is a one-shot.
 
 ~~**1. A single genre means neither demotion can fire.**~~ Fixed in build 47 —
 see "When there is no tier to demote into" above.
@@ -1680,9 +1733,9 @@ see "When there is no tier to demote into" above.
 
 **What is left is people, and none of it is code.**
 
-- **The tip jar is built and switched off.** The Ko-fi page is live at
-  `ko-fi.com/whatanimeshouldiwatchnext`. Launching is one constant — see "The
-  tip jar" above. Held deliberately.
+- ~~**The tip jar is built and switched off.**~~ Launched in build 49, after
+  the r/anime post, at `ko-fi.com/whatanimeshouldiwatchnext`. Turning it off
+  again is emptying `TIP_JAR_URL`, and a check asserts that still works.
 - **r/anime allows this, and the rules were read rather than assumed.**
   Anime-related tools and websites "can be announced when they're released".
   Three gates, in the order they bite: **10 comment karma earned in r/anime**
