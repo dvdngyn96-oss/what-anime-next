@@ -1260,3 +1260,57 @@ a.service:hover {
 
   .note { font-size: 12px; padding: 8px 12px; }
 }
+
+/* ------------------------------------------------------------------
+ * The username import row
+ *
+ * Lives inside the watched-bar block, which is the one part of the landing
+ * page allowed to change height as you use it — so revealing this cannot
+ * disturb anything that matters. There is no card on this view at all.
+ * ---------------------------------------------------------------- */
+.username-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.username-row[hidden] { display: none; }
+
+#mal-username {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  width: 220px;
+  max-width: 100%;
+}
+
+#mal-username:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+#mal-username:disabled { opacity: 0.6; }
+
+/* The whole row wraps to a second line on a phone, so this sits under the
+ * input and the button rather than beside them. It is one sentence and it
+ * answers the two questions the field raises — must it be public, and what
+ * are you taking — before either gets asked. */
+.username-note {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-faint);
+  line-height: 1.4;
+}
+
+@media (max-width: 400px) {
+  #mal-username { width: 100%; }
+  .username-row .btn { width: 100%; }
+}

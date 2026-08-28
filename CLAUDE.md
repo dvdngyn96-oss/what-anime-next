@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 49.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
-about 1.33 MB. 324 checks pass via `npm test`.
+**Build 50.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
+about 1.33 MB. 339 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -52,7 +52,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 324 checks, jsdom against the real app.js and anime.json
+npm test          # 339 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~100 min
 npm run pages     # prerendered pages only, ~30 s
@@ -1455,6 +1455,80 @@ there looking broken is worse than a slow one that says what it is doing. A
 failure stops rather than hammering the endpoint, and says how much got
 through, because that is more use than a bare failure.
 
+### Importing by username
+
+Build 50. **Type a MyAnimeList username instead of finding a file.** The export
+route asks somebody to log in, find the export page, generate a `.xml.gz`,
+download it and then locate it in a file picker — four steps on somebody else's
+site before they reach this one, and it is where most people give up. The
+username route is one field.
+
+**It needs a server, and that is the only reason `/api/mal-list` exists.**
+MyAnimeList will serve a *public* list to anyone holding a client id — no
+OAuth, no user token, confirmed by calling it — but that id is a build-time
+credential, gitignored, and putting it in `app.js` would publish it to every
+visitor. The Function forwards a username and slims the answer; it adds nothing
+else.
+
+**One manual step, and until it happens the feature is switched off rather than
+broken.** `MAL_CLIENT_ID` has to be set as an environment variable on the Pages
+project — Workers & Pages → the project → Settings → Variables and Secrets, as
+a **Secret**, for Production and Preview. Without it the endpoint answers 200
+with `unavailable: true` and the page says *"Username import is not switched on
+yet — use the file import below"*, which is the designed resting state and the
+same shape as the votes database being unbound.
+
+**One page per request, and the client loops.** The free tier allows 10ms of
+CPU per request and `JSON.parse` on a few megabytes of list data will not fit —
+MyAnimeList returns the full node for every entry whatever `fields` asks for,
+so a large list is megabytes. `PAGE` is 500 and the client follows `next`,
+reporting progress as it goes. Exactly the reasoning that makes the ratings
+upload chunk at 100.
+
+Rows come back as `[[id, status, score], ...]` rather than objects: three
+numbers a row instead of three keys and three numbers, which matters at 5,000
+titles.
+
+**The two upstream failures are told apart, because the remedy differs.** A 404
+is "no MyAnimeList user called *name*"; a 403 is "that list is private, make it
+public or use the file import". Reporting a private list as "not found" would
+send somebody hunting for a typo that is not there.
+
+**A malformed username never reaches MyAnimeList.** The name is checked against
+`^[A-Za-z0-9_-]{2,16}$` before any upstream call, so a bad one costs no quota
+and nothing can be smuggled into the URL path. A check asserts the upstream was
+not called.
+
+#### The two importers share everything except where the rows came from
+
+`readListRows` returns the identical `{ ids, planned, scored }` shape as
+`parseExport`, and `applyImport` is the single place either one is acted on. So
+what counts as watched, what the count sentence says, and when consent is asked
+are decided once for both. Plan-to-watch is excluded and a score of 0 means
+"not rated" on both routes, because those rules live in one place.
+
+**The one thing that cannot be shared is the status vocabulary, and it is the
+part most likely to rot.** The export XML and the API spell the same four
+concepts differently — `On-Hold` against `on_hold` — so there are two sets,
+deliberately declared next to each other. **The failure if they drift is
+silent**: an unrecognised status is treated as plan-to-watch, so the title
+stays recommendable and the import merely looks like it skipped things. A check
+covers it, and breaking it on purpose reports zero titles recognised and all
+five counted as plan-to-watch.
+
+#### It changed what the privacy page has to say
+
+Until now the honest claim was that an import is read entirely on your own
+machine and never leaves it. That is still true of the file, and **the file
+importer stays for exactly that reason** — it is the route for somebody who
+would rather send nothing at all.
+
+A username does not: it goes to this site's server, which asks MyAnimeList. So
+the privacy page now names three things that leave the device rather than two,
+says the username is used for one request and not stored or tied to the random
+id, and points at the file import as the alternative. Shrinking that admission
+is how a privacy page quietly becomes dishonest.
+
 ### Taking it back
 
 `DELETE /api/vote` removes everything one voter id has said. It exists because
@@ -1554,14 +1628,16 @@ Ko-fi" stays off.
 
 ## The vote backend
 
-**Built but not wired up.** The endpoints, the schema and the tests exist;
-nothing in `app.js` calls them yet and no database is bound, so the site
-behaves exactly as it did. That is deliberate — it is the skeleton, and it can
-sit there harmlessly until the card work is done.
+**Live.** `/api/ratings` answers with real counts rather than
+`unavailable: true`, which is how to tell from outside that the database is
+bound — call it and look for that flag:
 
-**Two manual steps, and neither can be done from the repo.** Until they happen
-`/api/ratings` answers `{"ratings":{},"unavailable":true}` and `/api/vote`
-refuses with 503, which is the designed resting state rather than a fault:
+```bash
+curl -s "https://whatanimeshouldiwatchnext.com/api/ratings?ids=1"
+```
+
+The two steps that got it there, kept because they have to be repeated if the
+project is ever rebuilt, and neither can be done from the repo:
 
 1. Create the database — `npx wrangler d1 create wanx-votes`, or the D1 page in
    the Cloudflare dashboard.
@@ -1571,6 +1647,12 @@ refuses with 503, which is the designed resting state rather than a fault:
 
 Then apply the schema once:
 `npx wrangler d1 execute wanx-votes --remote --file=./schema.sql`
+
+**There is a third thing to set, for a different endpoint.** `/api/mal-list`
+needs `MAL_CLIENT_ID` as a **Secret** under Settings → Variables and Secrets,
+for Production and Preview. Without it username import answers 200 with
+`unavailable: true` and the page says so; the file import is unaffected,
+because it needs no server at all. See "Importing by username" above.
 
 ### Two tables, and the split is the whole cost story
 

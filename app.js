@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 49;
+const BUILD = 50;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -2479,6 +2479,77 @@ function goHome() {
    recommendable, and for most lists it is the largest category by far. */
 const WATCHED_STATUSES = new Set(['Completed', 'Watching', 'On-Hold', 'Dropped']);
 
+/* The same four, as MyAnimeList's API spells them.
+ *
+ * The export XML and the API disagree on capitalisation and punctuation for
+ * the identical concept — "On-Hold" against "on_hold" — so the two importers
+ * cannot share one set. Kept beside its twin rather than somewhere tidy,
+ * because the failure if they drift apart is silent: an unrecognised status is
+ * treated as plan-to-watch and the title stays recommendable, which looks like
+ * the import having quietly skipped things. */
+const API_WATCHED_STATUSES = new Set(['completed', 'watching', 'on_hold', 'dropped']);
+
+/**
+ * Turn rows from `/api/mal-list` into the shape `parseExport` already returns.
+ *
+ * Deliberately produces the identical `{ ids, planned, scored }` so everything
+ * downstream — the watched list, the count sentence, the consent screen — is
+ * one code path with one set of rules. The two ways in differ only in where
+ * the list came from; what counts as watched, what counts as a score, and what
+ * is worth sending are decided in one place for both.
+ */
+function readListRows(rows) {
+  const ids = [];
+  const scored = [];
+  let planned = 0;
+  for (const row of rows) {
+    const [id, status, score] = row;
+    if (!Number.isInteger(id) || id <= 0) continue;
+    if (status && !API_WATCHED_STATUSES.has(status)) { planned += 1; continue; }
+    ids.push(id);
+    // Zero means "not rated", not "terrible" — the same trap as the XML's
+    // my_score, and the same rule: only 1-10, and only titles we carry.
+    if (Number.isInteger(score) && score >= 1 && score <= 10 && byId.has(id)) {
+      scored.push({ anime: id, score });
+    }
+  }
+  return { ids, planned, scored };
+}
+
+/**
+ * Fetch a whole public list a page at a time, reporting progress.
+ *
+ * The endpoint returns one page per request because the free tier's 10ms CPU
+ * budget will not parse a few megabytes of list JSON in one go. A long list is
+ * therefore several round trips, and a button that sits there looking broken
+ * is worse than a slow one that says what it is doing — the same reasoning as
+ * the ratings upload, which chunks at 100 for the same budget.
+ */
+async function fetchMalList(user, onProgress) {
+  const rows = [];
+  let offset = 0;
+  for (let page = 0; page < 40; page++) {
+    const res = await fetch(`/api/mal-list?user=${encodeURIComponent(user)}&offset=${offset}`);
+    let body;
+    try {
+      body = await res.json();
+    } catch {
+      throw new Error('The list came back damaged. Try again in a moment.');
+    }
+    if (!res.ok) throw new Error(body?.error || `The list could not be read (${res.status}).`);
+    /* No credential configured on the server. Naming the file importer matters
+       here: it needs no server at all, so it still works when this does not. */
+    if (body.unavailable) {
+      throw new Error('Username import is not switched on yet — use the file import below.');
+    }
+    rows.push(...(body.entries || []));
+    onProgress?.(rows.length);
+    if (!body.next) break;
+    offset = body.next;
+  }
+  return rows;
+}
+
 /** MyAnimeList hands you a .xml.gz, so sniff the bytes rather than the name. */
 async function readExportFile(file) {
   const buffer = await file.arrayBuffer();
@@ -2694,23 +2765,31 @@ function wireWatchedBar() {
 
   importBtn.addEventListener('click', () => input.click());
 
+  /* One place where an imported list is applied, whichever way it arrived.
+     The file and the username differ only in where the rows came from; what
+     counts as watched, what the sentence says and when consent is asked are
+     the same questions with the same answers, and duplicating them is how the
+     two paths would quietly drift apart. */
+  function applyImport({ ids, planned, scored }) {
+    const added = markWatched(ids);
+    const skipped = ids.length - added;
+    label.textContent = `Added ${added.toLocaleString()} title${added === 1 ? '' : 's'}`
+      + (skipped ? `, ${skipped.toLocaleString()} already on the list` : '')
+      + (planned ? `. ${planned.toLocaleString()} plan-to-watch left out` : '.');
+    clearBtn.hidden = watched.size === 0;
+    renderWatchedBar();
+    /* Ask only now, with the list already in hand and a real number to show.
+       Asking beforehand would mean asking about a quantity neither of us knows
+       yet. */
+    if (scored.length) offerToShare(scored);
+  }
+
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
     if (!file) return;
     label.textContent = 'Reading your list…';
     try {
-      const { ids, planned, scored } = parseExport(await readExportFile(file));
-      const added = markWatched(ids);
-      const skipped = ids.length - added;
-      label.textContent = `Added ${added.toLocaleString()} title${added === 1 ? '' : 's'}`
-        + (skipped ? `, ${skipped.toLocaleString()} already on the list` : '')
-        + (planned ? `. ${planned.toLocaleString()} plan-to-watch left out` : '.');
-      clearBtn.hidden = watched.size === 0;
-      renderWatchedBar();
-      /* Ask only now, with the file already read on this machine and a real
-         number to show. Asking beforehand would mean asking about a quantity
-         neither of us knows yet. */
-      if (scored.length) offerToShare(scored);
+      applyImport(parseExport(await readExportFile(file)));
     } catch (error) {
       label.textContent = error.message;
     } finally {
@@ -2718,6 +2797,50 @@ function wireWatchedBar() {
       input.value = '';
     }
   });
+
+  /* The username route. The file export is four steps on MyAnimeList's site
+     before you even reach this page, and it is where most people give up. */
+  const userToggle = document.getElementById('username-toggle');
+  const userRow = document.getElementById('username-row');
+  const userInput = document.getElementById('mal-username');
+  const userGo = document.getElementById('username-go');
+
+  if (userToggle && userRow && userInput && userGo) {
+    userToggle.addEventListener('click', () => {
+      userRow.hidden = !userRow.hidden;
+      if (!userRow.hidden) userInput.focus();
+    });
+
+    const run = async () => {
+      const user = userInput.value.trim();
+      if (!user) return;
+      userGo.disabled = true;
+      userInput.disabled = true;
+      label.textContent = `Reading ${user}'s list…`;
+      try {
+        const rows = await fetchMalList(user, (n) => {
+          label.textContent = `Reading ${user}'s list… ${n.toLocaleString()} so far`;
+        });
+        if (!rows.length) {
+          label.textContent = `${user}'s list is empty, or has nothing this site carries.`;
+          return;
+        }
+        applyImport(readListRows(rows));
+        userRow.hidden = true;
+        userInput.value = '';
+      } catch (error) {
+        label.textContent = error.message;
+      } finally {
+        userGo.disabled = false;
+        userInput.disabled = false;
+      }
+    };
+
+    userGo.addEventListener('click', run);
+    userInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); run(); }
+    });
+  }
 
   clearBtn.addEventListener('click', () => {
     clearWatched();

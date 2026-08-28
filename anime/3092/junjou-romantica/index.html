@@ -41,7 +41,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
        change, otherwise a stale script keeps running against fresh data. -->
-  <link rel="stylesheet" href="/styles.css?v=49">
+  <link rel="stylesheet" href="/styles.css?v=50">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍥</text></svg>">
 </head>
 <body>
@@ -138,10 +138,21 @@
            page allowed to change height as you use it. -->
       <p class="watched-bar">
         <span id="watched-count">Nothing marked as watched yet</span>
-        <button id="import-btn" class="linkish" type="button">Import your MyAnimeList list</button>
+        <button id="username-toggle" class="linkish" type="button">Import from your MyAnimeList username</button>
+        <button id="import-btn" class="linkish" type="button">or a file</button>
         <button id="clear-watched-btn" class="linkish" type="button" hidden>Clear</button>
         <button id="forget-ratings-btn" class="linkish" type="button">Remove my ratings</button>
         <input id="import-input" type="file" accept=".xml,.gz" hidden>
+      </p>
+
+      <!-- The username row. Hidden until asked for, and it lives in the
+           watched bar's block because that is the one part of this page
+           allowed to change height as you use it. -->
+      <p id="username-row" class="username-row" hidden>
+        <input id="mal-username" type="text" autocomplete="username" autocapitalize="off"
+               spellcheck="false" placeholder="MyAnimeList username" aria-label="MyAnimeList username">
+        <button id="username-go" class="btn" type="button">Read my list</button>
+        <span class="username-note">Your list has to be public. Nothing is saved except the shows themselves.</span>
       </p>
 
       <!-- Raised after an import, once the file has been read on this machine
@@ -169,7 +180,7 @@
     </section>
   </main>
 
-  <script src="/app.js?v=49"></script>
+  <script src="/app.js?v=50"></script>
 
   <!-- Cloudflare Web Analytics. Cookieless: no cookies, no fingerprinting, no
        cross-site identifier, so there is nothing to put a consent banner in

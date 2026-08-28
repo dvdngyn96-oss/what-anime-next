@@ -81,7 +81,8 @@ window.__signatureThemes = () => [...signatureThemes];
 window.__collectTiers = collectTiers;
 window.__positionOf = positionOf;
 window.__lengthOf = lengthOf;
-window.__parseExport = parseExport;`);
+window.__parseExport = parseExport;
+window.__readListRows = readListRows;`);
   return dom;
 }
 
@@ -2902,6 +2903,117 @@ console.log('\n--- the accent behind white text ---');
   /* --accent itself is untouched, so the wordmark keeps its tuning. */
   check('--accent is left alone, so the wordmark palette is unaffected',
     /--accent:\s*#e5484d/i.test(css), 'accent changed');
+}
+
+
+console.log('\n--- importing by username ---');
+{
+  /* The file export is four steps on MyAnimeList's own site before you reach
+     this page, and it is where most people give up. The username route asks
+     for one field. The credential cannot go in the browser, so it goes through
+     a Function -- which is the whole reason /api/mal-list exists. */
+  const mod = await import(`file://${ROOT}/functions/api/mal-list.js`);
+  const call = (url, env = {}, fetchImpl = null) => {
+    const saved = globalThis.fetch;
+    if (fetchImpl) globalThis.fetch = fetchImpl;
+    return Promise.resolve(mod.onRequestGet({ request: new Request(url), env }))
+      .finally(() => { globalThis.fetch = saved; });
+  };
+  const BASE = 'https://example.com/api/mal-list';
+
+  // Validation happens before any upstream call, so a bad name costs no quota.
+  let reached = false;
+  const spy = async () => { reached = true; return new Response('{}', { status: 200 }); };
+
+  let res = await call(`${BASE}?user=`, { MAL_CLIENT_ID: 'x' }, spy);
+  check('an empty username is refused', res.status === 400, String(res.status));
+  res = await call(`${BASE}?user=not a username!`, { MAL_CLIENT_ID: 'x' }, spy);
+  check('and so is one that cannot be a MyAnimeList name', res.status === 400, String(res.status));
+  check('neither reached MyAnimeList, so a bad name costs no quota', !reached, 'upstream was called');
+
+  /* No credential configured is not an error. The file importer needs no
+     server at all, so it still works -- same rule as a missing votes database
+     leaving the site working without ratings. */
+  res = await call(`${BASE}?user=someone`, {});
+  let body = await res.json();
+  check('with no credential set it degrades rather than failing',
+    res.status === 200 && body.unavailable === true, JSON.stringify(body));
+
+  /* The two upstream failures worth telling apart. "Not found" for a private
+     list would send somebody hunting for a typo that is not there. */
+  res = await call(`${BASE}?user=ghost`, { MAL_CLIENT_ID: 'x' },
+    async () => new Response('{}', { status: 404 }));
+  body = await res.json();
+  check('a missing user says so by name',
+    res.status === 404 && /No MyAnimeList user called "ghost"/.test(body.error), body.error);
+
+  res = await call(`${BASE}?user=shy`, { MAL_CLIENT_ID: 'x' },
+    async () => new Response('{}', { status: 403 }));
+  body = await res.json();
+  check('a private list says it is private, and names the way round it',
+    res.status === 403 && /private/i.test(body.error) && /file import/i.test(body.error),
+    body.error);
+
+  // The happy path, slimmed to three numbers a row.
+  const upstream = {
+    data: [
+      { node: { id: 100, title: 'x', main_picture: { medium: 'a' } }, list_status: { status: 'completed', score: 9 } },
+      { node: { id: 101 }, list_status: { status: 'plan_to_watch', score: 0 } },
+      { node: { id: 102 }, list_status: { status: 'dropped', score: 0 } },
+    ],
+    paging: {},
+  };
+  res = await call(`${BASE}?user=real`, { MAL_CLIENT_ID: 'x' },
+    async () => new Response(JSON.stringify(upstream), { status: 200 }));
+  body = await res.json();
+  check('a good list comes back as compact rows',
+    JSON.stringify(body.entries) === JSON.stringify([[100, 'completed', 9], [101, 'plan_to_watch', 0], [102, 'dropped', 0]]),
+    JSON.stringify(body.entries));
+  check('and drops the poster URLs MyAnimeList sends whatever fields asks for',
+    !JSON.stringify(body).includes('main_picture'), JSON.stringify(body).slice(0, 120));
+  check('with no next page when there is none', body.next === null, String(body.next));
+
+  /* Paging is by offset because the 10ms CPU budget will not parse a whole
+     large list in one request. The client loops on `next`. */
+  res = await call(`${BASE}?user=real&offset=500`, { MAL_CLIENT_ID: 'x' },
+    async (u) => {
+      check('the offset is passed upstream', /offset=500/.test(String(u)), String(u));
+      return new Response(JSON.stringify({ data: upstream.data, paging: { next: 'more' } }), { status: 200 });
+    });
+  body = await res.json();
+  check('and the next offset resumes where this page ended', body.next === 503, String(body.next));
+}
+
+console.log('\n--- the two importers agree on what counts ---');
+{
+  /* The export XML and the API spell the same four statuses differently --
+     "On-Hold" against "on_hold" -- so the two paths cannot share one set. If
+     they drift apart the failure is silent: an unrecognised status is treated
+     as plan-to-watch and the title stays recommendable, which reads as the
+     import having quietly skipped things. */
+  const dom = makeDom(SYNTHETIC);
+  const w = dom.window;
+  await sleep(200);
+
+  const rows = [
+    [100, 'completed', 9],
+    [101, 'watching', 0],
+    [102, 'on_hold', 7],
+    [103, 'dropped', 3],
+    [104, 'plan_to_watch', 8],
+  ];
+  const out = w.__readListRows(rows);
+
+  check('all four watched statuses are recognised in the API spelling',
+    out.ids.length === 4 && !out.ids.includes(104), JSON.stringify(out.ids));
+  check('plan-to-watch is left out, as it is for the file',
+    out.planned === 1, String(out.planned));
+  /* Zero means "not rated", not "terrible" -- the same trap as the XML's
+     my_score, and it must be caught in both places. */
+  check('a zero score is not treated as an opinion',
+    out.scored.every((s) => s.score >= 1), JSON.stringify(out.scored));
+  check('and a plan-to-watch score is never collected, even when set',
+    !out.scored.some((s) => s.anime === 104), JSON.stringify(out.scored));
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
