@@ -23,5 +23,11 @@ anime.json.tmp
 full-scan.mjs
 full-scan.jsonl
 
+# scratch: the franchise-sibling prequel sweep, not part of the site
+prequel-sweep.mjs
+prequel-sweep.jsonl
+prequel-report.mjs
+prequel-sweep.log
+
 # wrangler local state, from testing the vote endpoints
 .wrangler/

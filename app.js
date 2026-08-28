@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 47;
+const BUILD = 48;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -286,6 +286,12 @@ let watchedSkipped = 0;
    the same trap: a walk emptied by a filter has to name the filter, or the
    page blames the matcher for a choice the viewer made. */
 let yearSkipped = 0;
+
+/* Whether the last walk ran out of undismissed matches and started over. Not a
+   count, because the number is not the interesting part -- what matters is
+   that repeats are about to appear on purpose rather than by mistake. */
+let chainExhausted = false;
+
 
 /**
  * Which ordering the walk climbs: MyAnimeList's score ranking, or how well a
@@ -1120,6 +1126,7 @@ function collectTiers(source, direction, exclude) {
 function walkRankings(source, direction, exclude = new Set()) {
   watchedSkipped = 0;
   yearSkipped = 0;
+  chainExhausted = false;
   const otherDirection = direction === 'up' ? 'down' : 'up';
   const total = source.genres.length;
   const primary = collectTiers(source, direction, exclude);
@@ -1219,9 +1226,20 @@ function walkRankings(source, direction, exclude = new Set()) {
    * discarded, and appended once the climb is genuinely exhausted — so the
    * list stays long, but every backwards step happens once, at the end. */
 
-  // Everything nearby has already been dismissed — rather than dead-end,
-  // forget the history and allow repeats.
-  if (!list.length && exclude.size) return walkRankings(source, direction, new Set());
+  /* Everything nearby has already been dismissed — rather than dead-end,
+   * forget the history and allow repeats.
+   *
+   * This is old behaviour and still the right call: a dead end is worse than a
+   * repeat. But it used to be **silent**, and build 48 makes it far easier to
+   * reach, because every card you page past now counts as dismissed. A list
+   * that quietly starts over looks exactly like the bug a reader reported —
+   * "it can show you recommendations it's already shown you" — so the restart
+   * now says it happened. Raised after the recursive call, which resets it. */
+  if (!list.length && exclude.size) {
+    const restarted = walkRankings(source, direction, new Set());
+    chainExhausted = true;
+    return restarted;
+  }
 
   return { list, flipped: list[0]?.matchFlipped ?? null };
 }
@@ -1250,8 +1268,13 @@ function metaLine(anime) {
     .join(' · ');
 }
 
+/* The whole phrase, not just the number, because the two halves want different
+   grammar: "#5" needs "ranked" in front of it and "not in the rankings" does
+   not. Composing them at the call site produced "ranked not in the ranking" --
+   on every entry pulled in live from AniList rather than found in the
+   catalogue, which is exactly when the sentence most needs to make sense. */
 function rankLabel(anime) {
-  return anime.rank ? `#${anime.rank}` : 'not in the ranking';
+  return anime.rank ? `ranked #${anime.rank}` : 'not in the MyAnimeList rankings';
 }
 
 /** Below this many viewers the percentage is noise, so it isn't shown. */
@@ -1808,9 +1831,9 @@ function showError(message, retry = null) {
   wireResultControls();
 }
 
-function listWords(words) {
+function listWords(words, conjunction = 'and') {
   if (words.length <= 1) return words[0] ?? '';
-  return `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
+  return `${words.slice(0, -1).join(', ')} ${conjunction} ${words.at(-1)}`;
 }
 
 /**
@@ -1957,7 +1980,7 @@ function renderResult() {
   const sourceCompletion = sourceRate ? `, ${sourceRate.finished}% finished it` : '';
 
   const because = `
-    <p class="because">Because you watched <strong>${esc(source.title)}</strong> — ranked ${esc(rankLabel(source))}${source.score ? `, scored ${esc(source.score)}` : ''}${sourceCompletion}</p>
+    <p class="because">Because you watched <strong>${esc(source.title)}</strong> — ${esc(rankLabel(source))}${source.score ? `, scored ${esc(source.score)}` : ''}${sourceCompletion}</p>
     <div class="genre-row">${genreTags}</div>
     ${directionToggle(direction)}`;
 
@@ -1967,16 +1990,25 @@ function renderResult() {
        these genres" is false when something did share them and a filter took
        it away, and it reads as the matcher being broken rather than as a
        choice the viewer made. Both filters can be responsible at once. */
-    let why;
-    if (watchedSkipped && yearSkipped) {
-      why = `Everything ${where} the rankings that shares these genres has been filtered out — ${watchedSkipped} already on your watched list, ${yearSkipped} released before ${MODERN_FROM}. Try the other direction, or relax one of those.`;
-    } else if (watchedSkipped) {
-      why = `Everything ${where} the rankings that shares these genres is already on your watched list — ${watchedSkipped} of them. Try the other direction, or clear the list from the home page.`;
-    } else if (yearSkipped) {
-      why = `Everything ${where} the rankings that shares these genres was released before ${MODERN_FROM} — ${yearSkipped} of them. Try the other direction, or switch off “${MODERN_FROM} or later”.`;
-    } else {
-      why = `Nothing ${where} the rankings shares these genres. Try the other direction.`;
+    /* Composed rather than branched: each cause carries its own remedy, and a
+       sentence per combination does not survive a third cause being added.
+       Chain history is deliberately absent — the walk retries with an empty
+       history rather than dead-ending, so it can never be the reason a walk
+       came back empty. That case is reported under the card instead. */
+    const blamed = [];
+    const fixes = [];
+    if (watchedSkipped) {
+      blamed.push(`${watchedSkipped} already on your watched list`);
+      fixes.push('clear the list from the home page');
     }
+    if (yearSkipped) {
+      blamed.push(`${yearSkipped} released before ${MODERN_FROM}`);
+      fixes.push(`switch off “${MODERN_FROM} or later”`);
+    }
+    const why = blamed.length
+      ? `Everything ${where} the rankings that shares these genres has been filtered out — `
+        + `${listWords(blamed)}. Try the other direction, or ${listWords(fixes, 'or')}.`
+      : `Nothing ${where} the rankings shares these genres. Try the other direction.`;
     resultBody.innerHTML = `${because}<div class="state">${esc(why)}</div>`;
     wireResultControls();
     return;
@@ -2034,6 +2066,21 @@ function renderResult() {
   const watchedNote = hero && watchedSkipped
     ? `${watchedSkipped} ${watchedSkipped === 1 ? 'show that matched is' : 'shows that matched are'}`
       + ` already on your watched list, so ${watchedSkipped === 1 ? 'it was' : 'they were'} skipped.`
+    : '';
+
+  /* And say when the list started over.
+   *
+   * The walk retries with an empty history rather than dead-ending, so once
+   * you have paged past everything that matches, entries you already saw come
+   * back. That is deliberate and better than a dead end -- but unexplained it
+   * is indistinguishable from the bug that motivated build 48, where cards
+   * came back because they had never been recorded as seen at all. One is the
+   * design working; the other was a defect. The reader could not tell them
+   * apart, and neither could anyone else, so the working one now says so. */
+  const restartNote = hero && chainExhausted
+    ? `You have been shown everything ${direction === 'up' ? 'higher up' : 'further down'}`
+      + ` the rankings that matches, so the list has started again — you will see repeats`
+      + ` from here. Try the other direction for something new.`
     : '';
 
   resultBody.innerHTML = `${because}
@@ -2112,6 +2159,7 @@ function renderResult() {
     ${outsideNote ? `<div class="note">${outsideNote}</div>` : ''}
     ${relaxNote ? `<div class="note">${esc(relaxNote)}</div>` : ''}
     ${watchedNote ? `<div class="note">${esc(watchedNote)}</div>` : ''}
+    ${restartNote ? `<div class="note">${esc(restartNote)}</div>` : ''}
 
     ${more.length ? `
       <p class="section-title">Others further ${shown === 'up' ? 'up' : 'down'} the list</p>
@@ -2266,6 +2314,7 @@ function wireResultControls() {
 
       if (action === 'shuffle') {
         if (state.list.length < 2) return;
+        rememberShown();
         state.index = (state.index + 1) % state.list.length;
         renderResult();
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2276,6 +2325,7 @@ function wireResultControls() {
       if (action === 'show') {
         const at = state.list.findIndex((a) => a.id === Number(el.dataset.id));
         if (at !== -1) {
+          rememberShown();
           state.index = at;
           renderResult();
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2332,6 +2382,30 @@ function wireResultControls() {
 
 /** Anime already dismissed against the current anchor, so they don't come back. */
 let chainHistory = new Set();
+
+/**
+ * Record the card being moved away from.
+ *
+ * `chainHistory` is what the walk is told to skip, and until now only two
+ * things fed it: the anchor, and whatever you pressed "Seen it too" on.
+ * **"Show me another" fed it nothing** — it only advanced the index through a
+ * list that had already been computed. So the entries you paged past were
+ * never marked as seen, and the next re-walk put them straight back at the
+ * top, because `refreshFromAnchor` resets the index to 0.
+ *
+ * Reported by a reader: Re:Zero gives Mushoku Tensei, "show me another" gives
+ * Evangelion, "seen it too" on Evangelion gives Mushoku Tensei again. Their
+ * diagnosis is the right one — anything already shown in this chain is an
+ * implicit rejection, so it should not come back.
+ *
+ * Called when leaving a card, not when arriving at one, so the entry currently
+ * on screen is never in the set. Otherwise a re-walk would exclude the thing
+ * you are looking at and the card would change under you.
+ */
+function rememberShown() {
+  const shown = state.list?.[state.index];
+  if (shown) chainHistory.add(shown.id);
+}
 
 /**
  * Re-run the walk against the anchor the user actually chose.

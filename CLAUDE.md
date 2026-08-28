@@ -10,17 +10,27 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 47.** `anime.json` holds **3,493 entries** (TV 2,679 · ONA 532 · OVA 282),
-about 1.08 MB. 309 checks pass via `npm test`.
+**Build 48.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
+about 1.33 MB. 318 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
-| Key-art colour | 3,266 |
-| Banner image | 2,357 |
-| Studio | 3,376 |
-| AniList tags | 3,245 (93%) |
-| Genres backfilled from AniList (`gs`) | 42 |
-| No genres (matched on themes only) | 31 |
+| Key-art colour | 4,103 |
+| Banner image | 2,704 |
+| Studio | 4,259 |
+| AniList tags | 3,995 (90%) |
+| Genres backfilled from AniList (`gs`) | 56 |
+| No genres (matched on themes only) | 48 |
+
+**The scan depth is 10,000, raised from 8,000 in build 48.** It added 933
+entries, and it was raised because somebody asked for a specific show the
+depth excluded — Kämpfer, MAL rank 8919, with perfectly clean relation data.
+That is the first time the depth turned anyone away rather than the catalogue
+rules doing it, which is what made it worth the longer rebuild.
+
+**A rebuild now takes about 100 minutes**, not 60. The ranking scan is quick;
+the per-entry relation lookups are the cost, and there are 6,929 of them
+against roughly 5,300 before.
 
 **Live at https://whatanimeshouldiwatchnext.com** on Cloudflare Pages, deploying
 from `main` on GitHub (`dvdngyn96-oss/what-anime-next`). Every push redeploys
@@ -42,10 +52,10 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 309 checks, jsdom against the real app.js and anime.json
+npm test          # 318 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
-npm run build     # full catalogue rebuild + prerendered pages, ~60 min
-npm run pages     # prerendered pages only, ~25 s
+npm run build     # full catalogue rebuild + prerendered pages, ~100 min
+npm run pages     # prerendered pages only, ~30 s
 ```
 
 One credential file, gitignored, **build-time only** — nothing ships in the
@@ -131,14 +141,22 @@ So it does. A shared theme carried by **no more than 5% of the catalogue** is
 worth one genre for bucketing. `promoteSignatures` in `app.js`, run after the
 scan and before `preferLocally`.
 
-**A share, not a count.** 5% of 3,493 entries is 174 shows: Isekai (161),
-Military (148), Harem (144), Psychological (132), Space (114), Time Travel (50)
-and rarer count; Martial Arts (207), Adult Cast (255), Mecha (270), Historical
-(403) and School (658) stay tie-breakers. A fixed count of 200 looks identical
-on this catalogue and is a trap — in a six-entry test fixture every theme is
+**A share, not a count.** 5% of 4,427 entries is 221 shows: Isekai (199),
+Harem (182), Military (181), Super Power (172), Music (170) and rarer count;
+Martial Arts (250), Adult Cast (282), Mecha (341), Historical (455) and School
+(793) stay tie-breakers. A fixed count of 200 looks identical on this
+catalogue and is a trap — in a six-entry test fixture every theme is
 under 200, so everything became a signature theme and five checks failed at
 once. Rarity only means something relative to the corpus. Counted at load, so a
 rebuild cannot leave it stale.
+
+**Build 48 proved that the hard way, in the good direction.** Raising the scan
+depth added 933 entries, a 27% jump, and the signature set came out **47
+themes before and 47 after — nothing gained, nothing lost.** Every theme near
+the boundary grew roughly in proportion to the catalogue, which is exactly
+what a share measures and a fixed count would have missed. Martial Arts went
+207 to 250 against a cutoff moving 175 to 221, and stayed a tie-breaker
+throughout.
 
 **Bounded by distance, and that bound is the whole safety argument.** The first
 version was unbounded and re-created the Arslan Senki bug this file warns about
@@ -346,6 +364,83 @@ before the first button; at the end it falls where the row already runs out.
 Chips are clipped rather than capped at a count: a chip can be the shared theme
 the note is explaining, and dropping it would remove the reason the result was
 chosen.
+
+### A card you have already been shown never comes back
+
+Build 48, and **the first bug a stranger found.** Reported in a comment on the
+r/anime post, in these words:
+
+> If you start with Re:Zero without a profile, it'll recommend Mushoku Tensei.
+> If you click "Show me another", it'll show you Evangelion. If you then click
+> "Seen it too — drop it", it'll go back to Mushoku Tensei.
+
+Reproduced exactly, and their diagnosis was the right one: *"anything in the
+chain is an implicit rejection."*
+
+**`chainHistory` is what the walk is told to skip, and only two things fed
+it** — the anchor, and whatever you pressed "Seen it too" on. **"Show me
+another" fed it nothing.** It only advanced `state.index` through a list that
+had already been computed, so the entries you paged past were never recorded
+as seen. `refreshFromAnchor` then re-walks and resets the index to 0, putting
+every one of them back at the top.
+
+So it was a bug of omission rather than a design question. The set is
+documented as "anime already dismissed against the current anchor, so they
+don't come back", and one of the two paths that should have fed it did not.
+
+`rememberShown()` records the card being left, called from **"Show me another"
+and from clicking a card in the grid** — both mean "not this one". It is
+called when *leaving* a card, never when arriving at one, so the entry on
+screen is never in the set; otherwise a re-walk would exclude the thing you
+are looking at and the card would change under you.
+
+#### The fallback that made it look like a different bug
+
+`walkRankings` already ended with this, and it is easy to miss:
+
+```js
+// Everything nearby has already been dismissed — rather than dead-end,
+// forget the history and allow repeats.
+if (!list.length && exclude.size) return walkRankings(source, direction, new Set());
+```
+
+That is old behaviour and still the right call — a dead end is worse than a
+repeat. But it was **silent**, and recording paged-past cards makes it far
+easier to reach, because the history now grows with every click rather than
+only when you drop something.
+
+**A silent restart is indistinguishable from the bug that was just fixed.**
+One is the design working and the other was a defect; the reader could not tell
+them apart, and neither could anyone else. So the restart now says so, under
+the card with the other notes: *"You have been shown everything higher up the
+rankings that matches, so the list has started again — you will see repeats
+from here."*
+
+**A counter for it was built and then removed, which is worth recording so
+nobody builds it again.** The plan was to let an emptied walk blame the chain
+history, the way build 39 let it blame the watched list and the year chip —
+which meant moving the exclude test after the match test so it could be
+counted. It was written, and then the fallback above made the whole branch
+**unreachable**: the walk retries before it can ever return empty from chain
+history alone. The test moved back to where it was, cheap and early, and the
+restart note does the job instead.
+
+**Dropping also writes to the watched list, so the two causes stay separate.**
+Paging past something is undone by searching again; dropping it is not,
+because "seen it" is taken at its word and written to `wanx:watched:v1` for
+good. Offering "search it again to start over" for a dropped title would be
+advice that quietly does nothing.
+
+`npm run walks` came out **byte-identical**: the shuffle path never recomputes
+the walk, so recording what it passes only takes effect on the next re-walk.
+Four checks cover it, and the fix was broken on purpose — the failure prints
+`Fourth Match -> Third Match -> Fourth Match`, which is the reader's report in
+miniature.
+
+Verified against the real catalogue with their own titles: Re:Zero → Mushoku
+Tensei → *show me another* → Evangelion → *seen it too* → **Gyakkyou Burai
+Kaiji**, where it used to return Mushoku Tensei.
+
 
 ### The format filter
 
@@ -564,6 +659,38 @@ exactly one over-long entry: GATE drops Naruto, Overlord drops Dragon Ball
 *and* One Piece, Konosuba drops Hunter x Hunter and One Piece, Tokyo Ravens
 drops InuYasha. Backtracks went 22 to 25.
 
+**Growing the catalogue moves these results without changing a constant, and
+build 48 is the evidence.** Raising the scan depth from 8,000 to 10,000 added
+933 entries, and GATE went from opening *Tsuki ga Michibiku, Drifters, Berserk*
+to *Tsuki ga Michibiku, **Slayers**, Drifters, Berserk* — Slayers back at
+second, which is the exact symptom build 34 was written to remove.
+
+**Everything that could explain it was checked, and none of it changed:**
+
+| | Before | After |
+| --- | --- | --- |
+| GATE / Slayers / Drifters genres and themes | identical | identical |
+| Affinity (Slayers, Drifters) | 2, 3 | 2, 3 |
+| Distance from GATE, in positions | 37, 195 | 45, 206 |
+| Drifters' place in the lookahead window | 21 of 30 | 21 of 30 |
+| Reach budget | 60 (capped) | 60 (capped) |
+
+So the cause is the **composition of the bucket** — 933 new entries interleaved
+among the candidates. `preferLocally` reorders inside a window, so the outcome
+can move even when both entries involved are untouched and the constants are
+identical.
+
+**That was not re-tuned, and should not be.** The reach value was judged by
+reading live chains rather than by a metric, so there is no number to optimise
+back to; and re-tuning on one anchor is how all three reverted fixes above
+started. The degradation is also mild — GATE's first result is still an isekai
+and Drifters only moved from second to third.
+
+**What it does mean is that a rebuild is a behaviour change, not just a data
+refresh.** 12 of the 19 anchors came out byte-identical by title, six moved by
+small reorderings, and one moved in a way worth arguing about. Read the diff
+after every rebuild, not only after a matcher edit.
+
 ### Two ranking axes
 
 **MAL rank** (default) and **Kept watching** (raw completion). Completion
@@ -593,6 +720,96 @@ byte-identical, so it is behaviour-preserving on the known anchors.
 
 A tie looks like a sort bug when the test fails. It isn't — check for *equal*
 ranks, not inverted ones. A strictly-decreasing check finds nothing.
+
+---
+
+### The franchise-sibling sweep
+
+Build 48. **Found by clicking the live site**, like most real bugs here: Crest
+of the Stars would not come up.
+
+It was not a search problem. **Seikai no Monshou is MAL rank 1683** — well
+inside the 8,000 the builder scanned at the time — so it had been seen and
+rejected. Its relations:
+
+| Relation | Target | Effect |
+| --- | --- | --- |
+| sequel | Seikai no Senki | harmless |
+| **prequel** | **Seikai no Danshou: Tanjou** | dropped it |
+| summary | Seikai no Monshou Special | harmless, points the other way |
+
+And that prequel is a **one-episode TV special that aired 25 August 2000**,
+more than a year *after* the 1999 series it supposedly precedes. Exactly the
+Re:Zero shape this file already describes.
+
+**Both earlier sweeps looked at it and passed**, and why is the useful part.
+They asked whether *the prequel's title starts with the show's own title*.
+Here it does not:
+
+```
+Seikai no Monshou   the series, 1999
+Seikai no Danshou   the "prequel", a 1-episode special from 2000
+```
+
+Same franchise prefix, different word, so a `startsWith` test slid straight
+past. **A title test cannot see a franchise sibling.**
+
+#### Sweeping on the shape of the relation instead
+
+`prequel-sweep.mjs` — gitignored scratch, like `full-scan.mjs` — checks every
+entry missing from the catalogue whose *only* disqualifier is a prequel, and
+keeps the ones where **every** such prequel is a short non-TV thing of two
+episodes or fewer. That is what a pilot, an episode 0, a recap special and a
+later side film all look like, whatever they are titled. `tv` is deliberately
+excluded: a full TV series listed as a prequel is the case to keep out.
+
+**It is much noisier than the title test, and the reason is worth knowing.**
+Over the top 3,000 it flagged **84**, and 57 were later seasons — Hibike!
+Euphonium 3, Natsume Yuujinchou Shichi, Spice and Wolf II, KonoSuba 3.
+**MyAnimeList lists the most recent side story as the immediate prequel rather
+than the previous season**, so a test on the shape of the relation cannot see
+that the real blocker is season one.
+
+The discriminator is the catalogue itself: "Hibike! Euphonium 3" extends
+"Hibike! Euphonium", which is already here, so it continues something we
+carry. "Seikai no Monshou" extends nothing. Cutting anything whose title
+extends an existing entry left **27**, and a human read all 27.
+
+**Ten were added.** Moomin, Fate/strange Fake, Dead Dead Demons Dededede
+Destruction, The King's Avatar, Luo Xiaohei Zhanji, Keroro Gunsou,
+Planetarian, Golgo 13 (TV), Tekkaman Blade and Long Zu.
+
+**Seventeen were rejected, and they are the same lesson this list keeps
+teaching.** Aria the Origination, Tsurune season 2, Grisaia no Rakuen, K:
+Return of Kings, Major 2nd, Ranma ½ Super — and **New Game!!** and **Hayate no
+Gotoku!!** again, where `!!` is the only thing in the entire dataset that says
+"season two". Hayate was flagged and rejected by the earlier sweep too, which
+is a useful sign the noise profile has not changed.
+
+So the sweep is a **candidate generator, not a rule**, and more emphatically
+than the title one: two thirds of its raw output is wrong. Do not be tempted to
+run it unattended.
+
+**Reachability was checked directly, not inferred from the walks diff.** None
+of the 19 anchors goes near rank 1683, so an unchanged diff would have proved
+nothing — the same reasoning as adding entries below rank 955. Walking up from
+twelve anchors just below Crest of the Stars, **12 of 12 reach it**. Moomin
+turned up independently as Yuru Camp's fourth result once the rebuild landed.
+
+**Adding it properly beats the live AniList lookup, which is the part that is
+easy to miss.** Typing a title that is not in the catalogue pulls it from
+AniList as an anchor — it works, but the entry carries only AniList's three
+genres and can never be recommended *to* anyone. In the catalogue it picks up
+**Military and Space as themes**, both signature themes under the 5% bar, so
+it now finds the other space opera.
+
+That live-anchor path also produced a copy bug the same screenshot showed:
+`rankLabel` returned a bare `#5` or `not in the ranking`, and the card wrote
+`ranked` in front of it — so every live-fetched entry read **"ranked not in
+the ranking"**. The label carries the whole phrase now, because the two halves
+want different grammar. A check covers it, broken on purpose to watch it print
+the offending sentence.
+
 
 ---
 
@@ -733,7 +950,7 @@ crawler outright not to index them separately. The sitemap listed two URLs and
 said so in a comment.
 
 **Results are prerendered now, one document per entry**, at
-`/anime/<id>/<slug>`. 3,462 pages — the 31 entries with no genres are skipped
+`/anime/<id>/<slug>`. 4,379 pages — the 48 entries with no genres are skipped
 rather than shipped as pages with nothing on them. Each carries its own title,
 description, canonical, Open Graph tags, an `<h1>`, the anime's own facts, and
 eight recommendations with a line on why each matched.
@@ -788,11 +1005,12 @@ guard it and one was broken on purpose to watch it name the offending URLs.
 
 **The sitemap is generated, not hand-written**, because it has to list exactly
 what was produced or it points crawlers at documents that are not there. It
-lists 3,464 URLs now. The old comment explaining that listing them all would be
+lists 4,381 URLs now. The old comment explaining that listing them all would be
 duplicate content was true when every one served identical markup, and is not
 true any more.
 
-**Cost: 42 MB on disk across 3,462 directories, and about 1.3 MB in the pack.**
+**Cost: about 53 MB on disk across 4,379 directories, and a couple of MB in
+the pack.**
 Near-identical files delta-compress hard, so the repository grew far less than
 the working tree suggests.
 
@@ -860,7 +1078,7 @@ not content.
 sound while it lasted: every `/?id=N` served byte-identical HTML, so listing
 them would have handed a crawler thousands of URLs with the same markup, which
 is what duplicate content means. They are distinct documents now — see "The
-site is more than one page now" above — so the sitemap lists all 3,464 and is
+site is more than one page now" above — so the sitemap lists all 4,381 and is
 generated rather than hand-written.
 
 ### Where to watch
@@ -1152,7 +1370,7 @@ the state every title is in until somebody rates it.
 ### Sharing an imported list
 
 Build 38, and it is the part that decides whether any of the rest matters. The
-floor is 30 ratings before a percentage appears, across 3,493 titles — that is
+floor is 30 ratings before a percentage appears, across 4,427 titles — that is
 more than a hundred thousand ratings, and nobody is clicking thumbs a hundred
 thousand times. One MyAnimeList export routinely carries several hundred scored
 titles. Everything else in stage two is machinery waiting for this.
@@ -1386,7 +1604,7 @@ deployment, and that would take the site down rather than just the endpoints.
 
 | Task | Cadence | Time |
 | --- | --- | --- |
-| `npm run build` | once a season | ~60 min |
+| `npm run build` | once a season | ~100 min |
 | `node add-anilist-tags.mjs` | rarely — tags drift slowly | ~3 min |
 | `node backfill-genres.mjs` | after a rebuild only if it reports blanks | ~10 s |
 
@@ -1404,7 +1622,7 @@ exist for fixing an existing catalogue without paying the 60 minutes.
 **Long builds must run detached**, or a Claude Code crash takes them with it:
 
 ```bash
-powershell -c "Start-Process node -ArgumentList 'build-catalogue.mjs','--depth','8000' -WorkingDirectory $PWD -RedirectStandardOutput 'rebuild.log' -WindowStyle Hidden"
+powershell -c "Start-Process node -ArgumentList 'build-catalogue.mjs','--depth','10000' -WorkingDirectory $PWD -RedirectStandardOutput 'rebuild.log' -WindowStyle Hidden"
 ```
 
 The builder only writes at the very end, so an interrupted run loses progress
@@ -1444,7 +1662,8 @@ see "When there is no tier to demote into" above.
 **The search side is finished and needs nothing further.**
 
 - Google Search Console: verified as a **Domain property**, sitemap submitted,
-  reading **Success at 3,464 URLs**. It first showed "Couldn't fetch" and
+  reading **Success at 3,464 URLs** (4,381 after build 48; resubmit is not
+  needed, Google re-reads the sitemap on its own). It first showed "Couldn't fetch" and
   resolved itself — Googlebot had not actually attempted the fetch yet, which
   was confirmed by fetching as Googlebot (200, right content type, no BOM)
   rather than guessing.
@@ -1456,7 +1675,7 @@ see "When there is no tier to demote into" above.
   **DuckDuckGo, Yahoo and Ecosia** — those take Bing's index and have no
   console of their own.
 - Cloudflare **Crawler Hints** is on. It pings IndexNow when content changes,
-  which suits a site that regenerates 3,462 pages per rebuild. Bing family
+  which suits a site that regenerates 4,379 pages per rebuild. Bing family
   only; Google does not participate.
 
 **What is left is people, and none of it is code.**
@@ -1478,6 +1697,37 @@ see "When there is no tier to demote into" above.
   register — plain and factual, where the Reddit one is casual.
 
 ### What the owner found by posting it
+
+**It was posted to r/anime on 27 August 2026**, flaired Misc., titled "I built
+a website to help you find your next anime", with the tip jar still switched
+off so the "Do Not Sell Things" rule could not bite. The announcement is a
+one-shot, so there is no second attempt.
+
+**Two things came back that were worth more than the vote count.**
+
+**A stranger found a real bug within hours** — the one written up under "A card
+you have already been shown never comes back" above. That is the first defect
+here found by somebody with no stake in the project, and it was a good report:
+exact reproduction steps, and a correct diagnosis ("anything in the chain is an
+implicit rejection"). Worth remembering the next time the question is whether
+more features or more people would be the better use of a week.
+
+**The privacy claim in the draft was wrong, and checking it before posting is
+what caught it.** The post said "I'm not collecting anything about you", which
+is false: Cloudflare Web Analytics runs on every page, and `/api/vote` is live
+and storing ratings against a random id. It was replaced with the specific
+version — cookieless counts, a random id, no name or email, and a link to the
+privacy page. **Specific claims read as more trustworthy than a blanket one**,
+because readers assume the blanket one is a lie.
+
+**Vote counts on a new post tell you nothing**, and it is worth writing that
+down before the next launch. Reddit fuzzes displayed scores deliberately as
+anti-manipulation, so the number is not real; /new has habitual downvoters who
+hit anything that looks like self-promotion without reading it; and one
+downvote is nothing algorithmically next to comments. **Never delete and
+repost** — that trades a slow post for no post, plus a spam signal, and burns
+the one-shot.
+
 
 Shared to a Discord community, and the first real feedback loop produced two
 things worth keeping.
@@ -1727,8 +1977,8 @@ it now has one.
   as survey data, and nothing should ever be built on top of them that assumes
   otherwise.
 - ~~**Stage 3: imported lists feeding the ratings.**~~ Shipped in build 38 —
-  see "Sharing an imported list" above. Roughly 105,000 ratings are needed for
-  meaningful per-title percentages (30 across 3,493 titles), which is why the
+  see "Sharing an imported list" above. Roughly 133,000 ratings are needed for
+  meaningful per-title percentages (30 across 4,427 titles), which is why the
   import matters: a few hundred uploads does what millions of pageviews would.
   **What is left is nobody knowing the site exists.** The machinery is done;
   the numbers now need people.
@@ -1738,8 +1988,8 @@ is 30, the server sends it so it can move without a deploy of the page, and
 below it the card reports a bare count instead. "100% would recommend" from one
 vote looks like data and is not.
 
-**What is left is nobody knowing the site exists.** 30 ratings across 3,493
-titles is over a hundred thousand ratings. The machinery is finished; the
+**What is left is nobody knowing the site exists.** 30 ratings across 4,427
+titles is over 130,000 ratings. The machinery is finished; the
 numbers now need people, and no amount of further code supplies that.
 
 ~~**Tune `AFFINITY_REACH` against real taste.**~~ Judged good as shipped —

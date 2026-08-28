@@ -175,6 +175,53 @@ const STANDS_ALONE_ANYWAY = new Set([
   75,     // Soukyuu no Fafner — Right of Left is a 2005 special
   30911,  // Tales of Zestiria the Cross — Saiyaku no Jidai is a prologue special
   27631,  // God Eater — God Eater Prologue
+
+  /* Found on the live site, not by either sweep, and it shows where they were
+   * blind. Crest of the Stars is rank 1683, so the top-2,000 sweep above did
+   * look at it — and passed, because that scan asked whether the prequel's
+   * title *starts with the show's own title*. Here it does not:
+   *
+   *   Seikai no Monshou   (the series, 1999)
+   *   Seikai no Danshou   (the "prequel", a 1-episode TV special from 2000)
+   *
+   * They share the franchise prefix "Seikai no" and then diverge, so a
+   * startsWith test slid straight past. The shape is otherwise identical to
+   * Re:Zero's: a one-episode special aired more than a year *after* the series
+   * it supposedly precedes. Sweeping on the relation's own shape — a short
+   * special or film that aired later — rather than on its title is the fix,
+   * and is what the franchise-sibling sweep now does. */
+  290,    // Seikai no Monshou (Crest of the Stars) — Danshou: Tanjou is a
+          // 1-episode special from Aug 2000, over a year after the series
+
+  /* Ten more from the franchise-sibling sweep that Crest of the Stars
+   * prompted. It checked every entry missing from the top 3,000 whose only
+   * disqualifier is a prequel, and kept the ones where *every* such prequel is
+   * a short non-TV thing of two episodes or fewer — a pilot, an episode 0, or
+   * a side film — whatever it happens to be titled.
+   *
+   * It flagged 84, and 57 of those were later seasons: MyAnimeList lists the
+   * most recent side story as the immediate prequel rather than the previous
+   * season, so the shape of the relation cannot see that the real blocker is
+   * season one. Cutting anything whose title extends an entry already in the
+   * catalogue left 27, and a human read all 27. These ten are the ones that
+   * genuinely stand alone.
+   *
+   * The seventeen rejected are worth remembering, because they are the same
+   * lesson this list keeps teaching: Aria the Origination, Tsurune season 2,
+   * Grisaia no Rakuen, K: Return of Kings, Major 2nd, Ranma ½ Super — and
+   * New Game!! and Hayate no Gotoku!! again, where "!!" is the only thing in
+   * the data that says "season two". */
+  2150,   // Tanoshii Muumin Ikka (Moomin) — Muumindani no Suisei is a 1992 film
+  55830,  // Fate/strange Fake — Whispers of Dawn is its own prologue special
+  58883,  // Dead Dead Demons Dededede Destruction — "prequel" is its Episode 0
+  33926,  // Quanzhi Gaoshou (The King's Avatar) — the prequel is a 2019 film
+  33443,  // Luo Xiaohei Zhanji — its "prequel" film came eight years later
+  516,    // Keroro Gunsou (Sgt. Frog) — Kero 0 is a 2009 special, five years on
+  33091,  // Planetarian — Snow Globe is a 2021 OVA, five years after
+  4039,   // Golgo 13 (TV) — its "prequels" are a 1983 film and a 1998 OVA,
+          // separate adaptations rather than anything this series continues
+  1459,   // Uchuu no Kishi Tekkaman Blade — the prequel is its own prologue
+  44408,  // Long Zu (Dragon Raja) — "prequel" is its own Episode 0
 ]);
 
 /**

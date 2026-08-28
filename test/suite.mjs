@@ -791,6 +791,15 @@ console.log('\n--- live expansion beyond the catalogue ---');
     hero === 'Below Exact', hero);
   check('live entry persisted to localStorage',
     (w.localStorage.getItem('wanx:extras:v1') || '').includes('Obscure Deep Cut'));
+
+  /* A live entry has no MAL rank, and the card used to compose its own
+     "ranked" in front of whatever rankLabel returned -- which read "ranked not
+     in the ranking" on exactly the entries that most need the sentence to make
+     sense. rankLabel carries the whole phrase now. */
+  const because = body?.querySelector('.because')?.textContent ?? '';
+  check('an entry with no rank does not say "ranked not in the ranking"',
+    !/ranked not in/i.test(because) && /not in the MyAnimeList rankings/.test(because),
+    because.slice(0, 120));
 }
 
 console.log('\n--- deep link ---');
@@ -2714,6 +2723,122 @@ console.log('\n--- sharing imported scores ---');
   check('with no redirecting URL left in the sitemap or the canonical',
     !sitemap.includes('/privacy.html') && !privacy.includes('canonical" href="https://whatanimeshouldiwatchnext.com/privacy.html"'));
 }
+
+
+console.log('\n--- a card already shown does not come back ---');
+{
+  /* Reported by a reader of the r/anime post, in these words: "if you start
+     with Re:Zero it'll recommend Mushoku Tensei. If you click Show me another,
+     it'll show you Evangelion. If you then click Seen it too, it'll go back to
+     Mushoku Tensei."
+
+     Their diagnosis was right. chainHistory is what the walk is told to skip,
+     and only two things fed it -- the anchor, and whatever you pressed "Seen
+     it too" on. "Show me another" fed it nothing, because it only advances an
+     index through a list that was already computed. refreshFromAnchor then
+     re-walks and resets the index to 0, putting the skipped-past entries back
+     at the top. */
+  const NAMES = ['Action', 'Fantasy', 'Romance'];
+  const mk = (r, i, t) => ({
+    r, i, t, g: [0, 1, 2], th: [], d: [], y: 2020, ty: 'TV', s: 8, e: 12,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+
+  const CAT = {
+    built: '2026-08-27', count: 5, names: NAMES,
+    anime: [
+      mk(1, 700, 'First Match'),
+      mk(2, 701, 'Second Match'),
+      mk(3, 702, 'Third Match'),
+      mk(4, 703, 'Fourth Match'),
+      mk(5, 704, 'The Anchor'),
+    ],
+  };
+
+  const dom = makeDom(CAT);
+  const w = dom.window;
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'The Anchor');
+  const heroTitle = () => body.querySelector('.hero h2')?.textContent?.trim();
+  const click = (sel) => body.querySelector(sel)
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  const first = heroTitle();
+  click('.hero [data-action="shuffle"]');
+  await sleep(120);
+  const second = heroTitle();
+
+  check('show me another moves to a different entry',
+    Boolean(first) && Boolean(second) && first !== second, `${first} -> ${second}`);
+
+  // Now drop the second. The first must not come back.
+  click('.hero [data-action="seen"]');
+  await sleep(250);
+  const third = heroTitle();
+
+  check('dropping a card does not return you to one already shown',
+    third !== first, `${first} -> ${second} -> ${third} (expected not ${first})`);
+  check('and it does not return you to the one you just dropped',
+    third !== second, `${second} was dropped but came back`);
+
+  /* Keep going: every card seen so far stays gone, which is the part the
+     reader predicted gets worse the deeper you go. */
+  const seen = new Set([first, second, third]);
+  click('.hero [data-action="seen"]');
+  await sleep(250);
+  const fourth = heroTitle();
+  check('and the rule still holds a step deeper',
+    !fourth || !seen.has(fourth), `${[...seen].join(' -> ')} -> ${fourth}`);
+}
+
+console.log('\n--- an exhausted chain says so ---');
+{
+  /* When everything matching has been dismissed the walk does not dead-end --
+     it retries with an empty history and allows repeats. That is old behaviour
+     and the right call, since a dead end is worse than a repeat. But it used
+     to be silent, and recording paged-past cards makes it far easier to reach,
+     so a silent restart would look exactly like the bug this build fixes. */
+  const NAMES = ['Action'];
+  const mk = (r, i, t) => ({
+    r, i, t, g: [0], th: [], d: [], y: 2020, ty: 'TV', s: 8, e: 12,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+  const CAT = {
+    built: '2026-08-27', count: 3, names: NAMES,
+    anime: [mk(1, 710, 'Only Match'), mk(2, 711, 'Other Match'), mk(3, 712, 'Anchor Show')],
+  };
+
+  const dom = makeDom(CAT);
+  const w = dom.window;
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Anchor Show');
+  const click = (sel) => body.querySelector(sel)
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const notes = () => [...body.querySelectorAll('.note')].map((n) => n.textContent).join(' ');
+
+  check('nothing says the list restarted before it has',
+    !/started again/i.test(notes()), notes().slice(0, 120));
+
+  // Page past one, drop the other: both matches are now dismissed.
+  click('.hero [data-action="shuffle"]');
+  await sleep(150);
+  click('.hero [data-action="seen"]');
+  await sleep(300);
+
+  check('a fully dismissed walk still shows a card rather than dead-ending',
+    Boolean(body.querySelector('.hero')), body.textContent.slice(0, 120));
+  check('and it says the list started over, so a repeat is not read as a bug',
+    /started again/i.test(notes()), notes().slice(0, 220) || '(no notes)');
+  check('and that note sits below the card, like every other note',
+    (() => {
+      const heroEl = body.querySelector('.hero');
+      const note = [...body.querySelectorAll('.note')]
+        .find((n) => /started again/i.test(n.textContent));
+      return Boolean(heroEl) && Boolean(note)
+        && Boolean(heroEl.compareDocumentPosition(note) & 4);
+    })(), 'restart note found above .hero');
+}
+
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);
