@@ -11,7 +11,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 ## Current state
 
 **Build 50.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
-about 1.33 MB. 339 checks pass via `npm test`.
+about 1.33 MB. 345 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -52,7 +52,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 339 checks, jsdom against the real app.js and anime.json
+npm test          # 345 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~100 min
 npm run pages     # prerendered pages only, ~30 s
@@ -1498,6 +1498,46 @@ send somebody hunting for a typo that is not there.
 `^[A-Za-z0-9_-]{2,16}$` before any upstream call, so a bad one costs no quota
 and nothing can be smuggled into the URL path. A check asserts the upstream was
 not called.
+
+#### A Function that throws answers with nothing you can read
+
+Worth writing down because it cost two rounds of deploying to work out, and it
+will happen again to whatever endpoint is written next.
+
+With the secret set but **malformed**, `/api/mal-list` answered:
+
+```
+HTTP/2 502
+content-type: text/plain
+server: cloudflare
+
+error code: 502
+```
+
+No JSON, no message, and nothing naming the endpoint — because that is
+Cloudflare's own edge error, not anything the Function wrote. **From outside it
+is indistinguishable from the Function not being deployed at all.**
+
+What isolated it was that every response returning *before* the upstream call
+was fine — a bad username still gave a proper 400 — so the Function was
+running, and only the path through `fetch` was dying.
+
+Two things came out of it, and both are worth keeping:
+
+- **The handler is wrapped.** `onRequestGet` is a try/catch around the real
+  work, so no path can reach the edge as an unhandled throw. Whatever breaks,
+  the page gets JSON it can show.
+- **The credential is trimmed and checked.** A header value containing a
+  newline is not a bad request, it is a thrown `TypeError`. Every build script
+  in this repo already reads `.mal-client-id` with `.trim()`, which was the
+  clue. It is now also validated as alphanumeric, and a value that fails says
+  *"The MyAnimeList credential on this server is malformed"* — which is what
+  finally identified the real fault, a stray character added while pasting into
+  the dashboard.
+
+**The general rule: a Pages Function should never be able to throw.** The
+failure mode is not a stack trace somewhere, it is an opaque 502 that looks
+like a deployment problem.
 
 #### The two importers share everything except where the rows came from
 
