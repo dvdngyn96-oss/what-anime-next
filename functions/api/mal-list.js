@@ -38,7 +38,23 @@ const MAX_PAGES = 40;
  *  request, and so nothing can be smuggled into the URL path. */
 const USERNAME = /^[A-Za-z0-9_-]{2,16}$/;
 
-export async function onRequestGet({ request, env }) {
+/* Nothing here may answer with a bare edge error.
+ *
+ * A throw anywhere in a Pages Function surfaces as Cloudflare's own
+ * `error code: 502` in text/plain -- no JSON, no message, and nothing that
+ * says which endpoint failed. That happened once already, over a newline in a
+ * secret, and from outside it was indistinguishable from the endpoint not
+ * being deployed. So the real handler is wrapped: whatever goes wrong, the
+ * page gets JSON it can read and show. */
+export async function onRequestGet(context) {
+  try {
+    return await handle(context);
+  } catch {
+    return json({ error: 'The list could not be read just now. Try again in a moment.' }, 500);
+  }
+}
+
+async function handle({ request, env }) {
   const url = new URL(request.url);
   const user = (url.searchParams.get('user') || '').trim();
   const offset = Math.max(0, Number(url.searchParams.get('offset') || 0) | 0);
@@ -52,15 +68,29 @@ export async function onRequestGet({ request, env }) {
   /* No credential configured: say so and let the page fall back to the file
    * importer, which needs no server at all. Same rule as a missing votes
    * database — the site worked without this yesterday and must keep working
-   * without it today. */
-  if (!env.MAL_CLIENT_ID) return json({ entries: [], next: null, unavailable: true });
+   * without it today.
+   *
+   * Trimmed first, because the credential almost certainly arrived by copying
+   * the contents of `.mal-client-id` — which ends in a newline, as every build
+   * script in this repo silently acknowledges by reading it with `.trim()`.
+   *
+   * **A newline in a header value is not a bad request, it is a thrown
+   * TypeError**, and on Workers that surfaced as a bare `error code: 502`
+   * text/plain page from the edge rather than anything this endpoint wrote.
+   * Every response that returned before the upstream call was fine, which is
+   * what made it look like the credential was missing rather than malformed. */
+  const clientId = String(env.MAL_CLIENT_ID || '').trim();
+  if (!clientId) return json({ entries: [], next: null, unavailable: true });
+  if (!/^[A-Za-z0-9]+$/.test(clientId)) {
+    return json({ error: 'The MyAnimeList credential on this server is malformed.' }, 500);
+  }
 
   const upstream = `https://api.myanimelist.net/v2/users/${encodeURIComponent(user)}`
     + `/animelist?fields=list_status&limit=${PAGE}&offset=${offset}&nsfw=true`;
 
   let res;
   try {
-    res = await fetch(upstream, { headers: { 'X-MAL-CLIENT-ID': env.MAL_CLIENT_ID } });
+    res = await fetch(upstream, { headers: { 'X-MAL-CLIENT-ID': clientId } });
   } catch {
     return json({ error: 'MyAnimeList could not be reached just now.' }, 502);
   }

@@ -2954,6 +2954,36 @@ console.log('\n--- importing by username ---');
     res.status === 403 && /private/i.test(body.error) && /file import/i.test(body.error),
     body.error);
 
+  /* A credential with a trailing newline -- which is how it arrives if you
+     copy the contents of .mal-client-id, a file every build script here reads
+     with .trim(). Untrimmed it makes an invalid header value, which throws,
+     and on Workers a throw surfaces as a bare "error code: 502" text/plain
+     page from the edge. From outside that was indistinguishable from the
+     endpoint not being deployed at all. */
+  let sent = null;
+  res = await call(`${BASE}?user=real`, { MAL_CLIENT_ID: 'abc123\n' }, async (u, o) => {
+    sent = o?.headers?.['X-MAL-CLIENT-ID'];
+    return new Response(JSON.stringify({ data: [], paging: {} }), { status: 200 });
+  });
+  check('a credential with a trailing newline is trimmed, not sent raw',
+    sent === 'abc123', JSON.stringify(sent));
+  check('and the request still succeeds', res.status === 200, String(res.status));
+
+  // A genuinely malformed credential is named rather than left to throw.
+  res = await call(`${BASE}?user=real`, { MAL_CLIENT_ID: 'has spaces' },
+    async () => new Response('{}', { status: 200 }));
+  body = await res.json();
+  check('a malformed credential says so instead of throwing',
+    res.status === 500 && /malformed/i.test(body.error), body.error);
+
+  /* Nothing may reach the edge as an unhandled throw. */
+  res = await call(`${BASE}?user=real`, { MAL_CLIENT_ID: 'abc123' }, () => {
+    throw new Error('boom');
+  });
+  body = await res.json();
+  check('an unexpected throw still answers with JSON, not a bare edge error',
+    res.status >= 500 && typeof body.error === 'string', JSON.stringify(body));
+
   // The happy path, slimmed to three numbers a row.
   const upstream = {
     data: [

@@ -31,3 +31,12 @@ prequel-sweep.log
 
 # wrangler local state, from testing the vote endpoints
 .wrangler/
+
+# scratch: the TikTok clip generator and the clips it writes, not part of the
+# site. Playwright and ffmpeg-static are in devDependencies for it.
+# The rendered clips only. make-tiktok.mjs itself IS committed: it is a
+# repeatable tool rather than a throwaway investigation like full-scan.mjs,
+# and gitignoring it meant 700-odd lines of working code existed on one
+# machine and nowhere else. The output stays out -- a clip is 4-5 MB, and
+# video in git is permanent.
+tiktok/
