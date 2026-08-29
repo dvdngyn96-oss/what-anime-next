@@ -1252,9 +1252,13 @@ a.service:hover {
     padding: 6px 10px;
   }
 
+  /* Four chips rather than three since films joined, and the fourth pushed
+     the toggle block from two rows to three at 360px — which is the regression
+     builds 30 and 39 both fought. Two pixels of padding buys it back:
+     measured at 68px and two rows again, at 360, 375 and 414. */
   .formats button {
     font-size: 11px;
-    padding: 6px 9px;
+    padding: 6px 7px;
   }
 
   .controls { gap: 8px; margin-bottom: 18px; }

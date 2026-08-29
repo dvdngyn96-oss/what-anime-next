@@ -18,6 +18,8 @@ watch.err
 tags.log
 tags.err
 anime.json.tmp
+rebuild-checkpoint.json
+prune-film-continuations.mjs
 mal-scores.jsonl
 mal-scores.log
 mal-scores.err

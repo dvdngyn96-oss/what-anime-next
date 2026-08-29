@@ -10,17 +10,19 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 51.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
-about 1.55 MB. 366 checks pass via `npm test`.
+**Build 52.** `anime.json` holds **5,017 entries**
+(TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
+378 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
-| Key-art colour | 4,103 |
-| Banner image | 2,704 |
-| Studio | 4,259 |
-| AniList tags | 3,995 (90%) |
-| Genres backfilled from AniList (`gs`) | 56 |
-| No genres (matched on themes only) | 48 |
+| Key-art colour | 4,636 |
+| Banner image | 3,047 |
+| Studio | 4,758 |
+| AniList tags | 4,498 (90%) |
+| MyAnimeList score histogram | 5,017 (100%) |
+| Genres backfilled from AniList (`gs`) | 71 |
+| No genres (matched on themes only) | 61 |
 
 **The scan depth is 10,000, raised from 8,000 in build 48.** It added 933
 entries, and it was raised because somebody asked for a specific show the
@@ -28,9 +30,11 @@ depth excluded — Kämpfer, MAL rank 8919, with perfectly clean relation data.
 That is the first time the depth turned anyone away rather than the catalogue
 rules doing it, which is what made it worth the longer rebuild.
 
-**A rebuild now takes about 100 minutes**, not 60. The ranking scan is quick;
-the per-entry relation lookups are the cost, and there are 6,929 of them
-against roughly 5,300 before.
+**A rebuild now takes about two and a half hours.** The ranking scan is quick;
+the per-entry relation lookups are the cost, and films took them from 6,929 to
+**8,649**. The builder's own "~49 min" estimate for that phase assumes the
+340ms gap between requests and is wrong by a factor of three — real latency
+makes it closer to 140 minutes. Budget the afternoon.
 
 **Live at https://whatanimeshouldiwatchnext.com** on Cloudflare Pages, deploying
 from `main` on GitHub (`dvdngyn96-oss/what-anime-next`). Every push redeploys
@@ -52,9 +56,9 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 366 checks, jsdom against the real app.js and anime.json
+npm test          # 378 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
-npm run build     # full catalogue rebuild + prerendered pages, ~100 min
+npm run build     # full catalogue rebuild + prerendered pages, ~2.5 hours
 npm run pages     # prerendered pages only, ~30 s
 ```
 
@@ -444,8 +448,10 @@ Kaiji**, where it used to return Mushoku Tensei.
 
 ### The format filter
 
-Three chips — **TV / ONA / OVA** — in a third toggle row, each independently
-on or off, defaulting to all on and remembered in `localStorage`.
+Four chips — **TV / ONA / OVA / Film** — in a third toggle row, each
+independently on or off, defaulting to all on and remembered in
+`localStorage`. Film joined in build 52; see "Films are a fourth format"
+above for why it was excluded before and what changed.
 
 It exists because ONA is the mixed bag: Cyberpunk: Edgerunners and Takopi's
 Original Sin sit alongside a long tail of donghua that crowds the isekai range
@@ -459,6 +465,102 @@ after switching ONA off reads as the toggle being broken.
 
 The last format on cannot be switched off; otherwise the card empties itself
 with no way back but a reload.
+
+### Films are a fourth format
+
+Build 52. **TV / ONA / OVA / Film**, four chips, each independently on or off,
+all on by default.
+
+Films were excluded outright until now, on the grounds that they are "usually
+either a franchise entry or a different watching decision". **The first half
+was measured and does not survive contact with the relation rules.**
+
+Checking all 1,720 films in MyAnimeList's top 10,000 against the same
+prequel / parent_story / full_story test the builder already applies:
+
+| | Startable cold |
+| --- | --- |
+| TV, OVA, ONA | 64% |
+| **Film** | **32%** |
+
+So films really are twice as likely to be franchise entries — but the rules
+already remove those. What survives is not filler: **Koe no Katachi (#22),
+Kimi no Na wa (#37), Spirited Away (#47), The First Slam Dunk (#67), Howl's
+Moving Castle (#80), Princess Mononoke (#81), Look Back (#111), Perfect Blue
+(#136), Grave of the Fireflies (#142).** The relation test strips the Gintama
+and Fate entries and leaves the films that genuinely stand alone.
+
+**The second half of the objection stands, and is why this is a chip rather
+than a silent addition.** A two-hour film *is* a different decision from a
+twelve-episode series, and somebody in the mood for a season does not
+necessarily want one. That is the argument ONA already won: the answer to
+"some people do not want this kind of thing" is a switch, not an exclusion.
+
+**On by default**, like the other three. The startable set is strong enough
+that hiding it behind an opt-in would mean most people never see Spirited Away
+in a catalogue that now contains it.
+
+#### The fourth chip cost two pixels of padding, and that was measured
+
+Adding it naively pushed the toggle block from **68px and two rows to 105px and
+three** at 360px — the exact regression builds 30 and 39 both fought, and the
+reason the year filter had to ride in the gap beside the direction toggle
+rather than take a row of its own.
+
+It overran by about 13px. Dropping `.formats button` padding from `6px 9px` to
+`6px 7px` inside the existing `max-width: 400px` block buys it back:
+
+| | Toggle block at 360px |
+| --- | --- |
+| Four chips, padding unchanged | 105px, three rows |
+| Four chips, padding `6px 7px` | **68px, two rows** |
+
+Checked at 360, 375 and 414. A check reads the rule out of `styles.css`,
+because jsdom has no layout — and it was broken on purpose to watch it report
+the old padding.
+
+**This is the second time the toggle row has been the binding constraint on a
+feature**, after the year chip. Anything added there from now on has to be
+measured first: at 360px row one has about 15px spare and row two about 27px,
+which is not enough for anything with a word in it.
+
+
+#### Two things the first film rebuild taught, both the hard way
+
+**A film that continues a series is not caught by the relation rules, and 20%
+of films are one.** MyAnimeList files Gintama Movie 3 with no prequel at all —
+the same blind spot that lets Hayate no Gotoku!! through on the TV side. The
+first build with films put **Gintama Movie 3 at #65**, near the top of what the
+site would recommend. The builder now drops a film whose title begins with the
+title of a non-film already in the catalogue, which removed **148 of 740**.
+`STANDS_ALONE_ANYWAY` overrides it, because the rule costs a few real ones —
+Macross: Do You Remember Love is a standalone retelling rather than a
+continuation, the Hellsing Ultimate case in film form.
+
+**And the home page was promising something it no longer delivered.** The
+tagline said *"You'll get a TV series you can start from episode one"*, and the
+Open Graph description said *"no sequels, no films"* — both false the moment
+films shipped, and the second was drawn into `og.png` as well, so the preview
+image had to be regenerated rather than just re-worded. The tagline is now
+*"You'll get something you can start from the beginning"*.
+
+Worth generalising: **a catalogue change can falsify copy in four places** —
+the tagline, the meta description, the two social descriptions, and the text
+baked into the preview image. Grep for the claim, not just the file.
+
+#### Returning visitors would have had films switched off
+
+`wanx:formats` holds whichever formats are on, and every existing visitor has
+`["TV","ONA","OVA"]` saved — not because they turned films off, but because
+films did not exist. Loading that literally leaves films off for everyone who
+has ever used the site, silently, over a choice they never made.
+
+So a saved set that is *exactly* the old three is read as "no opinion
+expressed" and gets films too. A set with anything genuinely switched off is
+left alone. A check covers both halves, and removing the migration fails it.
+
+**This will apply again to any future format**, and the same trap is waiting in
+`wanx:excluded` and any other stored set that gains a member.
 
 ### The year filter
 
@@ -1945,7 +2047,7 @@ deployment, and that would take the site down rather than just the endpoints.
 
 | Task | Cadence | Time |
 | --- | --- | --- |
-| `npm run build` | once a season | ~100 min |
+| `npm run build` | once a season | **~2.5 hours** |
 | `node add-anilist-tags.mjs` | rarely — tags drift slowly | ~3 min |
 | `node add-mal-scores.mjs` | after a rebuild, or when the figures feel stale | ~19 min |
 | `node backfill-genres.mjs` | after a rebuild only if it reports blanks | ~10 s |

@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 51;
+const BUILD = 52;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -203,13 +203,28 @@ let ratingFloor = VOTE_FLOOR;
  * baffling.
  */
 const FORMATS_KEY = 'wanx:formats';
-const ALL_FORMATS = ['TV', 'ONA', 'OVA'];
+const ALL_FORMATS = ['TV', 'ONA', 'OVA', 'Film'];
+
+/* What the formats were before films joined in build 52.
+ *
+ * Anyone who has used the site has `["TV","ONA","OVA"]` in local storage —
+ * not because they turned films off, but because films did not exist. Loading
+ * that set literally would leave films silently off for every returning
+ * visitor, who would then never see what they were missing and would have no
+ * reason to go looking for a chip they never knew appeared.
+ *
+ * So a saved set that is exactly the old three is read as "no opinion
+ * expressed" and gets films too. A set with anything *switched off* is a real
+ * choice and is left alone — someone who turned ONA off keeps it off. */
+const FORMATS_BEFORE_FILM = ['TV', 'ONA', 'OVA'];
 
 let formats = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(FORMATS_KEY) || 'null');
     if (Array.isArray(saved) && saved.length && saved.every((f) => ALL_FORMATS.includes(f))) {
-      return new Set(saved);
+      const untouched = saved.length === FORMATS_BEFORE_FILM.length
+        && FORMATS_BEFORE_FILM.every((f) => saved.includes(f));
+      return untouched ? new Set(ALL_FORMATS) : new Set(saved);
     }
   } catch { /* private browsing, or someone edited it by hand */ }
   return new Set(ALL_FORMATS);
@@ -2065,6 +2080,7 @@ const FORMAT_HINTS = {
   TV: 'Television series',
   ONA: 'Web release — includes most donghua',
   OVA: 'Direct-to-video',
+  Film: 'A film you can watch without having seen anything else',
 };
 
 function directionToggle(direction) {

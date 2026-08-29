@@ -5,7 +5,7 @@
  *   node build-catalogue.mjs --depth 500    # quick test run
  *
  * The catalogue holds only things you can start watching cold:
- *   - TV series only (no movies, OVAs, ONAs, specials)
+ *   - TV, OVA, ONA and films (no specials or recaps)
  *   - first seasons only (anything with a prequel is dropped)
  *
  * Ranks, scores, genres, themes, titles and posters all come from
@@ -57,12 +57,25 @@ const DEMOGRAPHIC_IDS = new Set([27, 42, 25, 43, 15]);
  *
  * TV is the bulk of it, but excluding OVA and ONA outright loses genuine
  * standalone works the community rates highly — Hellsing Ultimate, FLCL,
- * Cyberpunk: Edgerunners, Yamato 2199, Takopi's Original Sin. Movies stay out:
- * they're usually either a franchise entry or a different watching decision.
+ * Cyberpunk: Edgerunners, Yamato 2199, Takopi's Original Sin.
+ *
+ * **Films joined in build 52, and the reason they were excluded turned out to
+ * be half right.** They were kept out as "usually either a franchise entry or
+ * a different watching decision". The first half was measured and is true:
+ * checking all 1,720 films in the top 10,000 against these same relation
+ * rules, only 32% can be started cold, against 64% of TV/OVA/ONA. But the
+ * rules already remove the other 68%, and what survives is Spirited Away,
+ * Koe no Katachi, Perfect Blue and Princess Mononoke rather than franchise
+ * filler.
+ *
+ * The second half stands — a two-hour film *is* a different decision from a
+ * twelve-episode series — which is why it became a fourth format chip rather
+ * than a silent addition. That is the argument ONA already won: the answer to
+ * "some people do not want this kind of thing" is a switch, not an exclusion.
  */
-const WATCHABLE_TYPES = new Set(['tv', 'ova', 'ona']);
+const WATCHABLE_TYPES = new Set(['tv', 'ova', 'ona', 'movie']);
 
-const TYPE_LABELS = { tv: 'TV', ova: 'OVA', ona: 'ONA' };
+const TYPE_LABELS = { tv: 'TV', ova: 'OVA', ona: 'ONA', movie: 'Film' };
 
 /**
  * Hand-picked exceptions, by MAL ID.
@@ -266,6 +279,10 @@ const SEQUEL_PATTERNS = [
 
 const looksLikeSequel = (title) => SEQUEL_PATTERNS.some((re) => re.test(title));
 
+/** For comparing one title against another: case and punctuation removed, so
+ *  "Gintama Movie 3: Yoshiwara Daienjou" can be seen to begin with "Gintama". */
+const normaliseTitle = (t) => (t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 /**
  * Recaps, digests and compilation episodes.
  *
@@ -316,7 +333,7 @@ async function malFetch(url, tries = 4) {
 }
 
 /* ---------------------------------------------------------------- *
- * 1. Scan the ranking, keeping TV series
+ * 1. Scan the ranking, keeping everything startable
  * ---------------------------------------------------------------- */
 
 const RANK_FIELDS = [
@@ -350,12 +367,12 @@ for (let offset = 0; offset < DEPTH; offset += PER_REQUEST) {
     tvSeries.push(node);
   }
 
-  console.log(`  scanned ${scanned}/${DEPTH} -> ${tvSeries.length} TV series`);
+  console.log(`  scanned ${scanned}/${DEPTH} -> ${tvSeries.length} startable candidates`);
   if (!page.paging?.next) break;
   await sleep(700);
 }
 
-console.log(`\n${tvSeries.length} TV series from ${scanned} ranked entries`);
+console.log(`\n${tvSeries.length} candidates from ${scanned} ranked entries`);
 
 /* ---------------------------------------------------------------- *
  * 2. Drop anything with a prequel
@@ -445,7 +462,7 @@ function statCounts(statistics) {
   };
 }
 
-const entries = firstSeasons
+let entries = firstSeasons
   .sort((a, b) => a.rank - b.rank)
   .map((node) => {
     const genres = [];
@@ -563,11 +580,28 @@ async function attachArt(rows) {
 
   for (const [n, chunk] of chunks.entries()) {
     for (let attempt = 0; attempt < 6; attempt++) {
-      const res = await fetch('https://graphql.anilist.co', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ query: ART_QUERY, variables: { ids: chunk.map((r) => r.i) } }),
-      });
+      /* Wrapped, because this is where a two-hour build died once.
+       *
+       * The retry loop below handles HTTP statuses — 429, and anything not ok
+       * — but the `fetch` itself was bare, so a socket-level failure was an
+       * uncaught throw rather than a retry. AniList closed a connection about
+       * 60 batches in ("SocketError: other side closed"), the process
+       * exited, and ninety minutes of relation lookups went with it.
+       *
+       * `malFetch` above has always had this guard. The art pass did not, and
+       * the asymmetry was the whole bug. A long job must not be able to die of
+       * one transient network blip. */
+      let res;
+      try {
+        res = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ query: ART_QUERY, variables: { ids: chunk.map((r) => r.i) } }),
+        });
+      } catch {
+        await sleep(3000 * (attempt + 1));
+        continue;
+      }
 
       if (res.status === 429) {
         await sleep((Number(res.headers.get('retry-after') || 60) + 1) * 1000);
@@ -623,12 +657,71 @@ async function attachArt(rows) {
   return { colours, banners, tagged, backfilled };
 }
 
+/* Save the expensive half before starting the cheap-but-fragile one.
+ *
+ * The relation lookups are ninety minutes and one request per entry; the art
+ * pass is twenty and talks to a different service. Losing the first because
+ * the second fell over is what happened, and it is avoidable: the entries are
+ * written here, and a later run picks them up rather than asking MyAnimeList
+ * about 8,649 titles again.
+ *
+ * Keyed by depth and count so a checkpoint from a different scan is ignored
+ * rather than silently reused. Delete it to force a clean run. */
+const CHECKPOINT = new URL('./rebuild-checkpoint.json', import.meta.url);
+try {
+  writeFileSync(CHECKPOINT, JSON.stringify({ depth: DEPTH, count: entries.length, nameIndex, entries }));
+  console.log(`\ncheckpoint saved: ${entries.length} entries, before the art pass`);
+} catch {
+  console.log('\ncould not save a checkpoint — carrying on anyway');
+}
+
+/**
+ * A film that continues a series already in the catalogue is dropped.
+ *
+ * **The relation rules do not catch these, and 20% of films are them.** MAL
+ * files Gintama Movie 3 with no prequel at all — the same blind spot that lets
+ * Hayate no Gotoku!! through on the TV side, where only knowing what "!!"
+ * means catches it. Shipping films without this put Gintama Movie 3 at #65,
+ * which is to say near the top of what the site would recommend.
+ *
+ * The discriminator is the catalogue itself, exactly as in the
+ * franchise-sibling sweep: "Gintama Movie 3: Yoshiwara Daienjou" begins with
+ * "Gintama", which is already here, so it continues something we carry.
+ * "Sen to Chihiro no Kamikakushi" begins with nothing.
+ *
+ * **It is a heuristic and it costs a few real films**, which is why
+ * `STANDS_ALONE_ANYWAY` overrides it: Macross: Do You Remember Love is a
+ * standalone retelling of the series rather than a continuation of it — the
+ * Hellsing Ultimate case, in film form. Add an id there to rescue one.
+ *
+ * Scoped to films. A TV series whose title extends another is usually a real
+ * second season, and those are already handled by the relation rules and the
+ * sequel patterns; widening this would start deleting them.
+ */
+const seriesTitles = entries
+  .filter((e) => e.ty !== 'Film')
+  .map((e) => normaliseTitle(e.t))
+  .filter((t) => t.length > 6);
+
+const filmContinuations = [];
+const standalone = entries.filter((e) => {
+  if (e.ty !== 'Film' || STANDS_ALONE_ANYWAY.has(e.i)) return true;
+  const n = normaliseTitle(e.t);
+  const parent = seriesTitles.find((t) => n !== t && n.startsWith(`${t} `));
+  if (parent) { filmContinuations.push(`${e.t}  <- ${parent}`); return false; }
+  return true;
+});
+
+console.log(`\ndropped ${filmContinuations.length} films that continue a series already here`);
+entries.length = 0;
+entries.push(...standalone);
+
 console.log('\nFetching key-art colour and banners from AniList…');
 const art = await attachArt(entries);
 
 const catalogue = {
   built: new Date().toISOString(),
-  source: 'MyAnimeList official API — TV series, first seasons only; art from AniList',
+  source: 'MyAnimeList official API — TV, OVA, ONA and films, first seasons only; art from AniList',
   count: entries.length,
   scanned,
   names: nameIndex,

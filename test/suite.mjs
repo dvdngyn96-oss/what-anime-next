@@ -44,7 +44,7 @@ const ANILIST_HIT = {
   }] } },
 };
 
-function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null, ratings = null, onVote = null, seedWatched = null, seedModern = null } = {}) {
+function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null, ratings = null, onVote = null, seedWatched = null, seedModern = null, seedFormats = null } = {}) {
   const dom = new JSDOM(html, { runScripts: 'dangerously', url, pretendToBeVisual: true });
   dom.window.scrollTo = () => {};
   /* Seeded before the script boots, because app.js reads both of these
@@ -52,6 +52,7 @@ function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HI
      running on the defaults and quietly passes tests that should fail. */
   if (seedWatched) dom.window.localStorage.setItem('wanx:watched:v1', JSON.stringify(seedWatched));
   if (seedModern != null) dom.window.localStorage.setItem('wanx:modern', seedModern ? '1' : '0');
+  if (seedFormats) dom.window.localStorage.setItem('wanx:formats', JSON.stringify(seedFormats));
   dom.window.fetch = (target, options) => {
     const href = String(target);
     /* The vote endpoints. Absent unless a test asks for them, so every other
@@ -83,6 +84,7 @@ window.__positionOf = positionOf;
 window.__lengthOf = lengthOf;
 window.__parseExport = parseExport;
 window.__readListRows = readListRows;
+window.__formats = () => [...formats];
 window.__malVerdict = malVerdict;
 window.__recommendText = recommendText;
 window.__recommendFigure = recommendFigure;`);
@@ -899,8 +901,11 @@ try {
       /\b(?:2nd|3rd|4th|5th|6th|7th|8th|9th|final)\s+season\b/i,
       /\bseason\s*[2-9]\b/i, /\bpart\s*[2-9]\b/i, /\b(?:ii|iii|iv)\s*$/i, /\bR2\b/,
     ];
-    // TV plus standalone OVA/ONA — no films, specials or recaps.
-    const badType = real.anime.filter((a) => !['TV', 'OVA', 'ONA'].includes(a.ty));
+    /* TV, standalone OVA/ONA, and standalone films — no specials or recaps.
+       Films joined in build 52 as a fourth format chip; the ones that continue
+       a series already here are dropped by the builder, since MAL's relation
+       data does not mark them. */
+    const badType = real.anime.filter((a) => !['TV', 'OVA', 'ONA', 'Film'].includes(a.ty));
     const sequels = real.anime.filter((a) => SEQUEL.some((re) => re.test(a.t)));
     check('catalogue holds only startable formats',
       badType.length === 0, `${badType.length}: ${badType.slice(0, 3).map((a) => `${a.ty} ${a.t}`).join(', ')}`);
@@ -1208,6 +1213,11 @@ console.log('\n--- the format filter ---');
   await sleep(200);
   check('switching OVA off too leaves only TV',
     !shown().includes('Tape Release') && shown().includes('Series'), shown());
+
+  /* Films joined as a fourth format in build 52, so getting down to one now
+     takes three presses rather than two. */
+  press('Film');
+  await sleep(200);
 
   // The last format on must stay on — otherwise there is nothing to recommend
   // and the card would empty itself with no way back except a page reload.
@@ -3236,6 +3246,116 @@ console.log('\n--- the row still fits, and the card still cannot move ---');
     Boolean(figure) && /text-overflow:\s*ellipsis/.test(figure[1])
       && /white-space:\s*nowrap/.test(figure[1]),
     figure ? figure[1].trim().replace(/\s+/g, ' ') : '(rule not found)');
+}
+
+
+console.log('\n--- films are a fourth format, switchable like the rest ---');
+{
+  /* Films were excluded outright until build 52, as "usually either a
+     franchise entry or a different watching decision". The first half was
+     measured and is wrong once the relation rules run: of 1,720 films in the
+     top 10,000 only 32% can be started cold, and what survives is Spirited
+     Away and Perfect Blue rather than franchise filler. The second half
+     stands, so it became a switch -- the argument ONA already won. */
+  const NAMES = ['Action', 'Fantasy'];
+  const mk = (r, i, t, ty) => ({
+    r, i, t, ty, th: [], d: [], s: 8, g: [0, 1], e: ty === 'Film' ? 1 : 12, y: 2020,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+
+  const MIXED = {
+    built: '2026-08-28', count: 5, names: NAMES,
+    anime: [
+      mk(1, 910, 'A Film', 'Film'),
+      mk(2, 911, 'Another Film', 'Film'),
+      mk(3, 912, 'A Series', 'TV'),
+      mk(4, 913, 'Source Show', 'TV'),
+      mk(5, 914, 'A Lower Film', 'Film'),
+    ],
+  };
+
+  const dom = makeDom(MIXED);
+  const w = dom.window;
+  await sleep(200);
+  const body = await pickAndRecommend(dom, 'Source Show');
+  const press = (value) => body
+    .querySelector(`[data-action="format"][data-value="${value}"]`)
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const shown = () => [...body.querySelectorAll('.mini-card-title, .hero h2')]
+    .map((el) => el.textContent).join(' | ');
+
+  /* Everyone who used the site before build 52 has ["TV","ONA","OVA"] saved,
+     because films did not exist. Reading that literally would leave films off
+     for every returning visitor -- silently, over a choice they never made. */
+  {
+    const returning = makeDom(MIXED, { seedFormats: ['TV', 'ONA', 'OVA'] });
+    await sleep(200);
+    check('a visitor from before films gets them anyway',
+      returning.window.__formats().includes('Film'),
+      JSON.stringify(returning.window.__formats()));
+
+    const chose = makeDom(MIXED, { seedFormats: ['TV', 'OVA'] });
+    await sleep(200);
+    check('but someone who actually switched a format off keeps their choice',
+      !chose.window.__formats().includes('ONA')
+        && !chose.window.__formats().includes('Film'),
+      JSON.stringify(chose.window.__formats()));
+  }
+
+  check('there is a Film chip beside TV, ONA and OVA',
+    Boolean(body.querySelector('[data-action="format"][data-value="Film"]')),
+    [...body.querySelectorAll('[data-action="format"]')].map((b) => b.dataset.value).join(','));
+
+  check('and it is on by default, like the other three',
+    body.querySelector('[data-action="format"][data-value="Film"]')
+      ?.getAttribute('aria-pressed') === 'true',
+    body.querySelector('[data-action="format"][data-value="Film"]')?.outerHTML);
+
+  check('so films are recommended alongside series', /Film/.test(shown()), shown());
+
+  press('Film');
+  await sleep(250);
+  check('switching it off removes them', !/Film/.test(shown()), shown());
+  check('and leaves the series behind', /A Series/.test(shown()), shown());
+
+  press('Film');
+  await sleep(250);
+  check('switching it back on brings them back', /Film/.test(shown()), shown());
+
+  /* Same rule as every other filter here: it filters candidates, never the
+     anchor. Searching a film you have watched is a perfectly good question. */
+  press('Film');
+  await sleep(200);
+  const anchored = await pickAndRecommend(dom, 'A Film');
+  check('a film is still usable as an anchor with films switched off',
+    anchored.textContent.includes('A Film') && !anchored.querySelector('.state'),
+    anchored.querySelector('.state')?.textContent ?? 'got a card');
+}
+
+console.log('\n--- and the fourth chip does not cost a toggle row ---');
+{
+  /* Three toggle rows pushed the card most of a screen down at 360px once,
+     and builds 30 and 39 both fought to get it back to two. A fourth format
+     chip pushed it to 105px and three rows again; two pixels of padding at
+     that width buys it back to 68px and two. jsdom has no layout, so this
+     guards the rule that produced the result. */
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  const narrow = css.split('@media (max-width: 400px)').slice(1).join('\n');
+  const rule = narrow.match(/\.formats button\s*\{([^}]*)\}/);
+  check('the narrow-screen format chips are tightened to fit four',
+    Boolean(rule) && /padding:\s*6px 7px/.test(rule[1]),
+    rule ? rule[1].trim().replace(/\s+/g, ' ') : '(no .formats rule under 400px)');
+
+  /* And the source of truth for what a format is stays one list. */
+  const app = readFileSync(`${ROOT}/app.js`, 'utf8');
+  const builder = readFileSync(`${ROOT}/build-catalogue.mjs`, 'utf8');
+  check('app.js and the builder agree that films are a format',
+    /const ALL_FORMATS = \['TV', 'ONA', 'OVA', 'Film'\]/.test(app)
+      && /movie: 'Film'/.test(builder)
+      && /WATCHABLE_TYPES = new Set\(\['tv', 'ova', 'ona', 'movie'\]\)/.test(builder),
+    'the two sides disagree about films');
+  check('and the chip has a hint like the other three',
+    /Film: '[^']+'/.test(app), 'no FORMAT_HINTS entry for Film');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
