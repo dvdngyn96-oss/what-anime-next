@@ -11,7 +11,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 ## Current state
 
 **Build 51.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
-about 1.55 MB. 364 checks pass via `npm test`.
+about 1.55 MB. 366 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -52,7 +52,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 364 checks, jsdom against the real app.js and anime.json
+npm test          # 366 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~100 min
 npm run pages     # prerendered pages only, ~30 s
@@ -1476,6 +1476,21 @@ typed; the published mean is what people typed after some were thrown out.
 **This site computes from the histogram**, which makes its figure the less
 filtered of the two. That is a defensible thing to be, and it is stated on the
 card by naming the source.
+
+#### When the two MyAnimeList numbers disagree, the card says nothing
+
+The stats page and the published score do not always describe the same votes.
+**"How Dare You!?" is rank 769 with a mean of 7.99, and 11,625 of its 13,100
+votes sit on exactly 6** — a mass rating MyAnimeList evidently drops from the
+score while still showing it in the breakdown. Computing from the histogram
+gives **11% would recommend** for a well-regarded show.
+
+Only **5 of 4,427** entries diverge by more than a point, so this is rare — but
+each of those five would be conspicuously wrong on a card, and a figure nobody
+can stand behind is worse than a blank space. When the histogram mean and
+MyAnimeList's own score disagree by more than 1.0, no figure is shown. Same
+instinct as the vote floor, and self-healing: if a later harvest finds them
+agreeing, the figure returns on its own.
 
 #### Review bombs are counted, deliberately
 

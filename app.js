@@ -1544,12 +1544,34 @@ function malVerdict(anime) {
   if (scorers < VOTE_FLOOR) return null;
   let yes = 0;
   let counted = 0;
+  let weighted = 0;
   for (let score = 1; score <= 10; score++) {
     const share = shares[score - 1] || 0;
     counted += share;
+    weighted += score * share;
     if (score >= RECOMMEND_AT) yes += share;
   }
   if (!counted) return null;
+
+  /* Say nothing when our two numbers for the same show disagree.
+   *
+   * MyAnimeList's stats page and its published score do not always describe
+   * the same votes. "How Dare You!?" is rank 769 with a mean of 7.99, and its
+   * histogram has **11,625 of 13,100 votes sitting on exactly 6** — a mass
+   * rating that MyAnimeList evidently drops from the score while still showing
+   * it in the breakdown. Computing from the histogram there gives 11% would
+   * recommend for a well-regarded show.
+   *
+   * Only 5 of 4,427 entries diverge by more than a point, so this is not a
+   * common problem — but those five would each be conspicuously wrong on a
+   * card, and a figure nobody can stand behind is worse than a blank space.
+   * Same instinct as the vote floor: do not show a number you cannot defend.
+   *
+   * Self-healing, too: if a future harvest finds the two agreeing again, the
+   * figure comes back on its own. */
+  const histogramMean = weighted / counted;
+  if (anime.score && Math.abs(histogramMean - anime.score) > 1) return null;
+
   return { pct: Math.round((yes / counted) * 100), scorers };
 }
 

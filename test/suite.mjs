@@ -3115,7 +3115,7 @@ console.log('\n--- the ratings row, seeded from MyAnimeList ---');
     built: '2026-08-28', count: 3, names: G,
     anime: [
       mk(1, 900, 'Has A Distribution', { sd: FRIEREN, sv: 928582 }),
-      mk(2, 901, 'All Shrugs', { sd: [0, 0, 0, 0, 500, 500, 0, 0, 0, 0], sv: 1000 }),
+      mk(2, 901, 'All Shrugs', { sd: [0, 0, 0, 0, 500, 500, 0, 0, 0, 0], sv: 1000, s: 5.5 }),
       mk(3, 902, 'No Distribution'),
     ],
   };
@@ -3148,6 +3148,19 @@ console.log('\n--- the ratings row, seeded from MyAnimeList ---');
   check('but a real one just above the floor still counts',
     w.__malVerdict({ sd: [0,0,0,0,0,0,0,0,0,1000], sv: 40 })?.pct === 100,
     JSON.stringify(w.__malVerdict({ sd: [0,0,0,0,0,0,0,0,0,1000], sv: 40 })));
+
+  /* MyAnimeList's stats page and its published score do not always describe
+     the same votes: "How Dare You!?" is rank 769 with a mean of 7.99 and a
+     histogram where 89% of votes sit on exactly 6, which computes to 11%
+     would recommend. Five of 4,427 entries diverge like this. A figure nobody
+     can stand behind is worse than a blank space. */
+  const bombed = { sd: [2, 1, 0, 1, 2, 887, 22, 39, 26, 20], sv: 13100, score: 7.99 };
+  check('a histogram that contradicts the published score is suppressed',
+    w.__malVerdict(bombed) === null, JSON.stringify(w.__malVerdict(bombed)));
+  check('but one that merely disagrees a little is kept',
+    w.__malVerdict({ ...bombed, sd: [5, 5, 10, 20, 60, 100, 200, 300, 200, 100], score: 7.4 })
+      !== null,
+    'a mild gap should not suppress the figure');
 
   check('a title with no histogram yields none either',
     w.__malVerdict(w.__ranked().find((a) => a.id === 902)) === null, 'expected null');
