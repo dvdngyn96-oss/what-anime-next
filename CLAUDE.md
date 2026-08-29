@@ -10,8 +10,8 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 50.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
-about 1.33 MB. 345 checks pass via `npm test`.
+**Build 51.** `anime.json` holds **4,427 entries** (TV 3,179 · ONA 767 · OVA 481),
+about 1.55 MB. 364 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -52,7 +52,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 345 checks, jsdom against the real app.js and anime.json
+npm test          # 364 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~100 min
 npm run pages     # prerendered pages only, ~30 s
@@ -1413,6 +1413,158 @@ next card retries rather than inheriting the failure. Checks cover all of it,
 including that the buttons still work when ratings are unavailable — which is
 the state every title is in until somebody rates it.
 
+### The ratings row is seeded from MyAnimeList
+
+Build 51, and it answers the question the whole vote backend was stuck on.
+
+**A percentage needs 30 ratings, across 4,427 titles — that is over 130,000
+ratings before the row says anything on most cards.** This file has said for
+several builds that "the machinery is finished; the numbers now need people".
+MyAnimeList already has those numbers: 928,582 people scored Frieren alone.
+
+#### The official API does not expose the histogram, and Tenrai does
+
+`statistics` on MyAnimeList's own API gives the **status** breakdown —
+watching, completed, on-hold, dropped, plan-to-watch — which is already stored
+as `stats` and is what the "Kept watching" axis climbs. It does **not** give
+the score distribution. That was checked rather than assumed: asking for
+`score_distribution`, `scores`, `statistics{scores}` and `score_stats` all
+return the default fields silently, because unknown field names are ignored
+rather than rejected.
+
+[Tenrai](https://tenrai.org/) is an unofficial REST mirror that does expose it,
+at `/v1/anime/<id>/statistics`. **Its status counts match the official API's
+digit for digit**, which is the check that it is the same underlying data
+rather than a divergent set.
+
+`add-mal-scores.mjs` harvests it, resuming from `mal-scores.jsonl` if
+interrupted. About **19 minutes for the catalogue** at 4 requests a second,
+which is the rate limit measured rather than guessed — the ninth request in a
+burst comes back 429. Jikan, the better-known mirror, is roughly four times
+slower and was returning 504s at the time.
+
+**The dependency is bounded by being build-time.** Tenrai is a community
+project funded through Patreon and could disappear. The numbers are baked into
+`anime.json`, so if it does the site keeps serving the last snapshot and
+nothing breaks — the same shape of dependency as the catalogue itself, and
+nothing like a runtime one.
+
+#### MyAnimeList's displayed score is not the mean of its own histogram
+
+Worth knowing before trusting either number, and found by accident: the
+arithmetic mean of Frieren's histogram is **8.98**, while the site displays
+**9.25**. That gap is not rounding, and it is not their weighted-score formula
+either — at 928,000 votes the weighting is negligible. Across six top-ranked
+titles the gap tracks the size of the 1-star tail almost monotonically:
+
+| | MAL shows | Histogram mean | Gap | 1-star share |
+| --- | --- | --- | --- | --- |
+| Frieren | 9.25 | 8.98 | **0.27** | 3.15% |
+| FMA: Brotherhood | 9.11 | 8.97 | 0.14 | 2.17% |
+| Kaguya-sama S3 | 8.95 | 8.85 | 0.10 | 1.54% |
+| Steins;Gate | 9.07 | 8.96 | 0.11 | 0.71% |
+| Shingeki S3 P2 | 9.05 | 9.03 | **0.02** | 0.76% |
+| Hunter x Hunter | 9.03 | 8.96 | 0.07 | 0.37% |
+
+**They are filtering votes out of the displayed score, and filtering more the
+more a title has been bombed.** Trimming Frieren's 1-star tail to a quiet 0.1%
+and recomputing gives **9.23** — essentially their published 9.25, which is
+what identified what the filtering is doing.
+
+So the two numbers answer different questions. The histogram is what people
+typed; the published mean is what people typed after some were thrown out.
+**This site computes from the histogram**, which makes its figure the less
+filtered of the two. That is a defensible thing to be, and it is stated on the
+card by naming the source.
+
+#### Review bombs are counted, deliberately
+
+Somebody who rates a show 1 out of spite still would not recommend it, and
+"% would recommend" measures sentiment rather than merit. Deciding whose
+opinion counts is not this site's job — and MyAnimeList has already made that
+call once, in the other direction.
+
+#### 5 and 6 were tried as neutral, and the data said no
+
+This is the part worth keeping, because the idea is obviously right and is
+measurably wrong.
+
+MyAnimeList labels 5 "Average" and 6 "Fine". Neither is a recommendation, so
+dropping them from the denominator — counting only 7-10 as yes against 1-4 as
+no — looked like the honest reading, and it shipped that way for an afternoon.
+
+**Then it was measured across all 4,427 titles:**
+
+| Rule | p10 | median | p90 | IQR | share ≥ 90% |
+| --- | --- | --- | --- | --- | --- |
+| 7+ yes, **1-6 no** | 47% | **64%** | 84% | 22 | **4%** |
+| 7+ yes, **5-6 neutral** | 76% | **89%** | 97% | 13 | **46%** |
+| 7+ yes, 6 neutral only | 61% | 78% | 93% | 20 | 18% |
+
+**The neutral band puts the median show at 89% and nearly half the catalogue
+above 90%.** The figure stops discriminating, which for a number meant to help
+somebody choose is the whole job gone.
+
+The cause is an asymmetry that is easy to miss: **people who dislike a show
+mostly drop it without scoring it.** So the 1-4 tail is thin — thinner than the
+number of people who actually disliked the thing. Removing 5 and 6 compares a
+fat "yes" against an artificially thin "no", and mediocre shows come out
+looking excellent. That is the one failure that actively misleads.
+
+So nothing is excluded: **7 and above is a recommendation, everything else is
+not.** A 6 is "Fine", and somebody who thought a show was fine would not tell a
+friend to watch it — the maths and the words agree. The median title reads 64%,
+and the spread runs from Frieren at 94% down to 41% at the bottom of the
+catalogue.
+
+**`RECOMMEND_AT` (7) lives in `app.js` for the histogram and in
+`functions/api/_shared.js` for the site's own imported scores, and a check
+asserts they agree** — the card can show both figures at once, and two numbers
+on one row computed by different rules would be worse than either alone. It
+stays a read-time decision on both sides, which is the rule `schema.sql`
+already sets out, and is what made trying the neutral band cheap enough to
+find out it was wrong.
+
+#### Stored as shares, and why that is still the raw signal
+
+`sd` is ten integers, tenths of a percent per score, lowest first; `sv` is the
+true number of scorers. The raw counts run to six digits each and would add
+about 20% to the file every visitor downloads; shares cost a third of that.
+
+**The shape survives, which is the property that matters.** A stored "% would
+recommend" would be smaller still and is exactly the mistake `schema.sql`
+warns against: a stored verdict can only be retuned by asking everyone again.
+Shares keep the threshold a read-time decision.
+
+#### What the card says
+
+> 94% would recommend · 929k on MyAnimeList
+
+**Named as MyAnimeList's, always.** It is not this site's community speaking,
+and presenting borrowed numbers as your own is the kind of thing that is
+noticed exactly once. Naming the source also makes the figure stronger rather
+than weaker: 929,000 people is a claim this site will not be able to make for
+years.
+
+The site's own figure joins it once it clears the floor —
+`94% would recommend · 929k on MyAnimeList · 82% here (147)`. Below the floor
+it is not shown at all: "3 ratings so far" beside a figure built on 929,000 is
+noise, and it was only ever worth saying when the row would otherwise be empty.
+
+The row keeps its fixed 30px height and the figure keeps `nowrap` with an
+ellipsis, so a longer string is clipped rather than allowed to wrap — the
+constant-height rule the card is built on. Checks assert both.
+
+**One word is dropped below 400px, and only one.** Measured in a browser: the
+row leaves 229px for the figure there and the full sentence needs 242, so the
+ellipsis would eat "MyAnimeList" — the one part that must survive, because a
+borrowed figure with its attribution cut off is the dishonest version. The
+percentage, the count and the source are all load-bearing; `would` is the only
+word that can go without losing a fact, and without it the line fits in 207.
+It is wrapped in `.figure-would` and hidden by the existing 400px block. Three
+checks cover the mechanism, since jsdom has no layout to measure.
+
+
 ### Sharing an imported list
 
 Build 38, and it is the part that decides whether any of the rest matters. The
@@ -1780,6 +1932,7 @@ deployment, and that would take the site down rather than just the endpoints.
 | --- | --- | --- |
 | `npm run build` | once a season | ~100 min |
 | `node add-anilist-tags.mjs` | rarely — tags drift slowly | ~3 min |
+| `node add-mal-scores.mjs` | after a rebuild, or when the figures feel stale | ~19 min |
 | `node backfill-genres.mjs` | after a rebuild only if it reports blanks | ~10 s |
 
 **A rebuild is one step now.** It used to be two: the builder carried no
@@ -2163,9 +2316,16 @@ is 30, the server sends it so it can move without a deploy of the page, and
 below it the card reports a bare count instead. "100% would recommend" from one
 vote looks like data and is not.
 
-**What is left is nobody knowing the site exists.** 30 ratings across 4,427
-titles is over 130,000 ratings. The machinery is finished; the
-numbers now need people, and no amount of further code supplies that.
+**The row is no longer empty while it waits, and that is build 51.** Thirty
+ratings across 4,427 titles is still over 130,000 before this site's *own*
+figures mean anything, and no amount of further code supplies that. But the
+question the row asks — would people recommend this — is already answered by
+MyAnimeList for every title, and it now shows that answer, named as theirs,
+until its own numbers arrive. See "The ratings row is seeded from
+MyAnimeList" above.
+
+So the honest position is narrower than it was: what needs people is the
+site's own community figure, not the row itself.
 
 ~~**Tune `AFFINITY_REACH` against real taste.**~~ Judged good as shipped —
 30 positions per affinity point, 2026-08-19, by reading the live chains rather

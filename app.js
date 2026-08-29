@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 50;
+const BUILD = 51;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -105,6 +105,24 @@ const MY_VOTES_KEY = 'wanx:myvotes:v1';
  * single vote looks like data and is not. The server sends its own floor; this
  * is the fallback for when the request never lands. */
 const VOTE_FLOOR = 30;
+
+/**
+ * Where a 1-10 score becomes a recommendation.
+ *
+ * Mirrors `RECOMMEND_AT` in `functions/api/_shared.js` and **must agree with
+ * it**: the same rule is applied to two sources — MyAnimeList's histogram
+ * here, and this site's own imported scores on the server — and the card can
+ * show both figures at once. Two numbers on one row computed by different
+ * rules would be worse than either alone.
+ *
+ * **Nothing is excluded, and a neutral band was measured and rejected.**
+ * MyAnimeList labels 6 "Fine", which reads like a shrug rather than a no, so
+ * dropping 5 and 6 from the denominator seemed obviously right. It is not: see
+ * "5 and 6 were tried as neutral, and the data said no" in CLAUDE.md. A 6 is
+ * not a recommendation, so counting it as one of the people who would not
+ * recommend the show is what the words actually mean.
+ */
+const RECOMMEND_AT = 7;    // 7-10 is a recommendation, 1-6 is not
 
 /**
  * The tip jar — launched in build 49.
@@ -411,6 +429,11 @@ function expand(row, names) {
     themes: (row.th || []).map((i) => names[i]).filter(Boolean),
     demographic: (row.d || []).map((i) => names[i]).filter(Boolean)[0] || null,
     stats: row.stats || null,
+    /* MyAnimeList's score histogram, as tenths of a percent per score, and the
+       true number of scorers. Absent for the handful with no scores and for
+       anything pulled in live from AniList. */
+    sd: row.sd || null,
+    sv: row.sv || null,
     tags: unpackTags(row.tg),
     studios: (row.su || []).map((i) => studioNames[i]).filter(Boolean),
     url: `https://myanimelist.net/anime/${row.i}`,
@@ -1475,7 +1498,7 @@ function recommendRow(anime) {
   const mine = myVotes.get(String(anime.id));
   return `
         <div class="recommend">
-          <span class="recommend-figure" id="recommend-figure">${esc(recommendText(anime.id))}</span>
+          <span class="recommend-figure" id="recommend-figure">${recommendFigure(anime.id)}</span>
           <span class="recommend-ask">
             <span class="recommend-label">Recommend it?</span>
             <button class="vote-btn${mine === true ? ' vote-on' : ''}" type="button"
@@ -1488,9 +1511,104 @@ function recommendRow(anime) {
         </div>`;
 }
 
-/** What the figure says for one title, given what is known right now. */
+/**
+ * MyAnimeList's own verdict, from the stored score histogram.
+ *
+ * **The histogram, not the mean, and not MyAnimeList's published score.** Two
+ * separate reasons. A mean cannot express shape: 8.9 from broad agreement and
+ * 8.9 from a love-it-or-hate-it split are different propositions, and only the
+ * second is worth warning somebody about. And MyAnimeList's *displayed* score
+ * is not the mean of the histogram it shows you — measured across six
+ * top-ranked titles, the gap between the two tracks the size of the 1-star
+ * tail almost monotonically, from 0.02 on a clean show to 0.27 on Frieren.
+ * They are quietly filtering some votes out.
+ *
+ * Recomputing from the histogram means this figure includes the review bombs.
+ * That is deliberate: somebody who rates a show 1 out of spite still would not
+ * recommend it, and "% would recommend" measures sentiment rather than merit.
+ * Deciding whose opinion counts is not this site's job.
+ *
+ * `sd` is tenths of a percent per score, `sv` the true number of scorers —
+ * see add-mal-scores.mjs for why it is stored as shares.
+ */
+function malVerdict(anime) {
+  const shares = anime?.sd;
+  const scorers = anime?.sv;
+  if (!Array.isArray(shares) || shares.length !== 10 || !scorers) return null;
+  /* The same floor the site applies to its own votes, for the same reason:
+     "100% would recommend" off a handful of scores looks like data and is not.
+     No entry is anywhere near it today — the thinnest in the catalogue has 108
+     scorers and the tenth percentile is 412 — but a rebuild can add a show
+     that aired last week, and this is a shape of number that should never be
+     shown thin. */
+  if (scorers < VOTE_FLOOR) return null;
+  let yes = 0;
+  let counted = 0;
+  for (let score = 1; score <= 10; score++) {
+    const share = shares[score - 1] || 0;
+    counted += share;
+    if (score >= RECOMMEND_AT) yes += share;
+  }
+  if (!counted) return null;
+  return { pct: Math.round((yes / counted) * 100), scorers };
+}
+
+/** 928,582 -> "929k". The exact number is noise at this size and costs room
+ *  the row does not have. */
+function compactCount(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(n < 1e7 ? 1 : 0)}m`;
+  if (n >= 1000) return `${Math.round(n / 1000)}k`;
+  return String(n);
+}
+
+/**
+ * What the figure says for one title, given what is known right now.
+ *
+ * **MyAnimeList's figure is named as MyAnimeList's, always.** It is not this
+ * site's community speaking, and presenting borrowed numbers as your own is
+ * the kind of thing that is only ever noticed once. Naming the source also
+ * makes the number mean more rather than less: it is 929,000 people, which is
+ * a far stronger claim than anything this site will collect for years.
+ *
+ * The site's own figure appears beside it only once it clears the floor.
+ * Below that it is not shown at all — "3 ratings so far" next to a figure
+ * built on 929,000 is noise, and it was only ever worth saying when there was
+ * nothing else on the row.
+ */
+/**
+ * The figure as markup, so "would" can be dropped on a narrow screen.
+ *
+ * At 360px the row has 229px for the figure and the full sentence needs 242 —
+ * measured, not guessed. Everything else in that string is load-bearing: the
+ * percentage, the number of people behind it, and whose number it is. "would"
+ * is the only word that can go without losing a fact, and "90% recommend ·
+ * 84k on MyAnimeList" fits in 207.
+ *
+ * Every value interpolated here is a number this site computed or a fixed
+ * string, but they go through `esc` anyway — the alternative is a rule about
+ * which interpolations are safe, and rules like that are how the unsafe one
+ * eventually gets added.
+ */
+function recommendFigure(id) {
+  const text = recommendText(id);
+  if (!text) return '';
+  return esc(text).replace('would ', '<span class="figure-would">would </span>');
+}
+
 function recommendText(id) {
+  const mal = malVerdict(byId.get(Number(id)));
   const tally = ratingCache.get(Number(id));
+  const local = tally && tally.total >= ratingFloor
+    ? `${Math.round((tally.yes / tally.total) * 100)}% here (${tally.total.toLocaleString()})`
+    : '';
+
+  if (mal) {
+    return `${mal.pct}% would recommend · ${compactCount(mal.scorers)} on MyAnimeList`
+      + (local ? ` · ${local}` : '');
+  }
+
+  // No histogram for this title — a live AniList find, or one MyAnimeList has
+  // no scores for. Falls back to exactly what the row said before.
   if (!tally || !tally.total) return '';
   if (tally.total < ratingFloor) {
     return `${tally.total} rating${tally.total === 1 ? '' : 's'} so far`;
@@ -2199,7 +2317,7 @@ function renderResult() {
     loadRatings([hero.id, ...ahead]).then(() => {
       if (state.list[state.index]?.id !== hero.id) return;   // moved on already
       const figure = $('recommend-figure');
-      if (figure) figure.textContent = recommendText(hero.id);
+      if (figure) figure.innerHTML = recommendFigure(hero.id);
     });
   }
 
@@ -2368,7 +2486,7 @@ function wireResultControls() {
           button.setAttribute('aria-pressed', String(on));
         }
         const figure = row?.querySelector('.recommend-figure');
-        if (figure) figure.textContent = recommendText(id);
+        if (figure) figure.innerHTML = recommendFigure(id);
         return;
       }
 

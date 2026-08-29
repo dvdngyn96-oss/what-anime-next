@@ -967,6 +967,12 @@ a { color: inherit; }
   .recommend { font-size: 12px; }
   .recommend-label { display: none; }
   .vote-btn { padding: 6px 10px; }
+  /* The figure is the one line here that carries three separate facts — the
+     percentage, how many people, and whose figure it is. At this width the
+     full sentence overruns by 13px and the ellipsis eats the attribution,
+     which is the part that must survive. Dropping one word costs 35px and no
+     information. */
+  .figure-would { display: none; }
 }
 
 .watch-label {

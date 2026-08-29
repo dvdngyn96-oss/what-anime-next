@@ -82,7 +82,10 @@ window.__collectTiers = collectTiers;
 window.__positionOf = positionOf;
 window.__lengthOf = lengthOf;
 window.__parseExport = parseExport;
-window.__readListRows = readListRows;`);
+window.__readListRows = readListRows;
+window.__malVerdict = malVerdict;
+window.__recommendText = recommendText;
+window.__recommendFigure = recommendFigure;`);
   return dom;
 }
 
@@ -2252,6 +2255,26 @@ console.log('\n--- vote backend ---');
   check('scores at or above the threshold count, below it do not',
     spread.yes === 4 && spread.total === 6, JSON.stringify(spread));
 
+  /* Nothing is excluded from the denominator, and that was measured rather
+     than assumed. Treating 5 and 6 as neutral reads well -- MyAnimeList calls
+     6 "Fine" -- but it pushed 46% of the catalogue above 90% and squeezed the
+     range out, because the 1-4 tail is thin: people who dislike a show mostly
+     drop it without scoring. A 6 is not a recommendation, so it counts as
+     somebody who would not recommend it. */
+  check('a middling score counts against the title rather than vanishing',
+    tally({ s5: 10, s6: 10 }).total === 20 && tally({ s5: 10, s6: 10 }).yes === 0,
+    JSON.stringify(tally({ s5: 10, s6: 10 })));
+  check('and no neutral band is left behind on the server',
+    shared.NEUTRAL_FROM === undefined, `NEUTRAL_FROM = ${shared.NEUTRAL_FROM}`);
+
+  /* The client applies the identical rule to MyAnimeList's histogram, and the
+     card can show both figures at once -- two numbers on one row computed by
+     different rules would be worse than either alone. */
+  const appSrc = readFileSync(`${ROOT}/app.js`, 'utf8');
+  check('and app.js agrees with the server on the threshold',
+    /const RECOMMEND_AT = 7;/.test(appSrc) && !/const NEUTRAL_FROM/.test(appSrc),
+    'app.js constants disagree with the server');
+
   /* Thumbs and imported scores pool into one figure -- the point of importing
      is that far more titles clear the floor -- while staying separate in the
      row underneath, so they can be split again without new data. */
@@ -2439,9 +2462,14 @@ console.log('\n--- the recommend row ---');
   check('the recommend row is always rendered', !!body?.querySelector('.recommend'));
   check('and it sits inside the card, not below it with the notes',
     !!body?.querySelector('.hero .recommend'));
-  check('with nothing to say when nobody has rated the title',
-    body?.querySelector('.recommend-figure')?.textContent === '',
-    JSON.stringify(body?.querySelector('.recommend-figure')?.textContent));
+  /* It used to say nothing here, because nobody on this site had rated the
+     title. It now shows MyAnimeList's figure, named as theirs -- which is the
+     whole point of seeding: the row was empty on essentially every card and
+     would have stayed that way for years. */
+  check('it falls back to the MyAnimeList figure when this site has none',
+    /would recommend/.test(body?.querySelector('.recommend-figure')?.textContent || '')
+    && /MyAnimeList/.test(body?.querySelector('.recommend-figure')?.textContent || ''),
+    body?.querySelector('.recommend-figure')?.textContent);
   check('and the ask is there either way',
     body?.querySelectorAll('.vote-btn').length === 2);
 
@@ -2452,18 +2480,23 @@ console.log('\n--- the recommend row ---');
   await sleep(400);
   body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
   await sleep(300);
-  check('below the floor it reports a count, never a percentage',
-    /3 ratings so far/.test(body?.textContent || '')
-    && !/%/.test(body?.querySelector('.recommend-figure')?.textContent || ''),
+  /* "3 ratings so far" beside a figure built on a million votes is noise. The
+     site's own count is held back until it clears the floor and can stand as a
+     percentage of its own. */
+  check('a handful of local votes is not mentioned beside the borrowed figure',
+    !/3 ratings so far/.test(body?.textContent || '')
+    && /MyAnimeList/.test(body?.querySelector('.recommend-figure')?.textContent || ''),
     body?.querySelector('.recommend-figure')?.textContent);
 
   dom = makeDom(real, { ratings: { ratings: { [id]: { yes: 121, total: 147 } }, floor: 30, recommendAt: 7 } });
   await sleep(400);
   body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
   await sleep(300);
-  check('at the floor it shows the percentage',
-    /82% would recommend/.test(body?.querySelector('.recommend-figure')?.textContent || ''),
-    body?.querySelector('.recommend-figure')?.textContent);
+  /* Above the floor both are shown, each attributed. Presenting one number
+     without saying whose it is would be the dishonest version. */
+  const both = body?.querySelector('.recommend-figure')?.textContent || '';
+  check('at the floor this site\'s own percentage joins MyAnimeList\'s',
+    /82% here \(147\)/.test(both) && /MyAnimeList/.test(both), both);
 
   /* Same rule as a failed synopsis fetch and a failed catalogue fetch: the
      site worked without ratings before they existed and has to keep working
@@ -2472,9 +2505,13 @@ console.log('\n--- the recommend row ---');
   await sleep(400);
   body = await pickAndRecommend(dom, 'Fullmetal Alchemist: Brotherhood');
   await sleep(300);
-  check('a failed ratings request leaves the row in place and quiet',
+  /* The seeded figure comes from the catalogue, so it survives the ratings
+     endpoint being down entirely -- which is a better failure than the row
+     going quiet, and costs no request. */
+  check('a failed ratings request leaves the row in place, still showing MAL',
     !!body?.querySelector('.recommend')
-    && body?.querySelector('.recommend-figure')?.textContent === '');
+    && /MyAnimeList/.test(body?.querySelector('.recommend-figure')?.textContent || ''),
+    body?.querySelector('.recommend-figure')?.textContent);
   check('and the buttons still work when ratings are unavailable',
     body?.querySelectorAll('.vote-btn').length === 2);
 }
@@ -2506,10 +2543,16 @@ console.log('\n--- the recommend row ---');
     && Object.keys(sent[0] || {}).sort().join(',') === 'anime,liked,voter',
     Object.keys(sent[0] || {}).join(','));
 
-  /* The figure moves with your own vote, so the click feels done rather than
-     pending on a request nobody should wait for. */
-  check('and the figure counts your own vote immediately',
-    /1 rating so far/.test(body.querySelector('.recommend-figure')?.textContent || ''),
+  /* The button is the feedback, and it is the part that persists -- your
+     answer is kept in wanx:myvotes:v1 so it still shows on the way back.
+     The *figure* deliberately does not move: a single local vote is far below
+     the floor, and appending "1 rating so far" to a figure built on a million
+     would be noise pretending to be progress. */
+  check('and the button you pressed shows it immediately',
+    yes.getAttribute('aria-pressed') === 'true' && yes.classList.contains('vote-on'),
+    yes.outerHTML.slice(0, 90));
+  check('while the figure stays put rather than claiming one vote changed it',
+    !/1 rating so far/.test(body.querySelector('.recommend-figure')?.textContent || ''),
     body.querySelector('.recommend-figure')?.textContent);
 
   // Clicking the same answer again must not send a second time.
@@ -2521,9 +2564,14 @@ console.log('\n--- the recommend row ---');
   body.querySelector('.vote-btn[data-vote="down"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   await sleep(150);
   check('changing your mind sends the new answer', sent.length === 2 && sent[1].liked === false);
-  check('and the figure does not gain a second vote',
-    /1 rating so far/.test(body.querySelector('.recommend-figure')?.textContent || ''),
-    body.querySelector('.recommend-figure')?.textContent);
+  /* Changing your mind moves the answer rather than adding one -- the check
+     that matters is the aggregate, and the classic bug here is a total that
+     drifts up and never comes back. The buttons swap; the figure, being
+     MyAnimeList's, is untouched by either. */
+  check('and the answer moves rather than accumulating',
+    body.querySelector('.vote-btn[data-vote="down"]')?.getAttribute('aria-pressed') === 'true'
+    && body.querySelector('.vote-btn[data-vote="up"]')?.getAttribute('aria-pressed') === 'false',
+    body.querySelector('.recommend')?.innerHTML.slice(0, 140));
 
   check('the vote is remembered in local storage',
     (w.localStorage.getItem('wanx:myvotes:v1') || '').includes('false'),
@@ -3044,6 +3092,137 @@ console.log('\n--- the two importers agree on what counts ---');
     out.scored.every((s) => s.score >= 1), JSON.stringify(out.scored));
   check('and a plan-to-watch score is never collected, even when set',
     !out.scored.some((s) => s.anime === 104), JSON.stringify(out.scored));
+}
+
+
+console.log('\n--- the ratings row, seeded from MyAnimeList ---');
+{
+  /* The row exists to say "what other people thought", and until now it said
+     nothing on almost every card: a percentage needs 30 ratings and the site
+     has nowhere near that across 4,427 titles. MyAnimeList's own score
+     histogram answers the same question today, from millions of votes. */
+  const G = ['Action', 'Fantasy', 'Romance'];
+  const mk = (r, i, t, extra = {}) => ({
+    r, i, t, g: [0, 1, 2], th: [], d: [], y: 2020, ty: 'TV', s: 8, e: 12,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+    ...extra,
+  });
+
+  // Frieren's real distribution, as tenths of a percent, lowest score first.
+  const FRIEREN = [32, 2, 2, 3, 7, 13, 38, 116, 258, 530];
+
+  const CAT = {
+    built: '2026-08-28', count: 3, names: G,
+    anime: [
+      mk(1, 900, 'Has A Distribution', { sd: FRIEREN, sv: 928582 }),
+      mk(2, 901, 'All Shrugs', { sd: [0, 0, 0, 0, 500, 500, 0, 0, 0, 0], sv: 1000 }),
+      mk(3, 902, 'No Distribution'),
+    ],
+  };
+
+  const dom = makeDom(CAT);
+  const w = dom.window;
+  await sleep(250);
+
+  const v = w.__malVerdict(w.__ranked().find((a) => a.id === 900));
+  /* Every score counts. 875,007 of 928,582 scored it 7 or better, so 94%.
+     Excluding the 5s and 6s would report 96%, and doing that catalogue-wide
+     put the median show at 89% -- see the threshold note in CLAUDE.md. */
+  check('every score counts toward the figure, none are excluded',
+    v && v.pct === 94, JSON.stringify(v));
+  check('and the scorer count is the real one, not the rounded shares',
+    v && v.scorers === 928582, JSON.stringify(v));
+
+  /* A show rated entirely 5s and 6s is one nobody would recommend, and says
+     so, rather than vanishing. */
+  check('a title rated only 5s and 6s reports 0%, not nothing',
+    w.__malVerdict(w.__ranked().find((a) => a.id === 901))?.pct === 0,
+    JSON.stringify(w.__malVerdict(w.__ranked().find((a) => a.id === 901))));
+
+  /* Thin data is suppressed, the same rule the site applies to its own votes.
+     Nothing in the catalogue is near this today, but a rebuild can add a show
+     that aired last week. */
+  check('a histogram from too few scorers yields no figure',
+    w.__malVerdict({ sd: [0,0,0,0,0,0,0,0,0,1000], sv: 12 }) === null,
+    JSON.stringify(w.__malVerdict({ sd: [0,0,0,0,0,0,0,0,0,1000], sv: 12 })));
+  check('but a real one just above the floor still counts',
+    w.__malVerdict({ sd: [0,0,0,0,0,0,0,0,0,1000], sv: 40 })?.pct === 100,
+    JSON.stringify(w.__malVerdict({ sd: [0,0,0,0,0,0,0,0,0,1000], sv: 40 })));
+
+  check('a title with no histogram yields none either',
+    w.__malVerdict(w.__ranked().find((a) => a.id === 902)) === null, 'expected null');
+  check('and neither does a live AniList find, which has no such field',
+    w.__malVerdict({ id: 1, genres: [] }) === null, 'expected null');
+
+  /* Named as MyAnimeList's, always. It is not this site's community speaking,
+     and presenting borrowed numbers as your own is noticed exactly once. */
+  const text = w.__recommendText(900);
+  check('the figure names MyAnimeList as the source',
+    /MyAnimeList/.test(text), text);
+  check('and reports it compactly rather than to the digit',
+    /929k/.test(text) && !/928,582/.test(text), text);
+  /* At 360px the row leaves 229px for the figure and the full sentence needs
+     242 -- so the ellipsis would eat "MyAnimeList", which is the one part that
+     must survive. "would" is the only word that can go without losing a fact.
+     jsdom has no layout, so this guards the mechanism rather than the pixels. */
+  const figHtml = w.__recommendFigure(900);
+  check('the figure wraps "would" so a narrow screen can drop it',
+    /<span class="figure-would">would <\/span>/.test(figHtml), figHtml);
+  check('and everything load-bearing survives without it',
+    /94%/.test(figHtml) && /929k/.test(figHtml) && /MyAnimeList/.test(figHtml)
+      && figHtml.replace(/<span class="figure-would">would <\/span>/, '')
+        === '94% recommend · 929k on MyAnimeList',
+    figHtml.replace(/<span class="figure-would">would <\/span>/, ''));
+  const cssNarrow = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  check('and the stylesheet actually hides it under 400px',
+    /@media \(max-width: 400px\)[^}]*\{[\s\S]*?\.figure-would\s*\{\s*display:\s*none/.test(cssNarrow),
+    'no .figure-would rule inside a 400px block');
+
+  check('a title with no histogram says nothing, as before',
+    w.__recommendText(902) === '', JSON.stringify(w.__recommendText(902)));
+}
+
+console.log('\n--- the row still fits, and the card still cannot move ---');
+{
+  const G = ['Action', 'Fantasy', 'Romance'];
+  const mk = (r, i, t, extra = {}) => ({
+    r, i, t, g: [0, 1, 2], th: [], d: [], y: 2020, ty: 'TV', s: 8, e: 12,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+    ...extra,
+  });
+  const CAT = {
+    built: '2026-08-28', count: 2, names: G,
+    anime: [
+      mk(1, 910, 'Rich Entry', { sd: [32, 2, 2, 3, 7, 13, 38, 116, 258, 530], sv: 928582 }),
+      mk(2, 911, 'Sparse Entry'),
+    ],
+  };
+
+  const dom = makeDom(CAT);
+  await sleep(250);
+  const body = await pickAndRecommend(dom, 'Sparse Entry');
+
+  /* The row is a reserved height holding a figure that arrives late. Seeding
+     it from the catalogue means it is filled synchronously now, which must not
+     have turned it into something that grows. */
+  const row = body.querySelector('.recommend');
+  check('the recommend row is still rendered unconditionally', Boolean(row),
+    'no .recommend in the card');
+  check('and still holds both the figure and the ask',
+    Boolean(row?.querySelector('.recommend-figure'))
+      && Boolean(row?.querySelector('[data-action="vote"]')),
+    row?.innerHTML.slice(0, 120));
+
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  const rule = css.match(/\.recommend\s*\{([^}]*)\}/);
+  check('the row keeps a fixed height rather than a minimum',
+    Boolean(rule) && /height:\s*30px/.test(rule[1]) && !/min-height/.test(rule[1]),
+    rule ? rule[1].trim().replace(/\s+/g, ' ') : '(rule not found)');
+  const figure = css.match(/\.recommend-figure\s*\{([^}]*)\}/);
+  check('and a longer figure is clipped rather than allowed to wrap',
+    Boolean(figure) && /text-overflow:\s*ellipsis/.test(figure[1])
+      && /white-space:\s*nowrap/.test(figure[1]),
+    figure ? figure[1].trim().replace(/\s+/g, ' ') : '(rule not found)');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);

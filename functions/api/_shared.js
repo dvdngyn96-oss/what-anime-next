@@ -16,6 +16,11 @@
  * 8 is a one-line change and no data is lost either way. */
 export const RECOMMEND_AT = 7;
 
+/* A neutral band was tried here and reverted; see "5 and 6 were tried as
+ * neutral, and the data said no" in CLAUDE.md. Excluding them read well in
+ * principle and pushed 46% of the catalogue above 90%, which made the figure
+ * useless. Nothing is excluded: 7 and above is a yes, everything else a no. */
+
 /** Below this many votes a percentage is not shown at all.
  *
  * "100% would recommend" from a single vote is worse than no number — it looks

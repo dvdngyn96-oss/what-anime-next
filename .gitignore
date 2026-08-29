@@ -18,6 +18,9 @@ watch.err
 tags.log
 tags.err
 anime.json.tmp
+mal-scores.jsonl
+mal-scores.log
+mal-scores.err
 
 # scratch: the full_story sweep, not part of the site
 full-scan.mjs
