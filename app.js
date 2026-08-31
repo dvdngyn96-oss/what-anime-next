@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 52;
+const BUILD = 53;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -123,6 +123,41 @@ const VOTE_FLOOR = 30;
  * recommend the show is what the words actually mean.
  */
 const RECOMMEND_AT = 7;    // 7-10 is a recommendation, 1-6 is not
+
+/**
+ * A mass rating on one score is not a distribution, and the mean cannot see it.
+ *
+ * Build 53. The divergence rule below catches a histogram whose *mean* has
+ * drifted more than a point from MyAnimeList's published score. That is the
+ * right test for a review bomb, which drags the mean; it is close to blind to
+ * a spike parked on a middling score, because a needle at 6 barely moves a
+ * mean while costing every one of those votes on a yes/no threshold at 7.
+ *
+ * Measured across the catalogue: **23 entries have one score holding 40% or
+ * more of their votes, and 19 of them pass the divergence rule.** Mushen Ji
+ * has 92% of 13,000 votes on exactly 8 — three per mille on either side of it.
+ * That is a needle, not a distribution, and it was showing 99% would
+ * recommend.
+ *
+ * **Two conditions, and both are load-bearing.** `SPIKE_RATIO` is the evidence
+ * that a bucket is artificial — how far out of line it sits with its immediate
+ * neighbours. `SPIKE_SHARE` is whether it is big enough to matter, and without
+ * it the rule fires on noise: Little Witch Academia has a bucket 3.1x its
+ * neighbours holding 3.7% of the vote, which is a bump in the low tail of an
+ * otherwise healthy curve and moves the figure by nothing.
+ *
+ * **Only scores 2-9 are examined, and the exclusion of 1 and 10 is a policy
+ * decision rather than an oversight.** A spike at 1 is a review bomb, and this
+ * file counts those deliberately — somebody who rates a show 1 out of spite
+ * still would not recommend it. A spike at 10 is acclaim: Frieren has 53% of
+ * its votes on 10 and Steel Ball Run 73%, both at the end of a smooth ramp.
+ * Examining the endpoints would blank the best-regarded shows on the site.
+ *
+ * Catches 15 entries, 0.30% of the catalogue, 12 of which the divergence rule
+ * misses. None is in the top 200.
+ */
+const SPIKE_RATIO = 2.5;   // a score this many times its larger neighbour
+const SPIKE_SHARE = 0.15;  // ... while holding at least this share of the vote
 
 /**
  * The tip jar — launched in build 49.
@@ -1527,6 +1562,25 @@ function recommendRow(anime) {
 }
 
 /**
+ * Is one interior score carrying a mass rating rather than a share of opinion?
+ *
+ * `shares` is tenths of a percent per score, lowest first; `total` their sum,
+ * passed in because the caller has already computed it. Returns true when any
+ * score from 2 to 9 both holds `SPIKE_SHARE` of the vote and stands
+ * `SPIKE_RATIO` times above its larger neighbour.
+ */
+function hasVoteSpike(shares, total) {
+  if (!total) return false;
+  for (let i = 1; i <= 8; i++) {
+    const share = (shares[i] || 0) / total;
+    if (share < SPIKE_SHARE) continue;
+    const neighbour = Math.max(shares[i - 1] || 0, shares[i + 1] || 0, 1);
+    if ((shares[i] || 0) / neighbour >= SPIKE_RATIO) return true;
+  }
+  return false;
+}
+
+/**
  * MyAnimeList's own verdict, from the stored score histogram.
  *
  * **The histogram, not the mean, and not MyAnimeList's published score.** Two
@@ -1586,6 +1640,11 @@ function malVerdict(anime) {
    * figure comes back on its own. */
   const histogramMean = weighted / counted;
   if (anime.score && Math.abs(histogramMean - anime.score) > 1) return null;
+
+  /* And say nothing when the histogram is a needle rather than a curve.
+     See SPIKE_RATIO above for why the mean cannot see this and what the two
+     conditions each rule out. Scores 1 and 10 are skipped on purpose. */
+  if (hasVoteSpike(shares, counted)) return null;
 
   return { pct: Math.round((yes / counted) * 100), scorers };
 }

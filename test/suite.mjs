@@ -3172,6 +3172,54 @@ console.log('\n--- the ratings row, seeded from MyAnimeList ---');
       !== null,
     'a mild gap should not suppress the figure');
 
+  /* A mass rating parked on a middling score is invisible to the mean, so the
+     divergence check above cannot see it. Mushen Ji has 92% of 13,157 votes on
+     exactly 8, three per mille either side of it, and MyAnimeList's own score
+     agrees with that histogram to within 0.26 -- so it sailed through and
+     reported 99% would recommend. 23 entries have a bucket holding 40%+ of the
+     vote and 19 of them pass the divergence rule. */
+  const needle = { sd: [3, 0, 1, 1, 2, 3, 11, 919, 31, 31], sv: 13157, score: 8.3 };
+  check('a needle on one interior score is suppressed, though the mean agrees',
+    w.__malVerdict(needle) === null, JSON.stringify(w.__malVerdict(needle)));
+
+  /* Capeta: 52% on exactly 6, over an otherwise plausible curve. The gap to
+     MyAnimeList's published score is 0.91 -- inside the one-point tolerance,
+     so only the spike rule catches it. */
+  check('and so is a smaller one over an otherwise healthy curve',
+    w.__malVerdict({ sd: [3,1,3,6,21,523,116,157,97,72], sv: 24446, score: 7.86 }) === null,
+    'Capeta should be suppressed');
+
+  /* Both conditions are load-bearing. Little Witch Academia has a bucket 3.1x
+     its neighbours -- but it holds 3.7% of the vote, in the low tail of a
+     healthy curve, and moves the figure by nothing. Ratio alone would blank a
+     358,000-scorer title for no reason. */
+  check('a tall but tiny bucket is not a spike -- share is required too',
+    w.__malVerdict({ sd: [2,2,37,12,38,90,237,303,177,102], sv: 358000, score: 8.1 })
+      !== null,
+    'Little Witch Academia should keep its figure');
+
+  /* And a broad, smooth peak is not a spike either, however much of the vote
+     it holds: 30% on one score with 20% on each side is what agreement looks
+     like. Share alone would blank it. */
+  check('a broad smooth peak is not a spike -- ratio is required too',
+    w.__malVerdict({ sd: [5,5,10,20,60,100,200,300,200,100], sv: 50000, score: 7.4 })
+      !== null,
+    'a smooth peak should keep its figure');
+
+  /* Scores 1 and 10 are never examined, and that is policy rather than an
+     oversight. A spike at 1 is a review bomb, which this site counts on
+     purpose; a spike at 10 is acclaim. Steel Ball Run has 73% on 10 and
+     Frieren 53%, both at the end of a smooth ramp -- examining the endpoints
+     would blank the best-regarded shows on the site. */
+  check('a spike at 10 is acclaim, not a mass rating, and is kept',
+    w.__malVerdict({ sd: [54,10,7,2,3,5,21,60,111,726], sv: 104000, score: 9.2 })
+      !== null,
+    'Steel Ball Run should keep its figure');
+  check('and a spike at 1 is a review bomb, which is counted deliberately',
+    w.__malVerdict({ sd: [700,10,7,2,3,5,21,60,91,101], sv: 50000, score: 3.5 })
+      !== null,
+    'a review bomb should still produce a figure');
+
   check('a title with no histogram yields none either',
     w.__malVerdict(w.__ranked().find((a) => a.id === 902)) === null, 'expected null');
   check('and neither does a live AniList find, which has no such field',

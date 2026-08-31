@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 52.** `anime.json` holds **5,017 entries**
+**Build 53.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-378 checks pass via `npm test`.
+384 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1594,6 +1594,65 @@ MyAnimeList's own score disagree by more than 1.0, no figure is shown. Same
 instinct as the vote floor, and self-healing: if a later harvest finds them
 agreeing, the figure returns on its own.
 
+#### And a needle is not a distribution — the mean cannot see one
+
+Build 53. The divergence rule above compares the histogram's **mean** against
+MyAnimeList's published score. That is the right test for a review bomb, which
+drags the mean until the two numbers visibly disagree. **It is close to blind
+to a spike parked on a middling score**, because a needle at 6 barely moves a
+mean while costing every one of those votes on a yes/no threshold at 7.
+
+Measured across the catalogue: **23 entries have one score holding 40% or more
+of their votes, and 19 of them pass the divergence rule.** The worst was
+showing on cards:
+
+| | Histogram | MAL agrees? | Card said |
+| --- | --- | --- | --- |
+| Mushen Ji | **92% on exactly 8** | yes, to 0.26 | **99% would recommend** |
+| Shanhe Jian Xin | 79% on exactly 7 | yes, to 0.60 | 96% |
+| Hug tto! Precure | 73% on exactly 8 | yes, to 0.03 | 93% |
+| Capeta | 52% on exactly 6 | yes, to 0.91 | 44% |
+
+Mushen Ji's full histogram is `[3,0,1,1,2,3,11,919,31,31]` — three per mille on
+either side of the spike. Nobody produced that by watching a show.
+
+**Two conditions, and both are load-bearing.** `SPIKE_RATIO` (2.5) is the
+evidence a bucket is artificial: how far out of line it sits with its immediate
+neighbours. `SPIKE_SHARE` (0.15) is whether it is big enough to matter.
+
+Each alone fails, and both failures were seen before the thresholds were fixed:
+
+- **Ratio alone fires on noise.** Little Witch Academia has a bucket 3.1x its
+  neighbours holding **3.7%** of the vote — a bump in the low tail of a
+  perfectly healthy curve, moving the figure by nothing. It would have blanked
+  a 358,000-scorer title for no reason.
+- **Share alone fires on agreement.** A broad smooth peak holding 30% with 20%
+  either side is what a well-liked show looks like.
+
+**Only scores 2-9 are examined, and excluding 1 and 10 is policy rather than an
+oversight.** A spike at 1 is a review bomb, and the section above counts those
+on purpose. A spike at 10 is acclaim — **Frieren has 53% of its votes on 10 and
+Steel Ball Run 73%**, both at the end of a smooth ramp. Examining the endpoints
+blanks the best-regarded shows on the site, which is exactly what happened when
+the loop was broken to `0..9` on purpose: Steel Ball Run, the review-bomb check
+and the just-above-the-floor check all failed together.
+
+**15 entries are caught, 0.30% of the catalogue; 12 of them the divergence rule
+missed, so 0.24% of cards lose a figure. None is in the top 200.** Six checks
+cover it and all six were broken on purpose — removing the call printed
+`{"pct":99,"scorers":13157}`, which is the Mushen Ji bug itself.
+
+`npm run walks` came out **byte-identical**, which here is the proof rather
+than a formality: this is a display rule and it must not be able to reach the
+matcher.
+
+**The threshold came from the distribution, not from taste.** The needle ratio
+across the catalogue has a median of 1.22 and a 99th percentile of 1.88; every
+title that must not be touched — Frieren, FMA:B, Koe no Katachi, Hunter x
+Hunter, Steel Ball Run — sits **below 0.8**. There is a wide empty band between
+the healthy shows and the artefacts, the same shape of gap the length-mismatch
+threshold was chosen on.
+
 #### Review bombs are counted, deliberately
 
 Somebody who rates a show 1 out of spite still would not recommend it, and
@@ -2080,8 +2139,50 @@ but never corrupts the existing catalogue.
 below with what shipped, because the reasoning behind each is still the record
 of why it was done that way.
 
-**Nothing is queued.** Everything outstanding is a decision or a thing only a
-human can do, listed at the end of this section.
+**One thing is queued**, below. Everything else outstanding is a decision or a
+thing only a human can do, listed at the end of this section.
+
+### 1. The mood entry point, and the leaderboards that fall out of it
+
+**Not started.** "Surprise me" covers having no preference; nothing covers
+having a direction but no title. Somebody who fancies *a slow-burn
+psychological thriller* cannot start using this site at all.
+
+The plan, and the appeal is that it carries **no matcher risk**: offer the
+genres and the signature themes — both already counted at load — let somebody
+pick one, choose a well-ranked entry carrying it as the anchor, then run the
+existing walk completely unchanged.
+
+**Each mood also becomes a prerendered page**, which is the long-tail SEO play
+aimed at people who do not yet have a title in mind — the half of the audience
+`/anime/<id>/<slug>` cannot reach.
+
+#### It should show a leaderboard, and that is a global ranking done right
+
+A **global** "% would recommend" table was considered and rejected, and the
+measurement is why. Ranking all 5,012 entries with a figure by percent
+recommend and comparing that to MyAnimeList's own rank gives a Spearman
+correlation of **0.979** — the same list with the furniture moved. That is
+arithmetic rather than laziness: both numbers are built from the same votes.
+The page would duplicate one MyAnimeList already owns and will always outrank.
+
+**It would also not mirror AniList, because AniList's scores are not stored.**
+Only MyAnimeList histograms are in `anime.json`, so calling such a page "global
+rankings" would overclaim.
+
+**And a leaderboard sorts by the corrupted number, which is what makes the
+spike rule a prerequisite rather than a nicety.** A card shows one title at a
+time, so the odds of meeting one of 15 artefacts are low; a table sorted by the
+metric floats every one of them to the top. Before build 53 the first row would
+have been Mushen Ji at 99%.
+
+**The per-mood version has none of those problems.** "Highest % would recommend
+in Psychological" is not a table MyAnimeList publishes, it targets *"best
+psychological anime"* rather than *"anime rankings"* — a query this site can
+actually win — and the mood page has to compute that list anyway to pick its
+anchor. Showing it is nearly free.
+
+
 
 ~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
 One chip reading "2010 or later", riding in the existing toggle row at no
