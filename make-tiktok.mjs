@@ -99,6 +99,22 @@ const ENDINGS = [
 
 const SITE_URL = 'whatanimeshouldiwatchnext.com';
 
+/* The site's own filters, set before the page boots so the clip records the
+ * same recommendations a visitor with these toggles would get.
+ *
+ * TV and OVA only, and 2010 or later. ONA is the mixed bag CLAUDE.md
+ * describes -- Edgerunners and Takopi sit above a long tail of donghua
+ * crowding the isekai range -- and a two-hour film is a different watching
+ * decision from a season. Both are switched off here rather than removed from
+ * the site, and the chips show their state on screen, so the clip is honest
+ * about what it filtered.
+ *
+ * ["TV","OVA"] deliberately, not ["TV","ONA","OVA"]: app.js reads that exact
+ * trio as "saved before films existed, no opinion expressed" and hands films
+ * back. A set with anything genuinely switched off is left alone. */
+const DEFAULT_FORMATS = ['TV', 'OVA'];
+const ALL_FORMATS = ['TV', 'ONA', 'OVA', 'Film'];
+
 const THEMES = {
   dark:  { bg: '#17181a', scheme: 'dark' },
   light: { bg: '#ffffff', scheme: 'light' },
@@ -116,6 +132,8 @@ function parseArgs(argv) {
     seed: null,
     keepWebm: false,
     dry: false,
+    formats: [...DEFAULT_FORMATS],
+    modern: true,
     wanted: [],
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -125,6 +143,8 @@ function parseArgs(argv) {
     else if (arg === '--port') opts.port = Number(argv[++i]);
     else if (arg === '--seed') opts.seed = Number(argv[++i]);
     else if (arg === '--keep-webm') opts.keepWebm = true;
+    else if (arg === '--formats') opts.formats = argv[++i].split(',').map((f) => f.trim()).filter(Boolean);
+    else if (arg === '--any-year') opts.modern = false;
     else if (arg === '--dry') opts.dry = true;
     else if (arg === '--list') {
       const file = argv[++i];
@@ -140,6 +160,9 @@ function parseArgs(argv) {
     }
   }
   if (!THEMES[opts.theme]) throw new Error(`--theme must be dark or light`);
+  const unknown = opts.formats.filter((f) => !ALL_FORMATS.includes(f));
+  if (unknown.length) throw new Error(`--formats: ${unknown.join(', ')} is not one of ${ALL_FORMATS.join(', ')}`);
+  if (!opts.formats.length) throw new Error('--formats needs at least one of ' + ALL_FORMATS.join(', '));
   if (!opts.wanted.length) {
     throw new Error(
       'Nothing to make. Pass MAL ids or titles:\n'
@@ -218,6 +241,29 @@ function resolve(catalogue, wanted) {
   return null;
 }
 
+/**
+ * What the clip types and puts on the hook card.
+ *
+ * The catalogue is keyed on MyAnimeList's romaji, which is right for a search
+ * box and wrong for a hook: "Sen to Chihiro no Kamikakushi" means nothing to
+ * most of an audience scrolling past, and "Spirited Away" means everything.
+ * 2,968 of the 4,427 entries carry an English title that differs from the
+ * romaji, and they are most of the recognisable ones — Your Name., Princess
+ * Mononoke, A Silent Voice, Your Lie in April, Berserk, Gurren Lagann.
+ *
+ * 1,941 entries have no English title at all and 108 only repeat the romaji,
+ * so those keep what they had. Either one finds the show: matchTier in app.js
+ * searches both fields, which is what makes typing the English name work
+ * against a catalogue indexed on the other one.
+ *
+ * The *recommendation* is still shown in romaji, because that is what the
+ * card renders and the card is the site rather than ours to restyle.
+ */
+function displayTitle(anime) {
+  if (!anime.english || norm(anime.english) === norm(anime.title)) return anime.title;
+  return anime.english;
+}
+
 function slugify(title) {
   return String(title || '')
     .normalize('NFKD')
@@ -285,6 +331,15 @@ function stopServer(child) {
  * ------------------------------------------------------------------ */
 
 function overlayInit(cfg) {
+  /* Set before app.js runs, because it reads the format set and the year chip
+     into module scope on load -- writing them afterwards leaves the page on
+     the defaults and the clip records something else entirely. The suite hit
+     exactly this and had a check pass against the bug it was written for. */
+  try {
+    localStorage.setItem('wanx:formats', JSON.stringify(cfg.formats));
+    localStorage.setItem('wanx:modern', cfg.modern ? '1' : '0');
+  } catch { /* private mode; the clip just records the defaults */ }
+
   /* An init script runs before the document exists, so there is no
      documentElement to paint yet — reaching for one here threw, and a throw
      this early means window.__wx never gets defined and every later call
@@ -562,9 +617,11 @@ async function record(browser, anime, opts, rnd, hook, ending, workDir) {
     site: SITE_URL,
     poster: anime.image,
     kicker: hook[0],
-    title: anime.title,
+    title: displayTitle(anime),
     hook: hook[1],
     ending,
+    formats: opts.formats,
+    modern: opts.modern,
     font: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
   });
 
@@ -601,7 +658,7 @@ async function record(browser, anime, opts, rnd, hook, ending, workDir) {
   /* page.type with a fixed delay is the documented way to do this; the delay
      is rolled per keystroke instead, because a perfectly even cadence is the
      one thing that reads as a machine rather than a person. */
-  const typed = [...anime.title];
+  const typed = [...displayTitle(anime)];
   let index = 0;
   const typeOne = async () => {
     await page.keyboard.type(typed[index]);
@@ -614,14 +671,24 @@ async function record(browser, anime, opts, rnd, hook, ending, workDir) {
   await wait(pick(T.afterType));
 
   /* Keep typing if the one we want is not on the list yet — which is what a
-     person does, and what a 60-character title needs. */
+     person does, and what a 60-character title needs.
+
+     The row is found by its romaji heading even though the English name was
+     typed, because that is what the dropdown is headed with -- and it is what
+     tells "Hunter x Hunter (2011)" apart from the 1999 series, where the
+     English name of both is just "Hunter x Hunter". */
   let hit = await page.evaluate((t) => window.__wx.suggestionIndex(t), anime.title);
   while (hit < 0 && index < typed.length) {
     await typeOne();
     await wait(160);
     hit = await page.evaluate((t) => window.__wx.suggestionIndex(t), anime.title);
   }
-  if (hit < 0) hit = 0;
+  /* Falling back to the first row would quietly record a clip of the wrong
+     anime, which is worse than not producing one. */
+  if (hit < 0) {
+    throw new Error(`typed "${typed.join('')}" in full and the dropdown never `
+      + `offered ${anime.title}`);
+  }
 
   const row = page.locator('#suggestions .suggestion').nth(hit);
   const rb = await row.boundingBox();
@@ -629,7 +696,16 @@ async function record(browser, anime, opts, rnd, hook, ending, workDir) {
   await wait(180);
   await row.click();
 
-  await page.waitForSelector('.hero', { timeout: 20000 });
+  /* With the filters narrowed, a walk can come back empty -- and waiting for
+     a card that is never coming just times out with nothing useful in it. The
+     site already writes the reason into the page, so read that instead. */
+  const outcome = await page.waitForFunction(() => {
+    if (document.querySelector('.hero')) return 'card';
+    const state = document.querySelector('#result-body .state');
+    if (state && !state.querySelector('.spinner')) return `empty:${state.textContent.trim()}`;
+    return false;
+  }, null, { timeout: 20000 }).then((handle) => handle.jsonValue());
+  if (outcome !== 'card') throw new Error(`no card: ${outcome.slice(6)}`);
   await page.evaluate((ms) => window.__wx.cardSettled(ms), 9000);
   await wait(pick(T.afterPick));
 
@@ -739,8 +815,15 @@ async function main() {
   }
   if (!targets.length) throw new Error('Nothing left to record.');
 
-  console.log(`${targets.length} clip${targets.length === 1 ? '' : 's'}, ${opts.theme} theme:`);
-  for (const a of targets) console.log(`  ${String(a.id).padStart(6)}  ${a.title}`);
+  const off = ALL_FORMATS.filter((f) => !opts.formats.includes(f));
+  console.log(`${targets.length} clip${targets.length === 1 ? '' : 's'}, ${opts.theme} theme, `
+    + `${opts.formats.join(' + ')} only${off.length ? ` (${off.join(' and ')} off)` : ''}`
+    + `${opts.modern ? ', 2010 or later' : ', any year'}:`);
+  for (const a of targets) {
+    const shown = displayTitle(a);
+    const also = shown === a.title ? '' : `   (${a.title})`;
+    console.log(`  ${String(a.id).padStart(6)}  ${shown}${also}`);
+  }
   if (opts.dry) return;
 
   const seed = opts.seed ?? (Date.now() & 0x7fffffff);
@@ -764,7 +847,7 @@ async function main() {
   const failed = [];
   try {
     for (const [i, anime] of targets.entries()) {
-      const label = `[${i + 1}/${targets.length}] ${anime.title}`;
+      const label = `[${i + 1}/${targets.length}] ${displayTitle(anime)}`;
       process.stdout.write(`${label}\n`);
       const hook = nextHook();
       const ending = nextEnding();
@@ -773,11 +856,11 @@ async function main() {
       try {
         result = await record(browser, anime, opts, rnd, hook, ending, workDir);
       } catch (err) {
-        console.error(`        ! ${anime.title} failed: ${err.message.split('\n')[0]}\n`);
-        failed.push(anime.title);
+        console.error(`        ! ${displayTitle(anime)} failed: ${err.message.split('\n')[0]}\n`);
+        failed.push(displayTitle(anime));
         continue;
       }
-      const name = `${slugify(anime.title)}--${slugify(result.shown) || 'result'}.mp4`;
+      const name = `${slugify(displayTitle(anime))}--${slugify(result.shown) || 'result'}.mp4`;
       const mp4 = path.join(opts.out, name);
       await toMp4(result.videoPath, mp4, {
         trim: result.trim,
