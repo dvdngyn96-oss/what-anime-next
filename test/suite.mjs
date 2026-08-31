@@ -3406,5 +3406,57 @@ console.log('\n--- and the fourth chip does not cost a toggle row ---');
     /Film: '[^']+'/.test(app), 'no FORMAT_HINTS entry for Film');
 }
 
+console.log('\n--- the wordmark fits on one line ---');
+{
+  /* The wordmark split mid-word on most phones -- "...nex / t" -- and had done
+     since it was written. 7vw scales with the viewport, but #search-view takes
+     20px of padding either side, so the room is 100vw - 40px while the
+     wordmark is a flat 12.797 times its own font size wide. Those two only
+     come out in favour above 384px, so 320, 360, 375 and 390 all overflowed
+     and word-break did the rest.
+
+     jsdom has no layout, so this reads the numbers back out of the rule and
+     does the arithmetic the browser would. */
+  const RATIO = 12.797;      // measured in a browser, Segoe UI
+  const PADDING = 40;        // #search-view, 20px each side
+
+  /* Comments stripped first: the rule's own explanation mentions 7vw and the
+     old numbers, and a regex cannot tell an explanation from a declaration. */
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = /\.wordmark\s*\{([^}]*)\}/.exec(css);
+  const size = rule && /font-size:\s*([^;]+);/.exec(rule[1]);
+  const fit = size && /min\(\s*calc\(\s*\(\s*100vw\s*-\s*(\d+)px\s*\)\s*\/\s*([\d.]+)\s*\)\s*,\s*(\d+)px\s*\)/
+    .exec(size[1]);
+
+  check('the wordmark is sized against the room it has, not the raw viewport',
+    Boolean(fit), size ? size[1].trim() : '(no font-size on .wordmark)');
+
+  if (fit) {
+    const gutter = Number(fit[1]);
+    const divisor = Number(fit[2]);
+    const cap = Number(fit[3]);
+
+    check('and it subtracts the padding the container really has',
+      gutter === PADDING, `subtracts ${gutter}px, the container takes ${PADDING}px`);
+
+    const over = [320, 360, 375, 390, 414, 430, 620].filter((w) => {
+      const px = Math.min((w - gutter) / divisor, cap);
+      return px * RATIO > w - PADDING;
+    });
+    check('so it stays on one line at every phone width',
+      over.length === 0, `still overflows at ${over.join(', ')}px`);
+
+    /* Measured in Segoe UI, and Inter, SF and Roboto all set it differently.
+       The divisor is where that slack lives, so without it the fix holds only
+       on the machine it was measured on. */
+    check('with headroom left over for the rest of the font stack',
+      divisor >= RATIO * 1.04,
+      `${divisor} leaves ${(((divisor / RATIO) - 1) * 100).toFixed(1)}%, want 4% or more`);
+
+    check('and the desktop size is still capped',
+      cap === 54, `capped at ${cap}px`);
+  }
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);

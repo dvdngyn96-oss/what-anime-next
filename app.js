@@ -76,7 +76,7 @@ const SIGNATURE_THEME_SHARE = 0.05;
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 53;
+const BUILD = 54;
 
 /* ------------------------------------------------------------------ *
  * Catalogue

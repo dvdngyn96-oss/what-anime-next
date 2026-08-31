@@ -87,7 +87,30 @@ a { color: inherit; }
 #result-view[hidden] { display: none; }
 
 .wordmark {
-  font-size: clamp(28px, 7vw, 54px);
+  /* Sized against the space it actually has, not against the viewport.
+   *
+   * 7vw looks like it scales and it does, but #search-view takes 20px of
+   * padding either side, so the room is 100vw - 40px while the wordmark is a
+   * flat 12.8 times its own font size wide. Those two only come out in favour
+   * above 384px. Below that it overflowed and word-break split it mid-word --
+   * "...nex / t" -- at 320, 360, 375 and 390px, which is most phones in use,
+   * including the 360px Android that is the commonest width there is.
+   *
+   * The 28px floor made it worse rather than causing it: at 390px, 7vw is
+   * 27.3 and the floor rounds that back up to 28, but 27.3 was already the
+   * exact limit. Lowering the floor alone would not have fixed a single one
+   * of those four widths.
+   *
+   * Dividing the room by the ratio makes the fit exact by construction.
+   * 13.6 rather than the measured 12.8 leaves about 6% for the font stack:
+   * this was measured in Segoe UI, and Inter, SF and Roboto all set it a
+   * little differently. word-break stays below as the last resort, so a face
+   * wider than any of those wraps rather than overflowing the page -- which
+   * is what it already does today, so this cannot read worse anywhere.
+   *
+   * 100vw counts the scrollbar on desktop, which would matter if the width
+   * were binding there; above 705px the 54px cap is what applies instead. */
+  font-size: min(calc((100vw - 40px) / 13.6), 54px);
   font-weight: 700;
   letter-spacing: -0.03em;
   margin: 0 0 10px;

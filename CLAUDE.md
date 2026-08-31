@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 53.** `anime.json` holds **5,017 entries**
+**Build 54.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-384 checks pass via `npm test`.
+389 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1344,6 +1344,52 @@ actually says `var(--accent-fill)`. Pointing the variable at a passing colour
 while the rule still read `var(--accent)` satisfies every other check in the
 block and changes nothing on the page — the same shape as the `empty-tier`
 guard that passed with the guard deleted.
+
+### The wordmark was splitting mid-word on most phones
+
+Build 54, and it had been doing it since the wordmark was written. At 390px the
+top of the page read **"whatanimeshouldiwatchnex / t"**.
+
+`font-size: clamp(28px, 7vw, 54px)` looks like it scales with the screen, and
+it does — but `#search-view` takes **20px of padding either side**, so the room
+is `100vw - 40px` while the wordmark is a flat **12.797 times its own font size
+wide**. Set those equal and `7vw` only fits above **384px**. Everything below
+that overflowed and `word-break: break-word` did the rest:
+
+| Width | Room | Biggest that fits | It was using |
+| --- | --- | --- | --- |
+| 320 | 280px | 21.9px | 28px |
+| 360 | 320px | 25.0px | 28px |
+| 375 | 335px | 26.2px | 28px |
+| 390 | 350px | 27.3px | 28px |
+| 414 | 374px | 29.2px | 29.0px ✓ |
+
+**The 28px floor made it worse rather than causing it, and that matters because
+lowering the floor is the obvious fix.** At 390px `7vw` is 27.3 and the floor
+rounds it back up to 28 — but 27.3 *was already the exact limit*. Removing the
+floor entirely fixes none of those four widths.
+
+So the size is `min(calc((100vw - 40px) / 13.6), 54px)` — the room divided by
+the ratio, which makes the fit exact by construction rather than by a constant
+that happens to work. **13.6 rather than the measured 12.797 leaves about 6%
+for the font stack**: this was measured in Segoe UI, and Inter, SF and Roboto
+all set it differently. `word-break` stays as the last resort, so a face wider
+than any of those wraps rather than overflowing — which is what it already did
+everywhere, so this cannot read worse than before at any width.
+
+The cost is that the wordmark is 5-8% smaller on phones: 28px to 25.7px at
+390px, 29px to 27.5px at 414px. Desktop is untouched at the 54px cap. One line
+is worth more than two points of size.
+
+Five checks read the numbers back out of the rule and do the arithmetic the
+browser would, since jsdom has no layout — including one asserting the headroom
+is still there, because a divisor tightened back to the measured ratio passes
+every other check and quietly re-breaks the fix on any machine with a wider
+font. All five were broken on purpose: the old rule, the padding dropped from
+the `calc`, and the divisor cut to 12.797.
+
+**Found in a screenshot, like most real bugs here** — of a TikTok clip, not of
+the site.
 
 ### Saying nothing when there is nothing to say
 
