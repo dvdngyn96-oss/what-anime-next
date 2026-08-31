@@ -56,10 +56,12 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 378 checks, jsdom against the real app.js and anime.json
+npm test          # 398 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~2.5 hours
 npm run pages     # prerendered pages only, ~30 s
+
+node make-tiktok.mjs "Attack on Titan" "Death Note"   # vertical clips, ~40 s each
 ```
 
 One credential file, gitignored, **build-time only** — nothing ships in the
@@ -2147,6 +2149,173 @@ Compiled with `npx wrangler pages functions build` and exercised with
 `wrangler pages dev` before shipping, which is the same toolchain Cloudflare
 runs — worth doing, because a Functions build failure fails the whole
 deployment, and that would take the site down rather than just the endpoints.
+
+## Making TikTok clips
+
+`make-tiktok.mjs` records short vertical videos of the real site, one per
+anime, for posting to TikTok. Committed rather than gitignored: it is a
+repeatable tool rather than a throwaway investigation like `full-scan.mjs`,
+and gitignoring it meant 900 lines of working code lived on one machine and
+nowhere else. The clips themselves stay out of the repo — one is 4-5 MB, and
+video in git is permanent.
+
+```bash
+node make-tiktok.mjs "Attack on Titan" "Death Note" 9253
+node make-tiktok.mjs --list titles.txt --dry
+```
+
+About **40 seconds a clip**, so twenty is a quarter of an hour. It starts the
+local server itself and shuts it down afterwards, so nothing has to be running
+first. Output is 1080x1920, 30fps, 15-19 seconds, in `tiktok/`.
+
+**One continuous take, with the cards as overlays injected into the page.** The
+hook card and the end card are `position: fixed` elements added at runtime, not
+separate clips stitched together, so there is no cut to flash and nothing to
+edit afterwards. The clip runs: hook card with the show's own poster, fade to
+the loaded site, tap the search box, type the title a character at a time, tap
+the suggestion, hold on the card the site actually returns, pan slowly down it,
+fade up the end card.
+
+**No audio, deliberately.** Reach on that platform comes from the trending
+sound, those change weekly, and they get picked per video by hand. Automating
+the visual is the saving; automating the audio would work against it.
+
+**The site URL is on screen throughout, not only at the end**, in what reads as
+a browser address bar pinned to the top. Most viewers never reach an end card.
+
+**Every hold, the typing delay, the hook wording and the end-card line are
+rolled per clip** — eight hooks and five endings, dealt from a shuffled deck so
+eight clips get eight different ones rather than the same one three times. A
+batch identical to the frame with one word changed reads as spam and gets
+throttled, which defeats the point of generating them in bulk. `--seed N`
+reproduces a batch when one clip comes out wrong.
+
+### Playwright records at CSS-pixel size, and pads rather than scales
+
+The single most surprising thing here, and it cost a probe cycle to find.
+Asking for a 1080-wide video from a 390-wide viewport does **not** give a
+1080-wide picture. It gives a 390-wide picture sitting in the top-left corner
+of a grey 1080-wide frame, because the recorder pads to the requested size and
+never scales up. `deviceScaleFactor` on the context does not change it either.
+
+Chromium's own **`--force-device-scale-factor=3`** at launch is what actually
+raises the capture, to a native 1170x2532 with genuinely crisp text. Do not
+remove that flag; without it every clip is a mush upscale of 390 pixels.
+
+### The sides of the frame, and why they are smeared rather than filled
+
+A 390x844 phone is 9:19.5 and TikTok wants 9:16, so 96 pixels each side have to
+come from somewhere.
+
+**Filling them with `#17181a` from `styles.css` left a visible band down both
+edges.** The recording is VP8, so that colour comes back through the decoder as
+`#151619`, and a fill drawn at the nominal value sits a step off it in every
+channel. One step is nothing on a chart and clearly visible as a band on a dark
+video on a phone.
+
+Sampling the real colour out of the video fixed the join at the start of the
+clip and **not at the end** — the flat background drifts by a step between
+keyframes, so no single fill colour can track it.
+
+`fillborders=mode=smear` copies the outermost column of the picture outwards
+instead, per frame, so the join matches whatever the decoder produced at that
+moment and cannot drift. Verified at 15 boundary points across two clips, zero
+mismatches. It is safe because the page has 20px of padding either side, so
+that outermost column is always flat background and never part of a poster.
+
+**Cropping to 9:16 instead is the obvious alternative and is wrong**: it would
+cut about 75 CSS pixels off the top and bottom, which is the address bar at one
+end and the card title at the other.
+
+### It drives the real page, which is the same call `build-seo-pages.mjs` makes
+
+The generator boots the actual `index.html`, `app.js` and `anime.json` in a
+browser and reads whatever the site returns. It reimplements nothing, for the
+reason the prerendered pages already record: a second copy of this behaviour
+would drift quietly somewhere nobody looks.
+
+**The cost of that call is coupling**, and it is worth listing because it is
+larger than it looks. The generator reaches into `#search-box`,
+`#search-input`, `#suggestions .suggestion` and the `.suggestion-title` it
+identifies the wanted row by, `.hero` and `.hero h2`, `.hero-banner` and
+`#hero-synopsis`, `#result-body` and the `.state` / `.spinner` pairing that
+tells "still loading" from "nothing to show", the `wanx:formats` and
+`wanx:modern` keys, and the six `.w-*` wordmark colour classes the end card
+borrows rather than copying the hexes.
+
+**None of that used to fail in `npm test`.** It failed forty seconds into a
+recording run, or did not fail at all and recorded a clip of the wrong anime.
+Nine checks now cover it, eight of them real assertions rather than string
+matches — jsdom has no layout but it does render, so the check boots the page
+with the filters the generator seeds, picks a suggestion and inspects the card.
+The storage keys are asserted *through the page* rather than by grepping for
+their names, because a key that is read and then ignored would pass a grep.
+
+**Moving the generator to its own repo was considered and rejected.** It would
+not reduce any of that coupling; it would only move the breakage somewhere
+nobody has open when they rename a selector.
+
+### It types the English title where there is one
+
+The catalogue is keyed on MyAnimeList's romaji, which is right for a search box
+and wrong for a hook card: "Sen to Chihiro no Kamikakushi" means nothing to
+most of an audience scrolling past and "Spirited Away" means everything. 2,968
+of the 5,017 entries carry an English title that differs, and they are most of
+the recognisable ones. 1,941 have none and 108 only repeat the romaji, so those
+are unchanged.
+
+Typing the English name works against a romaji-keyed catalogue because
+`matchTier` already searches both fields.
+
+**The dropdown row is still identified by its romaji heading**, which is what
+the row is headed with and what tells entries apart when the English name does
+not. Searching "Hunter x Hunter" returns the 2011 series at #11 and the 1999
+one at #203 — headed differently in romaji, identically in English — so
+matching on what was typed would have been a coin flip between them.
+
+**Falling back to the first row when nothing matched is gone.** It quietly
+recorded a clip of the wrong anime; it now fails that clip, says what it typed,
+and lets the rest of the batch carry on.
+
+**The recommendation is still shown in romaji**, because that is what the card
+renders and the card is the site. So a clip can open on "Spirited Away" and
+close on "Sousou no Frieren". Making the site itself prefer English titles is a
+real question but a much bigger one — it would change every card, all 4,956
+prerendered pages, and the titles Google indexes.
+
+### Clips record with ONA and Film off, and 2010 or later
+
+The site's own filters, seeded into `localStorage` before the page boots, so a
+clip records what a visitor with those toggles would get. ONA is the mixed bag
+described above and a two-hour film is a different watching decision from a
+season, so leaving both out gives something more people recognise — Cowboy
+Bebop goes from Uchuu Senkan Yamato 2199 to Shingeki no Kyojin. The chips show
+their state on screen, so the clip is honest about what it filtered.
+`--formats` and `--any-year` override it.
+
+**The set written is `["TV","OVA"]`, never `["TV","ONA","OVA"]`.** `app.js`
+reads that exact trio as "saved before films existed, no opinion expressed" and
+hands films straight back. Turning ONA off avoids it by accident rather than by
+design, so a check asserts the effect.
+
+**Seeded before the page boots, not after.** `app.js` reads the format set and
+the year chip into module scope on load, so writing them afterwards leaves the
+clip recording the defaults — the same trap `makeDom` in the suite already
+carries `seedFormats` and `seedModern` for.
+
+Narrowing the filters makes an emptied walk reachable, and waiting for a card
+that is never coming timed out with nothing useful in it. The site already
+writes the reason into the page, so that gets read back out and reported.
+
+### An init script runs before there is a document
+
+Worth writing down because the symptom points nowhere near the cause. The
+overlay is injected with `addInitScript` so the hook card is up for the very
+first painted frame and the site loading behind it is never seen. But that runs
+before the document exists, so `document.documentElement` is `null` — reaching
+for it threw, and a throw that early meant `window.__wx` was never defined and
+*every later call* failed with "cannot read properties of undefined", which
+looks like a missing script rather than a crashed one.
 
 ## Maintenance
 
