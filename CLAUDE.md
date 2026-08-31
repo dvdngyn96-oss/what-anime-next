@@ -12,7 +12,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 **Build 54.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-389 checks pass via `npm test`.
+398 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |

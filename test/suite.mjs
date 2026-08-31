@@ -3458,5 +3458,86 @@ console.log('\n--- the wordmark fits on one line ---');
   }
 }
 
+console.log('\n--- the page make-tiktok.mjs reaches into ---');
+{
+  /* The clip generator drives the real page in a real browser rather than
+     reimplementing any of it — the same call build-seo-pages.mjs makes, and
+     for the same reason: a second copy of this would drift quietly somewhere
+     nobody looks.
+
+     The cost is that it reaches into the site in about twenty places, and a
+     renamed selector does not fail here. It fails forty seconds into a
+     recording run, or worse, records a clip of the wrong anime and says
+     nothing about it. These are the hooks it uses.
+
+     jsdom has no layout but it does render, so most of these are real
+     assertions rather than string matches. */
+  const dom = makeDom(SYNTHETIC, { seedFormats: ['TV', 'OVA'], seedModern: true });
+  await sleep(200);
+  const w = dom.window;
+  const d = w.document;
+
+  check('the search box it taps, and the input it types into',
+    Boolean(d.getElementById('search-box') && d.getElementById('search-input')),
+    'it taps #search-box, then types into #search-input');
+
+  /* The dropdown, and the heading it identifies the wanted row by. Matching
+     on that heading rather than on what was typed is what tells
+     "Hunter x Hunter (2011)" from the 1999 series, whose English names are
+     identical and whose ranks are #11 and #203. */
+  const input = d.getElementById('search-input');
+  input.value = 'Source Show';
+  input.dispatchEvent(new w.Event('input', { bubbles: true }));
+  await sleep(500);
+  const row = d.querySelector('#suggestions .suggestion');
+  const heading = row?.querySelector('.suggestion-title')?.textContent.trim();
+  check('a suggestion row, headed by the catalogue title it is found by',
+    heading === 'Source Show',
+    heading ?? 'no #suggestions .suggestion containing .suggestion-title');
+
+  row?.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true }));
+  await sleep(300);
+  const body = d.getElementById('result-body');
+
+  check('#result-body, where it watches for either a card or a refusal',
+    Boolean(body), 'no #result-body');
+  check('.hero, and the h2 it reports the recommendation from',
+    Boolean(body?.querySelector('.hero')) && Boolean(body.querySelector('.hero h2')?.textContent.trim()),
+    'a rendered card has no .hero h2');
+
+  /* Both are waited for before the hold starts, so nothing pops in halfway
+     through the shot. */
+  check('.hero-banner and #hero-synopsis, which it waits to finish loading',
+    Boolean(body?.querySelector('.hero-banner') && d.getElementById('hero-synopsis')),
+    'the card no longer carries a banner strip or a synopsis block');
+
+  /* Telling "still loading" from "nothing to show" is what stops an emptied
+     walk timing out with nothing useful in it. */
+  check('a loading state is a .state with a .spinner in it, a refusal is not',
+    /class="state"><div class="spinner">/.test(appSource)
+      && /resultBody\.innerHTML = `\$\{because\}<div class="state">/.test(appSource),
+    'the two states are no longer told apart by the spinner');
+
+  /* Both filters are seeded into localStorage before the page boots. Asserted
+     through the page rather than by grepping for the key names, because a key
+     that is read and then ignored would pass a grep. This also guards the
+     migration trap: ["TV","OVA"] must not be read as the pre-film trio and
+     silently handed films back. */
+  check('wanx:formats is still the key, still a list, and still not migrated',
+    w.__formats().join(',') === 'TV,OVA', w.__formats().join(','));
+  const yearChip = d.querySelector('[data-action="modern"]');
+  check('wanx:modern is still the key, and still "1" for on',
+    yearChip?.getAttribute('aria-pressed') === 'true',
+    yearChip ? `the chip reads aria-pressed=${yearChip.getAttribute('aria-pressed')}` : 'no year chip');
+
+  /* The end card borrows the site's own wordmark colours rather than copying
+     the hexes across, so the two can never drift apart. */
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  const missing = ['w-what', 'w-anime', 'w-should', 'w-i', 'w-watch', 'w-next']
+    .filter((cls) => !new RegExp(`\\.${cls}\\s*\\{`).test(css));
+  check('and the six wordmark colours the end card borrows',
+    missing.length === 0, `missing ${missing.join(', ')}`);
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);
