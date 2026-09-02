@@ -1,5 +1,5 @@
 import { JSDOM } from 'jsdom';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /* Derived from this file's own location rather than hard-coded, so the suite
@@ -44,8 +44,16 @@ const ANILIST_HIT = {
   }] } },
 };
 
-function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null, ratings = null, onVote = null, seedWatched = null, seedModern = null, seedFormats = null } = {}) {
-  const dom = new JSDOM(html, { runScripts: 'dangerously', url, pretendToBeVisual: true });
+function makeDom(catalogue, { url = 'https://example.com/', anilist = ANILIST_HIT, detail = null, ratings = null, onVote = null, seedWatched = null, seedModern = null, seedFormats = null, seedPrerendered = null } = {}) {
+  /* Prerendered markup has to be in the document before the script runs, the
+     same reason the localStorage seeds do: routeFromUrl looks for
+     #seo-content while deciding what to show, so injecting it afterwards
+     leaves the page already routed and quietly passes a test that should
+     fail. Caught exactly that way. */
+  const seeded = seedPrerendered
+    ? html.replace('<main id="app">', `<main id="app">${seedPrerendered}`)
+    : html;
+  const dom = new JSDOM(seeded, { runScripts: 'dangerously', url, pretendToBeVisual: true });
   dom.window.scrollTo = () => {};
   /* Seeded before the script boots, because app.js reads both of these
      into module scope on load -- setting them afterwards leaves the page
@@ -1798,6 +1806,136 @@ console.log('\n--- prerendered pages stay in step with the catalogue ---');
   check('and app.js writes that same form into the address bar',
     /`\/anime\/\$\{anime\.id\}\/\$\{slug\}\/`/.test(readFileSync(`${ROOT}/app.js`, 'utf8')),
     'urlFor may be dropping the trailing slash');
+}
+
+console.log('\n--- the genre pages ---');
+{
+  const sitemap = readFileSync(`${ROOT}/sitemap.xml`, 'utf8');
+  const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  const genreLocs = locs.filter((u) => u.includes('/genre/'));
+  const appText = readFileSync(`${ROOT}/app.js`, 'utf8');
+  const genText = readFileSync(`${ROOT}/build-seo-pages.mjs`, 'utf8');
+
+  check('the sitemap lists the genre pages',
+    genreLocs.length >= 10, `${genreLocs.length} genre URLs`);
+
+  /* Same rule as the anime pages, and the same reason: Pages answers 200 on
+     the trailing-slash form and 308s the bare one, so a sitemap without it
+     points a crawler at redirects. */
+  check('and every one is the trailing-slash form the server answers 200 for',
+    genreLocs.every((u) => u.endsWith('/')),
+    genreLocs.filter((u) => !u.endsWith('/')).slice(0, 3).join(', '));
+
+  /* Written where the sitemap says they are. */
+  const absent = genreLocs
+    .map((u) => u.replace('https://whatanimeshouldiwatchnext.com', ''))
+    .filter((rel) => !existsSync(`${ROOT}${rel}/index.html`));
+  check('every genre URL in the sitemap is a page on disk',
+    absent.length === 0, absent.join(', '));
+
+  /* The two slug functions live in different files and must produce the same
+     string. A disagreement is a 404 on a URL that is already in the sitemap
+     and already linked from 4,900 pages -- the expensive kind of typo. */
+  const slugOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  check('app.js has a genreSlug that agrees with the generator on a hyphenated name',
+    /function genreSlug/.test(appText) && slugOf('Slice of Life') === 'slice-of-life'
+      && genreLocs.some((u) => u.endsWith('/genre/slice-of-life/')),
+    'slug forms disagree between app.js and build-seo-pages.mjs');
+
+  /* Crawl route. A sitemap entry alone is a weak signal; 4,900 pages linking
+     in is a strong one, and it is the only other way in. */
+  const anime = locs.find((u) => u.includes('/anime/')).replace('https://whatanimeshouldiwatchnext.com', '');
+  const animePage = readFileSync(`${ROOT}${anime}/index.html`, 'utf8');
+  check('an anime page links to the genre pages, so crawlers can reach them',
+    /href="\/genre\/[a-z0-9-]+\/"/.test(animePage),
+    'no genre links on the sampled anime page');
+
+  /* And every one of those links resolves -- only offered genres are linked,
+     so a page must never point at a genre that was not written. */
+  const linked = [...animePage.matchAll(/href="(\/genre\/[a-z0-9-]+\/)"/g)].map((m) => m[1]);
+  check('and each of those links points at a page that exists',
+    linked.length > 0 && linked.every((rel) => existsSync(`${ROOT}${rel}index.html`)),
+    linked.filter((rel) => !existsSync(`${ROOT}${rel}index.html`)).join(', '));
+
+  const page = readFileSync(`${ROOT}/genre/mystery/index.html`, 'utf8');
+
+  check('a genre page carries its own canonical, not the site root',
+    page.includes('<link rel="canonical" href="https://whatanimeshouldiwatchnext.com/genre/mystery/">'),
+    /<link rel="canonical"[^>]*>/.exec(page)?.[0]);
+  check('and its own title naming the genre',
+    /<title>The best mystery anime[^<]*<\/title>/.test(page),
+    /<title>[^<]*<\/title>/.exec(page)?.[0]);
+
+  /* The claim that makes this page worth having rather than a worse copy of
+     MyAnimeList's own genre ranking. Within every genre, ordering by percent
+     recommend agrees with MyAnimeList rank at 0.978 to 0.989 -- so the sort is
+     not the differentiator and must not be sold as one. The filter is. */
+  check('the page says why it is not MyAnimeList’s ranking',
+    /start from the beginning/.test(page) && /prequel or a\s+parent story is left out/.test(page),
+    'the differentiating claim is missing from the page');
+
+  check('it lists a useful number of titles, each linking to its own page',
+    (page.match(/href="\/anime\//g) || []).length >= 20,
+    String((page.match(/href="\/anime\//g) || []).length));
+
+  /* A plain link, so it works before app.js has parsed and with scripting off
+     -- where it lands on the home page rather than doing nothing. */
+  check('the call to action is a link into the app, not a scripted button',
+    /href="\/\?genre=mystery"/.test(page),
+    'the genre CTA is missing or is not a link');
+
+  /* Ecchi clears the size threshold and is deliberately not offered, so it
+     must not have a page either -- a URL nothing links to, advertising a
+     genre the picker withholds, would be the worst of both. */
+  check('a withheld genre gets no page',
+    !existsSync(`${ROOT}/genre/ecchi/index.html`)
+      && !genreLocs.some((u) => u.includes('/genre/ecchi/')),
+    'ecchi has a genre page');
+}
+
+console.log('\n--- a genre page keeps its content when the app boots ---');
+{
+  /* The one prerendered block that must survive hydration. Every other page
+     replaces #seo-content the moment a card is up; here the block IS the page,
+     and somebody who searched "best mystery anime" came for the list. */
+  const NAMES = ['Broad', 'Other'];
+  const mk = (r, i, t, g) => ({
+    r, i, t, g, s: 8, m: 1000, th: [], st: 'fin', ty: 'TV', e: 12, y: 2015, im: 'x/y.jpg',
+  });
+  const rows = [];
+  for (let k = 0; k < 60; k++) rows.push(mk(1 + k, 900 + k, 'Broadly ' + k, [0]));
+  for (let k = 0; k < 40; k++) rows.push(mk(61 + k, 1000 + k, 'Otherly ' + k, [1]));
+  const CAT = { built: '2026-09-01', count: rows.length, names: NAMES, anime: rows };
+
+  const dom = makeDom(CAT, {
+    url: 'https://example.com/genre/broad/',
+    seedPrerendered: '<div id="seo-content" class="seo-content genre-page"><h1>The best broad anime</h1></div>',
+  });
+  const w = dom.window;
+  const d = w.document;
+  await sleep(300);
+
+  check('the prerendered list survives the app booting on a genre page',
+    !!d.getElementById('seo-content'), 'the block was dropped');
+  check('and neither the search view nor a card is shown over it',
+    d.getElementById('search-view')?.hidden === true
+      && d.getElementById('result-view')?.hidden === true,
+    'a view was shown on top of the genre page');
+
+  /* The other half of the route: the CTA lands on /?genre=<slug> and that has
+     to start the walk rather than falling through to the landing page. */
+  const dom2 = makeDom(CAT, { url: 'https://example.com/?genre=broad' });
+  await sleep(500);
+  const because = dom2.window.document.querySelector('.because')?.textContent || '';
+  check('/?genre=<slug> starts a walk in that genre',
+    because.includes('Because you picked Broad'), because.trim().slice(0, 70) || 'no card');
+
+  /* A genre that is not offered must not break the page. */
+  const dom3 = makeDom(CAT, { url: 'https://example.com/?genre=nonsense' });
+  await sleep(400);
+  check('an unknown genre falls back to the search view rather than an error',
+    dom3.window.document.getElementById('search-view')?.hidden === false,
+    'the search view was not shown');
 }
 
 console.log('\n--- a single genre still demotes ---');

@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 56;
+const BUILD = 57;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -3444,8 +3444,38 @@ function dropPrerendered() {
   document.getElementById('seo-content')?.remove();
 }
 
+/* The slug half of /genre/<slug>/. Must agree with `slugify` in
+   build-seo-pages.mjs, which writes the directories — a check asserts they
+   produce the same string, because a disagreement is a 404 on a page that is
+   already in the sitemap. */
+function genreSlug(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 async function routeFromUrl() {
   const params = new URLSearchParams(location.search);
+
+  /* A prerendered genre page. The block stays exactly where it is: this is the
+     one route whose prerendered content is the point rather than a placeholder
+     for a card, so `dropPrerendered` must not run. Somebody arriving from a
+     search for "best mystery anime" came for the list. */
+  if (/^\/genre\/[a-z0-9-]+\/?$/.test(location.pathname)
+      && document.getElementById('seo-content')) {
+    resultView.hidden = true;
+    searchView.hidden = true;
+    return;
+  }
+
+  /* Starting a walk from a genre, which is what the button on that page links
+     to. A link rather than a script hook, so the page works before app.js has
+     loaded and without it entirely. */
+  const wanted = params.get('genre');
+  if (wanted) {
+    await loadCatalogue().catch(() => {});
+    const match = moodGenres.find((g) => genreSlug(g) === genreSlug(wanted));
+    if (match) { startFromGenre(match); return; }
+  }
+
   /* Path first, query second: /anime/<id>/<slug> is the canonical form and
      ?id=N is the legacy one that must keep resolving. */
   const fromPath = /^\/anime\/(\d+)/.exec(location.pathname);

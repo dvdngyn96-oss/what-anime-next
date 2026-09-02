@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 56.** `anime.json` holds **5,017 entries**
+**Build 57.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-419 checks pass via `npm test`.
+435 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1305,6 +1305,108 @@ true any more.
 the pack.**
 Near-identical files delta-compress hard, so the repository grew far less than
 the working tree suggests.
+
+### The genre pages
+
+Build 57. Fourteen pages at `/genre/<slug>/`, one per genre the picker offers,
+each a ranked list of 25 titles. `/genre/mystery/`, `/genre/slice-of-life/`.
+
+**This is the half of the audience `/anime/<id>/<slug>` cannot reach.** Those
+pages answer "what comes after X", which needs somebody to already have an X.
+*"best mystery anime"* needs nothing, and is the query the domain is named
+after.
+
+#### The sort is not the differentiator — the filter is
+
+Worth stating plainly, because the plan in this file originally claimed
+otherwise and the claim does not survive measurement.
+
+A "% would recommend" leaderboard sounds like a distinct page. It is not:
+**within every one of the 14 genres, ordering by percent recommend agrees with
+MyAnimeList rank at 0.978 to 0.989.** Same list. MyAnimeList does not publish
+recommend-rates per genre, which is what the earlier note here leant on, but it
+does publish rank per genre and that lands in the same order.
+
+So the figure is a **column**, never the sort. It earns its place because 98%
+is a better thing to read than 8.84, not because it reorders anything.
+
+**What makes the page worth having is the catalogue it is drawn from.** This
+site holds 5,017 of MyAnimeList's top 10,000 — roughly half of what they rank
+is dropped for having a prequel, a parent story, or being a recap. So the page
+is *"the best mystery anime you can start from the beginning"*, which is a
+genuinely different list from MyAnimeList's own genre ranking rather than a
+re-sort of it. **That claim is made on the page in those words**, because
+without it the page looks like a worse copy of one Google already ranks.
+
+#### The prerendered block survives hydration here, and only here
+
+Every other prerendered page replaces `#seo-content` the moment `app.js` has a
+card up — a visitor should never see both. **A genre page is the exception: the
+block is the page.** Somebody who searched "best mystery anime" came for the
+list, and swapping it for a single recommendation card would be a bait and
+switch.
+
+So `routeFromUrl` recognises the path, leaves the block alone, and hides both
+views. The page then has to stand on its own, which is why it carries its own
+way home and its own way in.
+
+**The way in is a plain link to `/?genre=<slug>`, not a scripted button.** It
+works before `app.js` has parsed, and with scripting off it lands on the home
+page rather than doing nothing. `routeFromUrl` reads that query and runs the
+build-55 picker, so the button and the chip on the landing page go through
+exactly the same code.
+
+#### Two slug functions that have to agree
+
+`genreSlug` in `app.js` and `slugify` in `build-seo-pages.mjs` live in
+different files and must produce the same string. A disagreement is a **404 on
+a URL that is already in the sitemap and already linked from 4,924 pages** —
+the expensive kind of typo. A check asserts they agree on a hyphenated name,
+since `Slice of Life` is where they would diverge.
+
+#### 4,924 pages link in, which is the actual crawl route
+
+A sitemap entry is a weak signal on its own. Every anime page now carries a
+**More like this** line linking to the genre pages for its own genres, so the
+fourteen have thousands of internal links pointing at them and a crawler
+reaches them from anywhere in the catalogue.
+
+**Only genres the picker offers are linked**, so no page can point at a URL
+that was never written — Ecchi has no page and nothing links to one, which is
+the same decision as withholding its chip, applied consistently. A check
+asserts every `/genre/` link on a page resolves to a file on disk.
+
+#### The suite could not see prerendered markup until now
+
+`makeDom` gained `seedPrerendered`, for the reason it already has
+`seedWatched`, `seedModern` and `seedFormats`: **`routeFromUrl` looks for
+`#seo-content` while deciding what to show, so injecting the block afterwards
+leaves the page already routed.** The first version of the genre-page check did
+exactly that and failed for that reason — which is the good outcome, since the
+same mistake in the opposite direction is how this project has shipped checks
+that passed for the wrong reason.
+
+Fifteen checks. All four guards broken on purpose: dropping the route makes the
+block vanish, neutering `?genre=` leaves no card, removing the **More like
+this** line strands the pages, and generating one for a withheld genre is
+caught by name.
+
+#### "1 episodes"
+
+A film is one episode, and printing that beside "Film" is both ungrammatical
+and information-free — the format has already said it. `episodeLabel` returns
+nothing for a film and pluralises correctly otherwise, and it is used at all
+three places the generator writes a fact line. Same instinct as the card
+rendering a missing count as an em-dash rather than "? episodes".
+
+Found by looking at the rendered page on a phone, which is where the last three
+copy bugs came from too.
+
+#### Cost
+
+Fourteen files, about 20 KB each. The sitemap goes from 4,958 URLs to 4,972,
+and the genre pages are listed at a higher priority and a weekly changefreq
+than the per-anime ones, because they are the pages worth recrawling.
 
 ### Link previews, crawlers and the preview image
 
@@ -2671,55 +2773,13 @@ but never corrupts the existing catalogue.
 below with what shipped, because the reasoning behind each is still the record
 of why it was done that way.
 
-**One thing is queued**, below. Everything else outstanding is a decision or a
-thing only a human can do, listed at the end of this section.
+**Nothing is queued.** Everything outstanding is a decision or a thing only a
+human can do, listed at the end of this section.
 
-### 1. Prerendered genre pages, and the leaderboard on them
-
-~~**The picker and the anchor rule.**~~ Shipped in build 55 — see "The genre
-picker" above. Fourteen genre chips on the landing page, an anchor searched for
-rather than deduced, and the ordinary walk run downward from it. `npm run
-walks` byte-identical.
-
-**What is left is the SEO half, and it is the reason the job was worth doing.**
-Each genre should also be a page — `/genre/mystery` or similar — prerendered
-the way `/anime/<id>/<slug>` already is, by `build-seo-pages.mjs` driving the
-real `app.js`. That is the long-tail play aimed at people who do not yet have a
-title in mind, which is the half of the audience the per-anime pages cannot
-reach. Fourteen pages, not 4,956, so it is cheap.
-
-**It should show a leaderboard, and that is a global ranking done right.** A
-**global** "% would recommend" table was considered and rejected: ranking all
-5,012 entries with a figure by percent recommend and comparing that to
-MyAnimeList's own rank gives a Spearman correlation of **0.979** — the same
-list with the furniture moved. That is arithmetic rather than laziness, since
-both numbers are built from the same votes, and the page would duplicate one
-MyAnimeList already owns and will always outrank. It would also not mirror
-AniList, because AniList's scores are not stored.
-
-**Sorting it by "% would recommend" is pointless, and that was measured after
-the above was written.** Within every one of the 14 genres, ranking by percent
-recommend and ranking by MyAnimeList rank agree at **0.978 to 0.989** — the
-same list again. MyAnimeList does not publish recommend-rates per genre, which
-is what the earlier note here claimed as the differentiator, but it does
-publish *rank* per genre and that lands in the same order. The figure belongs
-on the page as a **column**, because it is a better thing to read than a score
-out of ten; it is not a reason for the page to exist.
-
-**The differentiator is the filter, not the sort.** This catalogue holds 5,017
-of MyAnimeList's top 10,000 — roughly half of what it ranks is dropped for
-having a prequel, a parent story, or being a recap. So the page is *"the best
-mystery anime you can actually start from the beginning"*, which is the site's
-whole premise applied to a list, and is a genuinely different page from
-MyAnimeList's own genre ranking rather than a re-sort of it. That claim needs
-saying on the page in those words, or it just looks like a worse copy.
-
-The build 55 anchor search already walks a 100-plus entry list for each genre,
-so the data is in hand either way.
-
-**Build 53 was the prerequisite and is done.** A leaderboard sorts by the
-number the vote spikes corrupt, so before it the first row would have been
-Mushen Ji at 99%.
+~~**1. The mood entry point.**~~ Shipped across builds 55 and 57. The picker
+and the anchor rule are under "The genre picker"; the prerendered pages and
+why the leaderboard sort turned out not to be the differentiator are under
+"The genre pages". Both left `npm run walks` byte-identical.
 
 ### Themes need a mechanism, not a list
 

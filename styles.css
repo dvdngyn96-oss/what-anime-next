@@ -631,6 +631,78 @@ a { color: inherit; }
   color: var(--fg-faint);
 }
 
+/* Genre links on an anime page. The only route a crawler has into the genre
+   pages besides the sitemap, so they are real links rather than plain words. */
+.seo-genres {
+  font-size: 13px;
+  margin: 0 0 12px;
+  color: var(--fg-faint);
+}
+.seo-genres a { color: var(--accent); text-decoration: none; }
+.seo-genres a:hover { text-decoration: underline; }
+
+/* The genre pages: /genre/<slug>/.
+ *
+ * The one prerendered block that survives app.js booting, because it is the
+ * thing the visitor came for rather than a placeholder for a card. So unlike
+ * the anime pages it has to stand on its own -- its own way home, and its own
+ * way into the app. */
+.genre-page { max-width: 780px; }
+
+.genre-home {
+  font-size: 13px;
+  margin: 0 0 20px;
+}
+.genre-home a {
+  color: var(--fg-faint);
+  text-decoration: none;
+  font-weight: 600;
+}
+.genre-home a:hover { color: var(--fg-dim); }
+
+.genre-cta { margin: 18px 0 0; }
+.genre-cta .btn {
+  display: inline-block;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+/* The numbers are the point of a ranked list, so they are drawn rather than
+   left to the list marker -- an <ol> renders them in the gutter at the body
+   colour, which reads as incidental. */
+.genre-list { list-style: none; padding-left: 0; }
+
+.genre-list li {
+  position: relative;
+  padding: 10px 0 10px 44px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+.genre-list li:first-child { border-top: none; }
+
+.genre-pos {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 32px;
+  text-align: right;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.genre-alt {
+  display: block;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+.genre-pct {
+  display: block;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
 /* Hero card */
 
 /* The card takes its accent from the show's own cover art. --art-tint falls
