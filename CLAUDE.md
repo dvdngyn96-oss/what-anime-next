@@ -2876,22 +2876,38 @@ each. Lazy-load, fixed dimensions on every image, and remember that the pages
 must stay fast: they exist to be crawled and to load on a phone from a search
 result.
 
-**A "top ten this week" style panel.** Anime Corner publishes a weekly ranked
-graphic — numbered rows, poster art, a percentage per row — and it is a good
-shape to borrow because it is exactly what the genre pages already compute.
-Worth being clear about what could actually fill it:
+**Rows that look like the Anime Corner graphic.** The reference is their weekly
+Top 10 infographic, and **the borrowed thing is the layout, not the framing** —
+that was misread once already and the correction is worth keeping so it is not
+misread again.
 
-- **Not "this week".** The catalogue is rebuilt once a season, so nothing here
-  changes weekly and a panel claiming it did would be a lie the first time
-  somebody checked twice.
-- **What is honest** is "the ten best in a genre you can start cold", which is
-  the top of a genre page, or a rotating pick across genres on the landing
-  page. Same data, no false freshness.
-- On the result view a right-hand panel is the obvious placement on desktop and
-  has nowhere to go on mobile, which is where most of the traffic is. **The
-  card must not move to accommodate it** — that rule has been broken once too
-  often already, and the toggle row is documented twice as the binding
-  constraint on anything new.
+What was actually wanted from it:
+
+- **A big rank number** down the left of each row.
+- **The artwork as the row**, with the **title overlaid on it** rather than sat
+  in a column beside it. That is the part that makes it read as a card instead
+  of a list, and the genre pages are plain text lists today.
+
+What was **not** wanted, and neither should be built:
+
+- **Not the weekly framing.** No "this week" — the catalogue rebuilds once a
+  season, so nothing here changes weekly.
+- **Not the percentages down the right.** Anime Corner puts vote share and
+  rank-movement badges there; in this context they are noise. The genre pages
+  already carry "% would recommend" in the row text, which is enough.
+
+So this is a **restyle of the genre-page list**, not a new panel with new data.
+Every entry has `im` (key art) and `bn` (banner) in the catalogue, so nothing
+new has to be fetched. `bn` is the wide one and the natural source for a row
+that art fills, but only **3,047 of 5,017** entries have one — where `im`, the
+poster, is on **all 5,017**. So the design has to work with the wide art
+missing on two rows in five, and the answer is the one the card already uses:
+`cl` is a key-art colour, present on 4,636, and the card builds a gradient from
+it when there is no banner.
+
+Cost to watch: these pages exist to load fast from a search result on a phone
+and currently weigh about 20 KB each. Lazy-load, fixed dimensions on every
+image so nothing reflows as they arrive, and check the weight after.
 
 **Do the button first and on its own.** It is small, it is the piece with the
 actual effect, and the other two are visual work that can be judged once people
