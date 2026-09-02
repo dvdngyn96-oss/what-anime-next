@@ -2568,11 +2568,25 @@ both numbers are built from the same votes, and the page would duplicate one
 MyAnimeList already owns and will always outrank. It would also not mirror
 AniList, because AniList's scores are not stored.
 
-**The per-genre version has none of those problems.** "Highest % would
-recommend in Mystery" is not a table MyAnimeList publishes, it targets *"best
-mystery anime"* rather than *"anime rankings"* — a query this site can actually
-win — and build 55 already computes a 100-plus entry list for each genre to
-pick its anchor from. Showing it is nearly free.
+**Sorting it by "% would recommend" is pointless, and that was measured after
+the above was written.** Within every one of the 14 genres, ranking by percent
+recommend and ranking by MyAnimeList rank agree at **0.978 to 0.989** — the
+same list again. MyAnimeList does not publish recommend-rates per genre, which
+is what the earlier note here claimed as the differentiator, but it does
+publish *rank* per genre and that lands in the same order. The figure belongs
+on the page as a **column**, because it is a better thing to read than a score
+out of ten; it is not a reason for the page to exist.
+
+**The differentiator is the filter, not the sort.** This catalogue holds 5,017
+of MyAnimeList's top 10,000 — roughly half of what it ranks is dropped for
+having a prequel, a parent story, or being a recap. So the page is *"the best
+mystery anime you can actually start from the beginning"*, which is the site's
+whole premise applied to a list, and is a genuinely different page from
+MyAnimeList's own genre ranking rather than a re-sort of it. That claim needs
+saying on the page in those words, or it just looks like a worse copy.
+
+The build 55 anchor search already walks a 100-plus entry list for each genre,
+so the data is in hand either way.
 
 **Build 53 was the prerequisite and is done.** A leaderboard sorts by the
 number the vote spikes corrupt, so before it the first row would have been
