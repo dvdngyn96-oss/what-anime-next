@@ -87,7 +87,10 @@ window.__readListRows = readListRows;
 window.__formats = () => [...formats];
 window.__malVerdict = malVerdict;
 window.__recommendText = recommendText;
-window.__recommendFigure = recommendFigure;`);
+window.__recommendFigure = recommendFigure;
+window.__moodGenres = () => [...moodGenres];
+window.__pickMoodAnchor = pickMoodAnchor;
+window.__moodConstants = () => ({ minShare: MOOD_MIN_SHARE, anchorShare: MOOD_ANCHOR_SHARE, tries: MOOD_ANCHOR_TRIES, excluded: [...MOOD_EXCLUDED] });`);
   return dom;
 }
 
@@ -244,6 +247,119 @@ console.log('\n--- pivot chains do not loop ---');
   await sleep(80);
   check('clearing the watched list brings it back', (await research()) === 'Alpha Show',
     body.querySelector('.hero h2')?.textContent);
+}
+
+console.log('\n--- the genre picker ---');
+{
+  /* NAMES: 0 Broad, 1 Thin, 2 Ecchi, 3 P, 4 Q, 5 R */
+  const NAMES = ['Broad', 'Thin', 'Ecchi', 'P', 'Q', 'R'];
+  const mk = (r, i, t, g) => ({
+    r, i, t, g, s: 8, m: 1000, th: [], st: 'fin', ty: 'TV', e: 12, y: 2015, im: 'x/y.jpg',
+  });
+
+  /* 100 entries, so MOOD_MIN_SHARE (2%) is a threshold the fixture can
+     actually straddle rather than one everything clears -- the trap the
+     signature-theme work fell into with a fixed count on a six-entry fixture. */
+  const rows = [];
+  /* Rank 1: carries Broad but has four genres, so nothing shares them all and
+     the walk falls through to entries matching P, Q and R instead. This is the
+     Steel Ball Run / Mushishi shape -- the best-regarded carrier of a genre is
+     very often the worst anchor for it. */
+  rows.push(mk(1, 900, 'Broad But Busy', [0, 3, 4, 5]));
+  /* Rank 2-14: share P, Q and R and not Broad. These are what walking down
+     from Broad But Busy actually returns. */
+  for (let k = 0; k < 13; k++) rows.push(mk(2 + k, 910 + k, 'Not Broad ' + k, [3, 4, 5]));
+  /* Rank 15: carries Broad alone, so everything carrying Broad is a full
+     match. The search should prefer this one. */
+  rows.push(mk(15, 950, 'Broad And Only', [0]));
+  for (let k = 0; k < 40; k++) rows.push(mk(16 + k, 960 + k, 'Broadly ' + k, [0]));
+  for (let k = 0; k < 43; k++) rows.push(mk(56 + k, 1100 + k, 'Ecchi Thing ' + k, [2]));
+  rows.push(mk(99, 1200, 'Thin Thing', [1]));
+  rows.push(mk(100, 1201, 'Another P', [3, 4, 5]));
+
+  const CAT = { built: '2026-09-01', count: rows.length, names: NAMES, anime: rows };
+  const dom = makeDom(CAT);
+  const w = dom.window;
+  const d = w.document;
+  await sleep(300);
+
+  const offered = w.__moodGenres();
+
+  /* A genre has to be broad enough to walk in from. Thin carries one entry of
+     100; walking down from the only thing that has it finds nothing of its own
+     kind, which is why Girls Love and Avant Garde are not offered on the real
+     catalogue either. */
+  check('a genre too thin to walk in from is not offered',
+    !offered.includes('Thin'), offered.join(','));
+  check('but a broad one is',
+    offered.includes('Broad'), offered.join(','));
+
+  /* Hand-excluded, and the exclusion has to survive clearing the threshold --
+     Ecchi carries 43 of the 100 here, more than Broad does. */
+  check('an excluded genre is withheld even when it clears the threshold',
+    !offered.includes('Ecchi') && w.__moodConstants().excluded.includes('Ecchi'),
+    offered.join(','));
+
+  check('the genres offered are ordered broadest first',
+    offered[0] === 'Broad', offered.join(','));
+
+  /* The whole reason the anchor is searched for rather than deduced. Broad But
+     Busy is rank 1 and carries Broad, but it has four genres, so walking down
+     from it returns things sharing P, Q and R. Broad And Only is rank 15 and
+     delivers the genre. */
+  const anchor = w.__pickMoodAnchor('Broad');
+  check('the anchor is searched for, not taken from the top of the rankings',
+    anchor && anchor.title !== 'Broad But Busy',
+    anchor ? 'picked ' + anchor.title : 'picked nothing');
+  check('and the one it picks is the one whose results carry the genre',
+    anchor && anchor.title === 'Broad And Only',
+    anchor ? 'picked ' + anchor.title : 'picked nothing');
+
+  /* Memoised: picking the same genre twice has to give the same starting
+     point, or going back and forth reshuffles the results underneath you. */
+  check('picking the same genre twice gives the same anchor',
+    w.__pickMoodAnchor('Broad') === anchor, 'the anchor changed on the second call');
+
+  const chips = [...d.querySelectorAll('.mood-chip')].map((c) => c.textContent);
+  check('a chip is rendered for every genre offered, and none besides',
+    chips.join(',') === offered.join(','), chips.join(','));
+  check('the row is revealed once the catalogue is in',
+    d.getElementById('mood-row')?.hidden === false, 'the row is still hidden');
+
+  /* It belongs on the landing view, the only screen with no card on it. A row
+     that fills in after load would otherwise move the buttons under a cursor,
+     which is the thing this project has done once too often already. */
+  check('the picker sits on the search view, not the result view',
+    d.getElementById('search-view')?.contains(d.getElementById('mood-row')),
+    'the mood row is outside #search-view');
+
+  d.querySelector('.mood-chip').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(500);
+  const hero = d.querySelector('.hero h2')?.textContent;
+  check('clicking a chip produces a recommendation',
+    !!hero, 'no card was rendered');
+
+  /* Down, always. Walking up from an anchor this well ranked runs out of its
+     own kind immediately -- the "GOAT anime" complaint in CLAUDE.md, reached
+     from the other direction. */
+  const pressed = [...d.querySelectorAll('[data-action="direction"]')]
+    .find((b) => b.getAttribute('aria-pressed') === 'true');
+  check('a genre pick walks down the rankings, never up',
+    pressed?.dataset.value === 'down', 'direction is ' + pressed?.dataset.value);
+
+  /* "Because you watched X" is a lie when nobody typed anything. */
+  const because = d.querySelector('.because')?.textContent || '';
+  check('the card says the genre was picked, not that it was watched',
+    because.includes('Because you picked Broad') && !because.includes('watched'),
+    because.trim().slice(0, 80));
+  check('and it still names the show it started from',
+    because.includes('Broad And Only'), because.trim().slice(0, 80));
+
+  /* The results actually carry the genre that was asked for -- every entry
+     whose title starts with "Broad" does, and nothing else does. */
+  const shown = [...d.querySelectorAll('.hero h2, .more-title')].map((n) => n.textContent);
+  check('and the results carry the genre that was asked for',
+    shown.length > 0 && shown.every((t) => t.startsWith('Broad')), shown.join(','));
 }
 
 console.log('\n--- themes, status and hidden gems ---');

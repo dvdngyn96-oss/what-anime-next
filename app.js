@@ -73,10 +73,132 @@ const EPISODES_PER_YEAR = 40;    // a weekly slot, allowing for breaks
  * Historical (403) and School (658) stay tie-breakers only. */
 const SIGNATURE_THEME_SHARE = 0.05;
 
+/**
+ * The genre picker: starting from a direction rather than from a title.
+ *
+ * Build 55. "Surprise me" covers having no preference and the search box
+ * covers having a title; somebody who fancies *a slow-burn mystery* and cannot
+ * name one had nowhere to start. The picker offers genres, chooses a
+ * well-regarded entry carrying the one you pick, and runs the ordinary walk
+ * from it — nothing in the matcher changes.
+ *
+ * **Genres, not themes, and that is measured rather than tidy.** The plan was
+ * to offer signature themes too. The walk matches on *genres*, so a theme only
+ * reaches the results when `promoteSignatures` fires — and that is bounded on
+ * purpose, so it cannot be relied on. Measured over the best anchor in each
+ * case, counting how many of the first eight results carry the thing that was
+ * asked for:
+ *
+ * | | |
+ * | --- | --- |
+ * | Genres (14 of them) | **111 of 112** |
+ * | Isekai | 2 of 8 |
+ * | Survival | 1 of 8 |
+ * | Music | 3 of 8 |
+ * | Vampire | 2 of 8 |
+ *
+ * Bocchi the Rock! is the clearest case: it is the best-regarded thing
+ * carrying Music, and walking from it returns Nichijou, Kaguya-sama and
+ * Dandadan, because its *genres* are Comedy and Slice of Life. Asking for
+ * music and being handed comedies is worse than not offering music at all.
+ * Psychological and Space do work, but a hand-picked pair of themes would go
+ * stale at the next rebuild, so themes wait for a mechanism rather than a
+ * list. See "Themes need a mechanism, not a list" in CLAUDE.md.
+ *
+ * **A genre needs `MOOD_MIN_SHARE` of the catalogue to be offered**, and that
+ * threshold came from a gap in the data rather than from taste. The genres
+ * that deliver all carry 151 entries or more; the ones that fail carry 64 or
+ * fewer, and there is nothing in between:
+ *
+ *   ... Sports 213 · Suspense 192 · Horror 156 · Award Winning 151
+ *       || Gourmet 64 · Boys Love 60 · Girls Love 48 · Avant Garde 47
+ *
+ * 2% of the catalogue is 100 entries, which sits inside that gap with 51
+ * entries of margin below Award Winning and 36 above Gourmet. A share rather
+ * than a count for the reason SIGNATURE_THEME_SHARE is one: rarity only means
+ * anything relative to the corpus, and a rebuild moves every count at once.
+ *
+ * The thin genres fail for a plain reason — walking down from the only
+ * well-ranked entry carrying Girls Love, there is nothing of its kind nearby
+ * to find. Boys Love reaches its own kind and does it at rank 3,576.
+ */
+const MOOD_MIN_SHARE = 0.02;
+
+/**
+ * Anchors are drawn from the top `MOOD_ANCHOR_SHARE` of the ranking.
+ *
+ * **Positions, not MyAnimeList ranks.** The catalogue holds 5,017 of the top
+ * 10,000, so the two diverge quickly: Hellsing Ultimate is rank #291 and
+ * position 108. `positionOf` is the unit the walk itself measures distance in,
+ * and mixing the two here would mean a band that quietly changes width as the
+ * scan depth changes.
+ *
+ * **The width is a trade between how well the genre carries and whether the
+ * anchor is a name anybody knows**, which matters because the card says
+ * "starting from X". Both ends were measured:
+ *
+ * | Band | Genre delivered | Anchors |
+ * | --- | --- | --- |
+ * | top ~1% | 106 of 112 | Berserk, Death Note, Monster, Koe no Katachi |
+ * | **top 3%** | **111 of 112** | Jujutsu Kaisen, Yu Yu Hakusho, Koe no Katachi, Prism Rondo |
+ *
+ * The wider band wins. Tightening buys four or five recognisable names and
+ * costs five results that actually carry what was asked for, and being handed
+ * comedies after asking for horror is the worse failure — the tighter band
+ * also leaves Horror just two candidates to choose between.
+ *
+ * 3% is 151 positions, roughly MyAnimeList rank #400, and every one of the 14
+ * genres has a carrier inside it. The thinnest is Horror with four.
+ */
+const MOOD_ANCHOR_SHARE = 0.03;
+
+/* How many candidate anchors to actually walk from. Each costs one
+   walkRankings, so this is the whole runtime price of a pick — about 20 walks
+   behind the loading state the dice already shows. Raising it changes nothing:
+   the winner came from the first 20 for every one of the 14 genres. */
+const MOOD_ANCHOR_TRIES = 20;
+
+/**
+ * Below this many candidates the band is abandoned and the best-ranked
+ * carriers are used instead.
+ *
+ * **A search with one candidate is not a search**, and that is the failure the
+ * test fixture caught rather than something reasoned about in advance. With a
+ * 100-entry catalogue the 3% band is three positions wide, so the only carrier
+ * inside it was the deliberately bad anchor, and `pickMoodAnchor` returned it
+ * while looking like it had chosen.
+ *
+ * On the real catalogue this never fires: the thinnest genre in band is Horror
+ * with four. It is here for a future rebuild that thins one out, and for the
+ * fixture — dropping the band entirely instead was tried and costs the thing
+ * the band exists for, sending Horror from Hellsing Ultimate (#291) to Dark
+ * Gathering (#1063) for one extra result out of 112.
+ */
+const MOOD_ANCHOR_MIN = 3;
+
+/**
+ * Genres that clear the bar but are still not offered.
+ *
+ * Hand-written, and deliberately so — the same reasoning as
+ * `STANDS_ALONE_ANYWAY` in the builder, which is that no property of the data
+ * separates these cases. Ecchi carries 257 entries, comfortably over the
+ * threshold, and is the one genre on the landing page that would change what
+ * the site looks like to somebody arriving for the first time.
+ *
+ * **It also happens to fail on the numbers, which is worth recording so this
+ * is not mistaken for squeamishness dressed up as a rule.** Its best available
+ * anchor is Mushoku Tensei at #310, and **none of the first eight results
+ * carries Ecchi** — the walk matches on that entry's other three genres, so
+ * the row would be mislabelled as well as unwanted. Nothing about the
+ * catalogue changes: an ecchi entry is still recommended, still searchable and
+ * still reachable in any chain. It simply is not one of the doors in.
+ */
+const MOOD_EXCLUDED = new Set(['Ecchi']);
+
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 54;
+const BUILD = 55;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -88,6 +210,7 @@ let byId = new Map();
 let catalogueMeta = null;
 let studioNames = [];
 let signatureThemes = new Set();   // themes rare enough to count as a genre
+let moodGenres = [];               // genres broad enough to be a way in
 
 /**
  * Which country's streaming listings to show. Availability differs sharply —
@@ -459,6 +582,81 @@ function markSignatureThemes() {
   );
 }
 
+/**
+ * The genres offered by the picker, counted at load for the reason the
+ * signature themes are: a rebuild moves every count, and a baked-in list would
+ * quietly go stale. See MOOD_MIN_SHARE for where the threshold came from.
+ *
+ * Ordered by how many entries carry them, so the broad doors come first. That
+ * is also roughly the order of how likely somebody is to want one.
+ */
+function markMoodGenres() {
+  const freq = new Map();
+  for (const anime of ranked) {
+    for (const genre of anime.genres || []) freq.set(genre, (freq.get(genre) || 0) + 1);
+  }
+  const floor = ranked.length * MOOD_MIN_SHARE;
+  moodGenres = [...freq]
+    .filter(([genre, count]) => count >= floor && !MOOD_EXCLUDED.has(genre))
+    .sort((a, b) => b[1] - a[1])
+    .map(([genre]) => genre);
+}
+
+/**
+ * Which entry to start a genre from.
+ *
+ * **The obvious rule is "the best-regarded one carrying it", and it does not
+ * work.** The walk returns entries sharing the anchor's *genres*, so an anchor
+ * whose other genres dominate carries you away from what was asked for. The
+ * best-regarded Mystery entry is Steel Ball Run, which is a JoJo action serial
+ * carrying Mystery incidentally; walking down from it opens on Blue Seed at
+ * #4845. The best-regarded Slice of Life is Mushishi, and 3 of its 8 results
+ * are slice of life.
+ *
+ * So the anchor is *searched for* rather than deduced: walk from each
+ * candidate and keep whichever actually delivers the genre. That is still no
+ * matcher risk at all — the walk is untouched, and only the choice of where to
+ * start it is being made.
+ *
+ * Ties go to the anchor whose results are better ranked, which is what stops
+ * a technically-perfect but obscure chain winning. The divisor is large enough
+ * that it can only ever break a tie in the genre count, never outvote one.
+ *
+ * Memoised per genre: the answer cannot change within a session, and picking
+ * the same genre twice should give the same starting point.
+ */
+const moodAnchors = new Map();
+
+function pickMoodAnchor(genre) {
+  if (moodAnchors.has(genre)) return moodAnchors.get(genre);
+
+  const carriers = ranked.filter((a) => a.genres.includes(genre));
+  const band = ranked.length * MOOD_ANCHOR_SHARE;
+  /* Well-regarded carriers. Every offered genre has several today — the
+     thinnest, Horror, has four — but a search needs something to choose
+     between, so a band holding fewer than MOOD_ANCHOR_MIN is abandoned for the
+     best-ranked carriers instead. Widening beats picking badly from one. */
+  const inBand = carriers.filter((a) => positionOf(a) != null && positionOf(a) <= band);
+  const candidates = (inBand.length >= MOOD_ANCHOR_MIN ? inBand : carriers)
+    .slice(0, MOOD_ANCHOR_TRIES);
+
+  let best = null;
+  for (const candidate of candidates) {
+    const { list } = walkRankings(candidate, 'down', new Set([candidate.id]));
+    if (!list.length) continue;
+    const top = list.slice(0, 8);
+    const carrying = top.filter((a) => a.genres.includes(genre)).length;
+    const ranks = top.map((a) => positionOf(a) || 0).sort((x, y) => x - y);
+    const median = ranks[Math.floor(ranks.length / 2)] || 0;
+    const score = carrying - median / (ranked.length * 2);
+    if (!best || score > best.score) best = { score, anchor: candidate };
+  }
+
+  const anchor = best ? best.anchor : carriers[0] || null;
+  moodAnchors.set(genre, anchor);
+  return anchor;
+}
+
 /** Compact catalogue rows -> the shape the rest of the app works with. */
 function expand(row, names) {
   return {
@@ -560,6 +758,7 @@ function loadCatalogue() {
     renumberRanked();
     byId = new Map(ranked.map((a) => [a.id, a]));
     markSignatureThemes();
+    markMoodGenres();
     markHiddenGems();
     fitCompletionCurve();
     buildCompletionOrder();
@@ -2199,8 +2398,16 @@ function renderResult() {
   const sourceRate = completion(source);
   const sourceCompletion = sourceRate ? `, ${sourceRate.finished}% finished it` : '';
 
+  /* "Because you watched X" is a lie when nobody typed anything — the genre
+     picker chose the anchor. It has to name what actually happened, and say
+     which show it started from, because the next line explains the results in
+     terms of that show's genres. */
+  const opening = state.mood
+    ? `Because you picked <strong>${esc(state.mood)}</strong>, starting from <strong>${esc(source.title)}</strong>`
+    : `Because you watched <strong>${esc(source.title)}</strong>`;
+
   const because = `
-    <p class="because">Because you watched <strong>${esc(source.title)}</strong> — ${esc(rankLabel(source))}${source.score ? `, scored ${esc(source.score)}` : ''}${sourceCompletion}</p>
+    <p class="because">${opening} — ${esc(rankLabel(source))}${source.score ? `, scored ${esc(source.score)}` : ''}${sourceCompletion}</p>
     <div class="genre-row">${genreTags}</div>
     ${directionToggle(direction)}`;
 
@@ -2499,14 +2706,14 @@ function wireResultControls() {
 
       if (action === 'direction') {
         if (el.dataset.value === state.direction) return;
-        recommendFor(state.source, el.dataset.value, { chain: true });
+        recommendFor(state.source, el.dataset.value, { chain: true, mood: state.mood });
         return;
       }
 
       if (action === 'axis') {
         if (el.dataset.value === axis) return;
         axis = el.dataset.value;
-        recommendFor(state.source, state.direction, { chain: true });
+        recommendFor(state.source, state.direction, { chain: true, mood: state.mood });
         return;
       }
 
@@ -2518,7 +2725,7 @@ function wireResultControls() {
         if (formats.has(format)) formats.delete(format);
         else formats.add(format);
         saveFormats();
-        recommendFor(state.source, state.direction, { chain: true });
+        recommendFor(state.source, state.direction, { chain: true, mood: state.mood });
         return;
       }
 
@@ -2528,7 +2735,7 @@ function wireResultControls() {
         // there is never a state with no way back.
         modernOnly = !modernOnly;
         saveModernOnly();
-        recommendFor(state.source, state.direction, { chain: true });
+        recommendFor(state.source, state.direction, { chain: true, mood: state.mood });
         return;
       }
 
@@ -2642,7 +2849,7 @@ function refreshFromAnchor() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function recommendFor(source, direction = 'up', { push = true, chain = false } = {}) {
+function recommendFor(source, direction = 'up', { push = true, chain = false, mood = null } = {}) {
   if (!source) return;
 
   if (!source.genres.length) {
@@ -2670,7 +2877,7 @@ function recommendFor(source, direction = 'up', { push = true, chain = false } =
   }
 
   const { list, flipped } = walkRankings(source, direction, chainHistory);
-  state = { source, direction, list, index: 0, flipped, axisFellBack };
+  state = { source, direction, list, index: 0, flipped, axisFellBack, mood };
   showResultView();
   renderResult();
   window.scrollTo({ top: 0 });
@@ -3092,6 +3299,55 @@ $('clear-btn').addEventListener('click', () => {
   searchInput.focus();
 });
 
+/* ------------------------------------------------------------------ *
+ * The genre picker
+ * ------------------------------------------------------------------ */
+
+/* Rendered once the catalogue is in, because which genres are broad enough to
+   offer is counted from it. Hidden until then rather than shown empty — a row
+   of nothing under the buttons reads as something failing to load. */
+function renderMoodChips() {
+  const row = $('mood-row');
+  const chips = $('mood-chips');
+  if (!row || !chips || !moodGenres.length) return;
+  chips.innerHTML = moodGenres
+    .map((g) => `<button class="mood-chip" type="button" data-genre="${esc(g)}">${esc(g)}</button>`)
+    .join('');
+  row.hidden = false;
+}
+
+/* One listener on the container rather than one per chip: the chips are
+   rewritten wholesale when the catalogue lands, and a listener per chip would
+   have to be rewired with them. */
+$('mood-chips')?.addEventListener('click', (event) => {
+  const chip = event.target.closest('.mood-chip');
+  if (chip) startFromGenre(chip.dataset.genre);
+});
+
+async function startFromGenre(genre) {
+  showLoading(`Finding somewhere to start in ${genre}…`);
+  try {
+    await loadCatalogue();
+  } catch (error) {
+    showError(catalogueTrouble(error), () => startFromGenre(genre));
+    return;
+  }
+  const anchor = pickMoodAnchor(genre);
+  if (!anchor) {
+    showError(`Nothing in the catalogue is filed under ${genre}.`);
+    return;
+  }
+  /* Down, always, and this is the whole reason the picker works.
+     Walking *up* from a well-regarded anchor runs out of its own kind almost
+     immediately — the same thing the Discord feedback ran into with top-ranked
+     titles, written up under "It doesn't work well with GOAT anime" in
+     CLAUDE.md. Measured across the genres, down beat up on every anchor rule
+     tried, by 59% to 58% at worst and 66% to 34% at best. The anchor is
+     deliberately near the top of the rankings, so there is nothing above it
+     and everything below. */
+  recommendFor(anchor, 'down', { mood: genre });
+}
+
 $('random-btn').addEventListener('click', rollTheDice);
 
 async function rollTheDice() {
@@ -3217,5 +3473,5 @@ console.info(`whatanimeshouldiwatchnext — build ${BUILD}`);
 
 // The rejection is handled inside loadCatalogue, which raises the notice; this
 // only keeps the warm-up from counting as unhandled.
-loadCatalogue().catch(() => {});
+loadCatalogue().then(renderMoodChips).catch(() => {});
 routeFromUrl();

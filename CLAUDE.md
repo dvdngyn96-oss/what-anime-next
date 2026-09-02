@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 54.** `anime.json` holds **5,017 entries**
+**Build 55.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-398 checks pass via `npm test`.
+413 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -447,6 +447,194 @@ Verified against the real catalogue with their own titles: Re:Zero → Mushoku
 Tensei → *show me another* → Evangelion → *seen it too* → **Gyakkyou Burai
 Kaiji**, where it used to return Mushoku Tensei.
 
+
+### The genre picker
+
+Build 55. **A way in for somebody with a direction but no title.** The search
+box needs a show you have already watched and "Surprise me" covers having no
+preference at all; somebody who fancies *a slow-burn mystery* and cannot name
+one had nowhere to start. Fourteen genre chips sit under the two buttons: pick
+one, and the site chooses a well-regarded entry carrying it and runs the
+ordinary walk from there.
+
+**Nothing in the matcher changes, which was the whole appeal of doing this one
+first.** `npm run walks` came out byte-identical. All the work is in choosing
+where to start.
+
+#### Genres only — themes were the plan and the data said no
+
+The plan in this file said "offer genres and signature themes". Measured over
+the best anchor available for each, counting how many of the first eight
+results actually carry the thing that was asked for:
+
+| | Delivered |
+| --- | --- |
+| The 14 genres | **111 of 112** |
+| Isekai | 2 of 8 |
+| Vampire | 2 of 8 |
+| Music | 3 of 8 |
+| Survival | 1 of 8 |
+
+**The cause is architectural rather than a tuning problem.** The walk matches on
+*genres*. A theme only reaches the results when `promoteSignatures` fires, and
+that is bounded on purpose — it can densify a sparse tier but never make one
+reach further — so it cannot be relied upon.
+
+Bocchi the Rock! is the clearest case. It is the best-regarded thing carrying
+Music, and walking from it returns **Nichijou, Kaguya-sama and Dandadan**,
+because its genres are Comedy and Slice of Life. Asking for music and being
+handed comedies is worse than not offering music at all.
+
+Psychological (8 of 8) and Space (8 of 8) do work. They are not offered anyway:
+a hand-picked pair of themes is a list that goes stale at the next rebuild, and
+the honest options are a mechanism that makes every theme work or none of them.
+See "Themes need a mechanism, not a list" below.
+
+#### A genre needs to be broad enough to walk in from
+
+`MOOD_MIN_SHARE` is 2% of the catalogue, and the threshold came from a gap in
+the data rather than from taste. The genres that deliver all carry 151 entries
+or more; the ones that fail carry 64 or fewer, and there is nothing in between:
+
+```
+... Sports 213 · Suspense 192 · Horror 156 · Award Winning 151
+    ||  Gourmet 64 · Boys Love 60 · Girls Love 48 · Avant Garde 47
+```
+
+2% is 100 entries, sitting inside that gap with 51 entries of margin below
+Award Winning and 36 above Gourmet. **A share rather than a count**, for the
+reason `SIGNATURE_THEME_SHARE` is one: rarity only means anything relative to
+the corpus, and a rebuild moves every count at once.
+
+The thin ones fail for a plain reason. Walking down from the only well-ranked
+entry carrying Girls Love, there is nothing of its kind nearby to find. Boys
+Love does reach its own kind, and does it at rank 3,576.
+
+#### Ecchi clears the bar and is still withheld
+
+`MOOD_EXCLUDED`, hand-written, and deliberately so — the same reasoning as
+`STANDS_ALONE_ANYWAY` in the builder, which is that no property of the data
+separates the case. Ecchi carries 257 entries, comfortably over the threshold,
+and is the one genre on the landing page that would change what the site looks
+like to somebody arriving for the first time.
+
+**It also fails on the numbers, which is worth recording so this is not
+mistaken for squeamishness dressed up as a rule.** Its best available anchor is
+Mushoku Tensei at #310, and **none of the first eight results carries Ecchi** —
+the walk matches on that entry's other three genres, so the row would be
+mislabelled as well as unwanted.
+
+Nothing about the catalogue changes. An ecchi entry is still recommended, still
+searchable, still reachable in any chain. It simply is not one of the doors in.
+
+#### The anchor is searched for, because the obvious rule does not work
+
+**"Start from the best-regarded thing carrying it" fails, and it fails
+often.** The walk returns entries sharing the anchor's *genres*, so an anchor
+whose other genres dominate carries you straight away from what was asked for:
+
+| Genre | Best-regarded carrier | What happens |
+| --- | --- | --- |
+| Mystery | Steel Ball Run (#5) | a JoJo action serial carrying Mystery incidentally; opens on Blue Seed at **#4845** |
+| Slice of Life | Mushishi (#87) | 3 of 8 results are slice of life |
+| Music | Bocchi the Rock! (#55) | 1 of 8 |
+| Military | FMA: Brotherhood (#2) | 2 of 8 |
+
+Taking the top carrier for all 14 genres delivers **97 of 112**. Searching
+delivers **111**.
+
+So `pickMoodAnchor` walks from each candidate and keeps whichever actually
+delivers the genre, breaking ties toward better-ranked results. That is still
+no matcher risk at all — the walk is untouched, and only the choice of where to
+start it is being made. It costs about **180ms**, the slowest genre 265ms,
+behind the loading state the dice already shows, and it is memoised per genre
+so a second pick of the same one is free.
+
+#### Down, never up
+
+Every anchor rule tried did better walking down than up — by 59% to 58% at
+worst and **66% to 34%** at best. That is the "GOAT anime" complaint from the
+Discord feedback reached from the other end: walking up from a well-regarded
+show runs out of its own kind almost immediately. The anchor is deliberately
+near the top of the rankings, so there is nothing above it and everything
+below.
+
+#### Anchors come from the top 3% of positions
+
+**Positions, not MyAnimeList ranks.** The catalogue holds 5,017 of the top
+10,000, so the two diverge quickly — Hellsing Ultimate is rank #291 and
+position 108. `positionOf` is the unit the walk measures distance in, and
+mixing the two would mean a band that quietly changes width with the scan
+depth.
+
+The width trades how well the genre carries against whether the anchor is a
+name anybody knows, and that second half matters because **the card says
+"starting from X"**. Both ends were measured:
+
+| Band | Delivered | Anchors |
+| --- | --- | --- |
+| top ~1% | 106 of 112 | Berserk, Death Note, Monster, Koe no Katachi |
+| **top 3%** | **111 of 112** | Jujutsu Kaisen, Yu Yu Hakusho, Koe no Katachi, Prism Rondo |
+
+The wider band wins: tightening buys four recognisable names and costs five
+results that carry what was asked for, and being handed comedies after asking
+for horror is the worse failure. It also leaves Horror only two candidates.
+
+**Dropping the band entirely was tried and is worse than either.** It scores a
+perfect 112 of 112 and sends Horror from Hellsing Ultimate (#291) to Dark
+Gathering (#1063) — an anchor nobody recognises, walking down into a
+neighbourhood nobody wants for "the best horror anime". One result out of 112
+is not worth that.
+
+#### A search with one candidate is not a search
+
+`MOOD_ANCHOR_MIN` (3) abandons the band for the best-ranked carriers when the
+band holds fewer than three. **Found by the test fixture rather than reasoned
+about in advance**, which is the point of building the fixture large enough to
+straddle a share: at 100 entries the 3% band is three positions wide, so the
+only carrier inside it was the deliberately bad anchor, and `pickMoodAnchor`
+returned it while looking like it had chosen.
+
+On the real catalogue this never fires — the thinnest genre in band is Horror
+with four. It is there for a future rebuild that thins one out.
+
+#### "Because you watched X" is a lie when nobody typed anything
+
+The card's opening line names the source, and the line after it explains the
+results in terms of that source's genres, so the source cannot simply be
+hidden. It now reads:
+
+> Because you picked **Mystery**, starting from **Kusuriya no Hitorigoto** —
+> ranked #33, scored 8.84, 96% finished it
+
+**The same class of mistake as the tagline in build 52**, where adding films
+falsified copy in four separate places. A new way of arriving at a card
+falsifies every sentence that assumed the old way.
+
+#### It lives on the landing view, which is the one screen with no card on it
+
+The row fills in after the catalogue loads, so it changes height — and that is
+allowed here and nowhere else, the same licence `#catalogue-notice` has, for
+the same reason: there is no card on that screen to keep still. A check asserts
+it is inside `#search-view`, because putting it in the result view would move
+the buttons under somebody's cursor.
+
+It is hidden until the catalogue is in, rather than shown empty: a row of
+nothing under the two buttons reads as something failing to load.
+
+Styled quiet on purpose. This page is a wordmark, a search box and two buttons,
+and fourteen chips can easily become the loudest thing on it — so they take the
+plain surface treatment rather than the accent, and fill in only on hover. The
+two buttons stay the primary path.
+
+**The chips wrap freely, and that is safe here in a way it would not be
+elsewhere.** The format and year chips had to be measured to the pixel because
+they share a row with a card below them; these have nothing below but the
+watched bar and the credit line. Four rows at 375px, three at desktop.
+
+Fifteen checks cover it and all six guards were broken on purpose — taking the
+top carrier prints `picked Broad But Busy`, which is the failure the search
+exists to prevent.
 
 ### The format filter
 
@@ -2357,46 +2545,64 @@ of why it was done that way.
 **One thing is queued**, below. Everything else outstanding is a decision or a
 thing only a human can do, listed at the end of this section.
 
-### 1. The mood entry point, and the leaderboards that fall out of it
+### 1. Prerendered genre pages, and the leaderboard on them
 
-**Not started.** "Surprise me" covers having no preference; nothing covers
-having a direction but no title. Somebody who fancies *a slow-burn
-psychological thriller* cannot start using this site at all.
+~~**The picker and the anchor rule.**~~ Shipped in build 55 — see "The genre
+picker" above. Fourteen genre chips on the landing page, an anchor searched for
+rather than deduced, and the ordinary walk run downward from it. `npm run
+walks` byte-identical.
 
-The plan, and the appeal is that it carries **no matcher risk**: offer the
-genres and the signature themes — both already counted at load — let somebody
-pick one, choose a well-ranked entry carrying it as the anchor, then run the
-existing walk completely unchanged.
+**What is left is the SEO half, and it is the reason the job was worth doing.**
+Each genre should also be a page — `/genre/mystery` or similar — prerendered
+the way `/anime/<id>/<slug>` already is, by `build-seo-pages.mjs` driving the
+real `app.js`. That is the long-tail play aimed at people who do not yet have a
+title in mind, which is the half of the audience the per-anime pages cannot
+reach. Fourteen pages, not 4,956, so it is cheap.
 
-**Each mood also becomes a prerendered page**, which is the long-tail SEO play
-aimed at people who do not yet have a title in mind — the half of the audience
-`/anime/<id>/<slug>` cannot reach.
+**It should show a leaderboard, and that is a global ranking done right.** A
+**global** "% would recommend" table was considered and rejected: ranking all
+5,012 entries with a figure by percent recommend and comparing that to
+MyAnimeList's own rank gives a Spearman correlation of **0.979** — the same
+list with the furniture moved. That is arithmetic rather than laziness, since
+both numbers are built from the same votes, and the page would duplicate one
+MyAnimeList already owns and will always outrank. It would also not mirror
+AniList, because AniList's scores are not stored.
 
-#### It should show a leaderboard, and that is a global ranking done right
+**The per-genre version has none of those problems.** "Highest % would
+recommend in Mystery" is not a table MyAnimeList publishes, it targets *"best
+mystery anime"* rather than *"anime rankings"* — a query this site can actually
+win — and build 55 already computes a 100-plus entry list for each genre to
+pick its anchor from. Showing it is nearly free.
 
-A **global** "% would recommend" table was considered and rejected, and the
-measurement is why. Ranking all 5,012 entries with a figure by percent
-recommend and comparing that to MyAnimeList's own rank gives a Spearman
-correlation of **0.979** — the same list with the furniture moved. That is
-arithmetic rather than laziness: both numbers are built from the same votes.
-The page would duplicate one MyAnimeList already owns and will always outrank.
+**Build 53 was the prerequisite and is done.** A leaderboard sorts by the
+number the vote spikes corrupt, so before it the first row would have been
+Mushen Ji at 99%.
 
-**It would also not mirror AniList, because AniList's scores are not stored.**
-Only MyAnimeList histograms are in `anime.json`, so calling such a page "global
-rankings" would overclaim.
+### Themes need a mechanism, not a list
 
-**And a leaderboard sorts by the corrupted number, which is what makes the
-spike rule a prerequisite rather than a nicety.** A card shows one title at a
-time, so the odds of meeting one of 15 artefacts are low; a table sorted by the
-metric floats every one of them to the top. Before build 53 the first row would
-have been Mushen Ji at 99%.
+**Not started, and not urgent.** Build 55 offers genres because themes measured
+badly — 2 of 8 for Isekai, 1 of 8 for Survival — for the structural reason
+written up under "The genre picker" above: the walk matches on genres, and
+`promoteSignatures` is bounded so a theme cannot be relied on to carry.
 
-**The per-mood version has none of those problems.** "Highest % would recommend
-in Psychological" is not a table MyAnimeList publishes, it targets *"best
-psychological anime"* rather than *"anime rankings"* — a query this site can
-actually win — and the mood page has to compute that list anyway to pick its
-anchor. Showing it is nearly free.
+Psychological and Space both deliver 8 of 8, so the failure is not universal.
+**The tempting fix is an allowlist of the themes that happen to work, and it is
+the wrong shape** — the same trap as a fixed count for signature themes. Which
+themes work is a property of the current catalogue, and a rebuild moves it,
+silently, with nothing to notice the drift.
 
+Two honest options if this is ever wanted:
+
+- **Measure it at load.** Running the anchor search for every theme costs about
+  20 walks each, which is seconds — far too slow. It could be measured at
+  *build* time and stored in `anime.json`, which is cheap to serve and
+  self-refreshing on rebuild.
+- **Filter the results rather than the anchor.** Ask the walk for its list and
+  keep the entries carrying the theme. That works for any theme, but it is a
+  matcher-adjacent change and needs its own walks baseline.
+
+The second is more useful and more dangerous. Neither is worth doing before the
+genre pages exist.
 
 
 ~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
