@@ -2376,6 +2376,34 @@ the test, or the test is agreeing with the code about the wrong thing.** The
 same shape as `og:image:width` drifting from the real PNG, which is why that
 check reads the dimensions out of the file.
 
+##### The bisect left rows behind, and they were cleaned up
+
+Worth recording because the next person to bisect against the live endpoint
+will do the same thing. Finding the cliff meant posting real votes to the real
+database — about 380 rows under voter ids prefixed `diagnostictest`. Most
+landed on ids that are not in the catalogue; a handful hit real titles and left
+them one score-8 vote high.
+
+Removed with a one-off SQL file, since the DELETE endpoint needs a voter id and
+the bisect's were random and unrecorded. **The order is the whole risk**: the
+UPDATE that decrements each bucket counts the rows it is compensating for, so
+running the DELETE first would strand the aggregates permanently high with
+nothing left to recompute from. It was proved on a local replica of
+`schema.sql` first — genuine thumbs and imports seeded on the same titles, then
+every aggregate recounted from the votes behind it — and both failure modes
+were reinstated on purpose to watch the recount fail.
+
+Verified afterwards from outside: all 48 genuine titles in the affected id
+range came back byte-identical to a snapshot taken beforehand, and every
+sampled block of non-catalogue ids returns no rating rows at all. Since the
+site only offers catalogue entries to vote on, a rating row for a
+non-catalogue id could only have been one of these — so their absence is the
+proof. Both files were deleted once it had run.
+
+**Prefer a voter id you write down.** Every row here was recoverable only
+because the ids shared a literal prefix; random ones would have needed a
+timestamp window and a much less certain query.
+
 ##### It was invisible from every angle short of a real import
 
 A thumb binds two parameters. Every by-hand test binds a handful. The prior
