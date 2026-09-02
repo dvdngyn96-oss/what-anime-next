@@ -891,6 +891,79 @@ byte-identical. Ame to Kimi to's demoted set reads correctly too: Aikatsu!
 (178), PriPara (140), Aikatsu Stars! (100) — and Rilakkuma to Kaoru-san at 13
 episodes, which is the *Kids* rule firing, equally dead until now.
 
+### The film demotion was built three ways and none of them shipped
+
+Asked for directly, built, measured against a fresh baseline, and **reverted** —
+which is the fourth entry in this file's list of obvious fixes that cost more
+than they earn. Kept in full because it is the obvious thing to try and it will
+be suggested again.
+
+**The complaint is real.** GATE: Jieitai is twelve episodes of isekai and
+military, and since build 52 it has opened on **Berserk: Ougon Jidai-hen I, a
+film sharing Military and not Isekai** — while Drifters, the one entry carrying
+both of its signature themes, sat third behind it. Films are 12% of the
+catalogue and **16% of served results**, so they are genuinely
+over-represented.
+
+Three mechanisms were tried, all of them "a film is demoted against a series
+source, never film against film":
+
+| | Anchors unchanged | Films in results | Anchors led by a film | GATE opens on |
+| --- | --- | --- | --- | --- |
+| **baseline** | 19/19 | 16% | 2 | Berserk (film) |
+| One tier down | 4/19 | 3% | 0 | Tsuki ga Michibiku |
+| Sunk within its tier | 5/19 | 5% | 0 | Tsuki ga Michibiku |
+| `affinity - 1` | **10/19** | **10%** | 0 | Tsuki ga Michibiku |
+
+**Every one of them fixes GATE. Every one of them breaks Haikyuu.**
+
+| | Now | Tier drop | Within tier | affinity −1 |
+| --- | --- | --- | --- | --- |
+| Haikyuu → The First Slam Dunk | #2 | #4, backtrack | #4, backtrack | #4, backtrack |
+| Toradora → Toki wo Kakeru Shoujo | #3 | gone | gone | gone |
+| Toradora → Howl no Ugoku Shiro | #6 | gone | gone | gone |
+| Chihayafuru → Kimi no Suizou wo Tabetai | #5 | gone | gone | gone |
+| Steins;Gate → Evangelion 1.0 | #8 | gone | gone | #8 |
+| Cowboy Bebop → Memories | #6 | gone | gone | gone |
+
+**Two anchors fixed, six good recommendations destroyed.** Toradora reaching
+*The Girl Who Leapt Through Time* is arguably a better answer than anything in
+the series-only list, and this file already recorded Haikyuu opening on The
+First Slam Dunk as an improvement worth keeping. All three variants demote it
+*and* relabel it a backtrack, which reads as the matcher going the wrong way
+rather than as a considered ranking.
+
+**The two absolute mechanisms over-correct into absurdity**, taking films from
+over-represented at 16% to badly under-represented at 3-5% against a 12%
+catalogue share. That is not calibration, it is removal. They behave almost
+identically because sinking to the back of a bucket and dropping out of it come
+to the same thing when the bucket is large.
+
+**`affinity - 1` is the only one that calibrates** — 10% against a 12% share is
+close to right, and it leaves ten anchors untouched instead of four. It is the
+variant to reach for if this is ever wanted. It still costs three good films
+and still degrades Haikyuu.
+
+#### Why none of them can work as stated
+
+The rule "a film is worse than a series" is false, and the data says so. The
+difference between the good and bad cases is **relative, not absolute**:
+
+- GATE's Berserk film is wrong because **a series exists that matches better** —
+  Drifters shares both signature themes and is sitting right there.
+- Haikyuu's The First Slam Dunk is right because **nothing beats it**. It is a
+  sports film against a sports series and no series in reach is closer in kind.
+
+So the honest rule is *"prefer a series when an equally good series is
+available"*, which is a comparison against the rest of the tier rather than a
+property of the candidate. That is implementable and it is a much larger
+change than any of the three above — it makes a candidate's tier depend on its
+neighbours, which is the shape of thing that broke the affinity work twice.
+
+**Not attempted, and not recommended without a reason better than one anchor.**
+Two of nineteen anchors open on a film and one of those two is defensible.
+Somebody complaining is the signal to spend a day on this; GATE alone is not.
+
 ### Kids is demoted
 
 `Kids` is the one demographic marking a different *audience* rather than a
@@ -2773,13 +2846,66 @@ but never corrupts the existing catalogue.
 below with what shipped, because the reasoning behind each is still the record
 of why it was done that way.
 
-**Nothing is queued.** Everything outstanding is a decision or a thing only a
-human can do, listed at the end of this section.
+**One thing is queued**, below. Everything else outstanding is a decision or a
+thing only a human can do, listed at the end of this section.
 
-~~**1. The mood entry point.**~~ Shipped across builds 55 and 57. The picker
-and the anchor rule are under "The genre picker"; the prerendered pages and
-why the leaderboard sort turned out not to be the differentiator are under
-"The genre pages". Both left `npm run walks` byte-identical.
+### 1. The genre pages need a way in from the site itself
+
+**Not started, and it is the gap build 57 left.** `/genre/mystery/` exists, is
+in the sitemap, and is linked from 4,924 anime pages — so a *crawler* finds it
+easily. **A person on the site cannot.** The landing-page chips start a walk
+rather than opening the page, and the result view has no route to the genres at
+all. Somebody has to already know the URL, which nobody does.
+
+Three pieces, in the order they are worth doing:
+
+**A button, probably top right.** The result view's header holds the wordmark
+and the mini search box and nothing else, so there is room. This is the piece
+that matters: it turns fourteen orphan pages into part of the site.
+
+The landing page needs deciding separately, because it already has the chips.
+The options are to leave them starting a walk and add a small "browse genres"
+link beside them, or to make the chips themselves link to the pages and lose
+the one-click walk. **Prefer the first** — the chip is the faster path for
+somebody who just wants a recommendation, and that is still the main job.
+
+**Poster cards on the genre pages.** They are text lists today. Every entry has
+`im` in the catalogue, so a thumbnail per row is free of new data — the cost is
+page weight and the crawl budget of fourteen pages that currently weigh 20 KB
+each. Lazy-load, fixed dimensions on every image, and remember that the pages
+must stay fast: they exist to be crawled and to load on a phone from a search
+result.
+
+**A "top ten this week" style panel.** Anime Corner publishes a weekly ranked
+graphic — numbered rows, poster art, a percentage per row — and it is a good
+shape to borrow because it is exactly what the genre pages already compute.
+Worth being clear about what could actually fill it:
+
+- **Not "this week".** The catalogue is rebuilt once a season, so nothing here
+  changes weekly and a panel claiming it did would be a lie the first time
+  somebody checked twice.
+- **What is honest** is "the ten best in a genre you can start cold", which is
+  the top of a genre page, or a rotating pick across genres on the landing
+  page. Same data, no false freshness.
+- On the result view a right-hand panel is the obvious placement on desktop and
+  has nowhere to go on mobile, which is where most of the traffic is. **The
+  card must not move to accommodate it** — that rule has been broken once too
+  often already, and the toggle row is documented twice as the binding
+  constraint on anything new.
+
+**Do the button first and on its own.** It is small, it is the piece with the
+actual effect, and the other two are visual work that can be judged once people
+are reaching the pages at all.
+
+~~**The mood entry point.**~~ Shipped across builds 55 and 57. The picker and
+the anchor rule are under "The genre picker"; the prerendered pages and why the
+leaderboard sort turned out not to be the differentiator are under "The genre
+pages". Both left `npm run walks` byte-identical.
+
+~~**The film demotion for GATE.**~~ Built three ways in build 58 and reverted —
+see "The film demotion was built three ways and none of them shipped" above.
+Every variant fixes GATE and breaks Haikyuu. `affinity - 1` is the one to reach
+for if it is ever wanted.
 
 ### Themes need a mechanism, not a list
 
