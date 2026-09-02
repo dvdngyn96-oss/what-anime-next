@@ -34,9 +34,43 @@ export const VOTE_FLOOR = 30;
  *  whole catalogue in one call. */
 export const MAX_IDS = 40;
 
-/** Most votes one import request may carry, so a bulk upload cannot blow the
- *  10ms CPU budget. The client chunks; this is the backstop. */
-export const MAX_BATCH = 100;
+/**
+ * D1 accepts at most this many bound parameters in one query.
+ *
+ * Build 56. Not a tidiness limit and not the CPU budget — exceeding it throws,
+ * and the throw surfaces as a 503 that says nothing about the cause.
+ */
+export const D1_MAX_PARAMS = 100;
+
+/**
+ * Most votes one import request may carry.
+ *
+ * **`D1_MAX_PARAMS - 1`, and the missing one is the whole bug of build 56.**
+ * Before recording anything, POST /api/vote looks up what this voter has
+ * already said:
+ *
+ *     SELECT anime, score, liked FROM votes WHERE voter = ? AND anime IN (?, ?, ...)
+ *
+ * That binds **one parameter per vote plus one for the voter**. At the old
+ * value of 100 the lookup asked for 101, D1 rejected it, and the endpoint
+ * answered 503 "Could not record that just now."
+ *
+ * **Every list import failed on its first chunk**, because the client chunked
+ * at exactly 100 to match this number — so the two constants agreed with each
+ * other and were both wrong. The client stops rather than hammering a failing
+ * endpoint, so nothing after chunk one was attempted either: no imported list
+ * ever contributed a rating, for the eighteen builds between stage three
+ * shipping and this being found.
+ *
+ * It hid because it is invisible at every size anyone tests by hand. A thumb
+ * binds two parameters. The suite drives real SQLite, which allows far more.
+ * Only a full chunk from a real import crosses the line, and it crosses it by
+ * one.
+ *
+ * The CPU budget is a real constraint too and 99 is comfortably inside it —
+ * this is now the tighter of the two limits, not a replacement for it.
+ */
+export const MAX_BATCH = D1_MAX_PARAMS - 1;
 
 export const json = (body, status = 200, headers = {}) => new Response(
   JSON.stringify(body),

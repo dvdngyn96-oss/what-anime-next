@@ -2487,6 +2487,84 @@ console.log('\n--- vote backend ---');
     /Disallow: \/api\//.test(robots) && /Disallow: \/schema\.sql/.test(robots));
 }
 
+/* ---------- the vote endpoint against D1's real limits ---------- */
+
+console.log('\n--- a full import chunk fits inside D1 ---');
+{
+  /* Build 56. Every list import failed on its first chunk for eighteen builds,
+     and nothing here noticed, because the block below reimplements the SQL
+     rather than calling the endpoint -- and because it runs on Node's SQLite,
+     which allows thousands of bound parameters where D1 allows a hundred.
+
+     So this calls the real handler, through a stub that enforces the one limit
+     that actually broke. Reimplementing the statements a second time would
+     have reproduced the bug in the test as faithfully as in the code. */
+  const { onRequest } = await import('../functions/api/vote.js');
+  const { MAX_BATCH, D1_MAX_PARAMS } = await import('../functions/api/_shared.js');
+  const appSource = readFileSync(`${ROOT}/app.js`, 'utf8');
+
+  let widest = 0;
+  const stub = () => ({
+    prepare(sql) {
+      const stmt = {
+        bind(...params) {
+          /* The thing D1 does and Node's SQLite does not: refuse the query
+             outright. It throws rather than truncating, and the endpoint turns
+             the throw into a 503 that names no cause -- which is why this was
+             invisible from outside. */
+          if (params.length > D1_MAX_PARAMS) {
+            throw new Error(`too many SQL variables: ${params.length} > ${D1_MAX_PARAMS}`);
+          }
+          widest = Math.max(widest, params.length);
+          return stmt;
+        },
+        all: async () => ({ results: [] }),
+        run: async () => ({}),
+      };
+      return stmt;
+    },
+    batch: async () => [],
+  });
+
+  const post = (votes) => onRequest({
+    request: new Request('https://example.com/api/vote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ voter: 'aaaaaaaaaaaaaaaa', votes }),
+    }),
+    env: { VOTES: stub() },
+  });
+
+  const full = Array.from({ length: MAX_BATCH }, (_, k) => ({ anime: 1000 + k, score: 8 }));
+  const res = await post(full);
+  check('a full-size import chunk is accepted rather than rejected by D1',
+    res.status === 200, `the endpoint answered ${res.status}`);
+
+  /* The arithmetic that was wrong, stated so the failure names itself: the
+     lookup binds one parameter per vote AND one for the voter. */
+  check('the widest query a full chunk issues is one parameter per vote plus the voter',
+    widest === MAX_BATCH + 1, `widest was ${widest} for a batch of ${MAX_BATCH}`);
+  check('and that is inside what D1 allows',
+    MAX_BATCH + 1 <= D1_MAX_PARAMS,
+    `${MAX_BATCH} + 1 = ${MAX_BATCH + 1}, over the limit of ${D1_MAX_PARAMS}`);
+
+  /* One over is still refused, so the backstop has not been widened into
+     nothing while fixing the off-by-one. */
+  const over = Array.from({ length: MAX_BATCH + 1 }, (_, k) => ({ anime: 2000 + k, score: 8 }));
+  check('one vote over the cap is still turned away by the endpoint',
+    (await post(over)).status === 400, 'an oversized batch was accepted');
+
+  /* The client half. These two constants agreed with each other and were both
+     wrong, which is exactly why agreement alone is not the check that matters
+     -- the one above is. This only stops them drifting apart. */
+  check('app.js chunks uploads at the size the server accepts',
+    new RegExp(`const SHARE_CHUNK = ${MAX_BATCH};`).test(appSource),
+    `app.js SHARE_CHUNK does not match MAX_BATCH (${MAX_BATCH})`);
+  check('and it is the chunk size the upload loop actually uses',
+    /at \+= SHARE_CHUNK/.test(appSource) && /slice\(at, at \+ SHARE_CHUNK\)/.test(appSource),
+    'the upload loop does not use SHARE_CHUNK');
+}
+
 /* ---------- the vote SQL, run for real ---------- */
 
 console.log('\n--- vote SQL ---');

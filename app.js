@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 55;
+const BUILD = 56;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -246,6 +246,22 @@ const VOTE_FLOOR = 30;
  * recommend the show is what the words actually mean.
  */
 const RECOMMEND_AT = 7;    // 7-10 is a recommendation, 1-6 is not
+
+/**
+ * How many scores one upload request carries.
+ *
+ * **Mirrors `MAX_BATCH` in `functions/api/_shared.js`, which is 99 and not 100
+ * for a reason worth reading before changing this.** The server looks up what
+ * the voter has already said with one bound parameter per vote *plus one for
+ * the voter*, and D1 rejects a query with more than 100. At 100 the lookup
+ * asked for 101 and the endpoint answered 503.
+ *
+ * Both constants were 100 and agreed with each other, so nothing looked wrong
+ * from either side, and **every list import failed on its first chunk** —
+ * silently, from the reader's point of view, since the page said only that it
+ * could not share them just now. Build 56.
+ */
+const SHARE_CHUNK = 99;
 
 /**
  * A mass rating on one score is not a distribution, and the mean cannot see it.
@@ -3069,10 +3085,10 @@ function offerToShare(scored) {
  * Upload scores in chunks, reporting as it goes.
  *
  * Chunked because the free Workers tier allows 10ms of CPU per request and a
- * few hundred inserts would exceed it — the server caps a batch at 100 and
- * this is the client half of that same limit. A whole list can take a few
- * seconds, and a button that sits there looking broken is worse than a slow
- * one that says what it is doing.
+ * few hundred inserts would exceed it. `SHARE_CHUNK` is the client half of the
+ * server's `MAX_BATCH`, and the two must agree — a check asserts it. A whole
+ * list can take a few seconds, and a button that sits there looking broken is
+ * worse than a slow one that says what it is doing.
  */
 async function shareScores(scored, host) {
   const total = scored.length;
@@ -3080,8 +3096,8 @@ async function shareScores(scored, host) {
   host.innerHTML = '<p class="share-lead" id="share-progress">Sharing…</p>';
   const progress = document.getElementById('share-progress');
 
-  for (let at = 0; at < scored.length; at += 100) {
-    const chunk = scored.slice(at, at + 100);
+  for (let at = 0; at < scored.length; at += SHARE_CHUNK) {
+    const chunk = scored.slice(at, at + SHARE_CHUNK);
     try {
       const res = await fetch('/api/vote', {
         method: 'POST',

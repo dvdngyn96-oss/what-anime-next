@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 55.** `anime.json` holds **5,017 entries**
+**Build 56.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-413 checks pass via `npm test`.
+419 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -2289,12 +2289,113 @@ Thumbs and imported scores **pool** into one figure, because far more titles
 clear the 30-vote floor that way and that is the entire point of importing.
 They stay separate in the row, so splitting them later needs no new data.
 
+#### No imported list had ever been recorded, and the cause was an off-by-one
+
+Build 56, and the most expensive bug in this project so far measured in what it
+cost rather than in how hard it was to fix.
+
+**Reported by the owner from the live site**, with a screenshot: a 1,085-title
+MyAnimeList import marked everything as watched and then said
+
+> Could not share those just now. Your list is still saved on this device.
+
+**Every list import had failed on its first chunk since stage three shipped**,
+which is eighteen builds. Nothing had ever reached the ratings table by that
+route — and seeding those ratings is the entire reason the import exists, since
+30 votes across 4,427 titles is over 130,000 ratings that nobody is going to
+click.
+
+##### D1 allows 100 bound parameters, and the lookup asked for 101
+
+Before recording anything, `POST /api/vote` reads back what this voter has
+already said, so it can move the aggregate out of an old bucket as well as into
+a new one:
+
+```sql
+SELECT anime, score, liked FROM votes WHERE voter = ? AND anime IN (?, ?, ...)
+```
+
+That binds **one parameter per vote, plus one for the voter.** `MAX_BATCH` was
+100, the client chunked at 100 to match, so a full chunk asked for 101. D1
+refuses the query outright, the endpoint's `catch` turned that into a 503, and
+the client stopped rather than hammering an endpoint that was not answering.
+
+Bisected against the live endpoint, all rows new, fresh voter each time:
+
+| Votes in one request | |
+| --- | --- |
+| 90 | 200 |
+| 98 | 200 |
+| **99** | **200** |
+| **100** | **503** |
+
+A cliff that sharp is not a CPU-time limit — those fail raggedly. It is a hard
+cap, and one greater than the batch size names the extra parameter exactly.
+
+**Confirmed rather than inferred**, because two `catch` blocks in that handler
+return the same message and the response cannot say which fired. Sending 100
+votes that were *all unchanged* — so the write batch is empty and never runs —
+still returned 503. The failure is in the lookup, before any write.
+
+##### The two constants agreed with each other and were both wrong
+
+This is the part worth keeping. `MAX_BATCH` in `functions/api/_shared.js` and
+the client's chunk size in `app.js` were both 100, deliberately, and this file
+described them as two halves of one limit. **They were consistent, and
+consistency was not the property that mattered** — the limit they were both
+measured against was the CPU budget, and nobody had checked them against D1's
+parameter cap, which is tighter.
+
+So `MAX_BATCH` is now `D1_MAX_PARAMS - 1`, written as arithmetic rather than as
+99, because the `- 1` is the bug and a bare 99 hides it. `SHARE_CHUNK` in
+`app.js` mirrors it and a check asserts they agree — but that agreement check is
+explicitly *not* the guard that matters here, since the old pair passed it.
+
+##### Why nothing caught it
+
+`npm test` runs the real `schema.sql` and the real statements against Node's
+built-in SQLite, which was a deliberate and good decision — it catches the
+aggregate bugs that matter. **It could not catch this, for two reasons, and
+both are worth knowing before writing the next endpoint test.**
+
+- **Node's SQLite allows thousands of bound parameters.** D1's cap of 100 is a
+  platform limit, not a SQLite one, so a test on real SQLite models everything
+  about the query except the thing that broke.
+- **The suite reimplemented the endpoint's statements rather than calling the
+  endpoint.** So the one query with the extra `voter` parameter — the only
+  query in the codebase whose parameter count exceeds its batch size — was
+  never executed by a test at all.
+
+The block now imports `onRequest` and calls it against a stub whose `bind`
+throws above `D1_MAX_PARAMS`, exactly as D1 does. Six checks, and reinstating
+the original constants makes the first one print **"the endpoint answered
+503"** — the same status the live site returned.
+
+**Generalising: a limit that only the platform enforces has to be modelled in
+the test, or the test is agreeing with the code about the wrong thing.** The
+same shape as `og:image:width` drifting from the real PNG, which is why that
+check reads the dimensions out of the file.
+
+##### It was invisible from every angle short of a real import
+
+A thumb binds two parameters. Every by-hand test binds a handful. The prior
+session's own live check of this endpoint sent one vote and got a 200. Only a
+full chunk from a genuine import crosses the line, and it crosses it by one —
+so the feature looked healthy in every test anybody ran, including on the
+deployed site.
+
 ### What the free tier actually constrains
 
 100,000 requests a day, and **10ms of CPU per request**. A single indexed query
 is nowhere near it; inserting several hundred rows from an import in one go
-could be. Hence `MAX_BATCH` (100) and `MAX_IDS` (40) — those caps are about the
-CPU budget, not tidiness, and the client has to chunk a large import.
+could be. Hence `MAX_BATCH` and `MAX_IDS` (40) — those caps are about the CPU
+budget, not tidiness, and the client has to chunk a large import.
+
+**`MAX_BATCH` is bounded by something tighter than CPU, though, and reading it
+as a CPU limit is what shipped build 56's bug.** D1 refuses a query with more
+than 100 bound parameters, and the vote lookup binds one per vote plus one for
+the voter — so it is `D1_MAX_PARAMS - 1`, not a round number chosen for the
+budget. See "No imported list had ever been recorded" above.
 
 ### `_routes.json` keeps the rest of the site static
 
