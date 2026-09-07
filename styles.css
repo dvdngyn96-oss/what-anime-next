@@ -853,6 +853,21 @@ a { color: inherit; }
    * The plain value first, for anything without color-mix. */
   background: var(--row-tint, var(--surface-2));
   background: color-mix(in srgb, var(--row-tint, var(--surface-2)) 38%, #101114);
+  /* A one-pixel ring of the page's own colour, drawn inside the row's curve.
+   *
+   * This is the belt-and-braces half, and it is here because the artifact was
+   * never reproducible: not at 1.0 device pixel ratio, not at 2.0, not with a
+   * magenta backdrop, not with a 26px radius, and not with pure white
+   * artwork. It is reported on Chrome under Windows display scaling, which
+   * puts the browser on a fractional device pixel ratio that this pane cannot
+   * emulate — so instead of chasing the compositing path that draws the edge,
+   * this paints over exactly where the edge is.
+   *
+   * It tracks --bg, so it is invisible in both themes: the ring is the same
+   * colour as the page behind it, which simply reads as the row being a pixel
+   * smaller. Anything bright leaking from the artwork's clipped edge is
+   * covered by it. */
+  box-shadow: inset 0 0 0 1px var(--bg);
 }
 
 /* `content-visibility: auto` was tried here and removed, which is worth
@@ -904,8 +919,24 @@ a { color: inherit; }
 .genre-list-art li::after {
   content: "";
   position: absolute;
-  inset: 0;
-  /* Same curve as the row and the artwork — see .genre-art above. */
+  /* Overhanging the artwork by 2px, and this is what actually removes the pale
+   * outline round the corners.
+   *
+   * Matching the radii was not enough — it made things worse in a way that is
+   * easy to miss. When the scrim and the image are clipped to the *same*
+   * curve, their antialiased edges land on exactly the same pixels, and a
+   * half-transparent scrim edge cannot cover a half-opaque image edge. The
+   * artwork leaks through, which is why the rows that showed it worst were the
+   * ones with bright art — The First Slam Dunk, Ping Pong, Cross Game — and
+   * not the ones with a bright tint, which is where the first fix aimed.
+   *
+   * Pulling the scrim 2px outwards puts its own edge past the image entirely.
+   * The row's `overflow: hidden` then clips the scrim to the corner, and that
+   * clipped edge blends scrim-dark against page-dark, which shows nothing.
+   * 2px rather than 1 because Windows display scaling puts Chrome on a
+   * fractional device pixel ratio, where a single CSS pixel is not a whole
+   * device one. */
+  inset: -2px;
   border-radius: inherit;
   /* The falloff is set by where the *text* ends, not by taste. A row is about
    * 750px on desktop and the meta line runs to roughly 70% of it; at the first

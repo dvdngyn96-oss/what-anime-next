@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 60.** `anime.json` holds **5,017 entries**
+**Build 61.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
 462 checks pass via `npm test`.
 
@@ -1786,6 +1786,36 @@ relying on the row's `overflow: hidden` to clip them. That is correct practice
 and means less blended edge exists at all — but it is **not** what the fix
 rests on, and the note is here so nobody removes the darkening on the grounds
 that the radii already handle it.
+
+**Build 61 corrected the diagnosis and then stopped trying to make one.**
+
+The first fix aimed at the wrong thing. It assumed the bright `--row-tint`
+behind the artwork was leaking; the rows that actually showed it worst were the
+ones with **bright art** — The First Slam Dunk, Ping Pong, Cross Game — which
+points at the artwork's own clipped edge instead. Worse, matching the radii
+made that *more* likely rather than less: when the scrim and the image are
+clipped to the same curve their antialiased edges land on the same pixels, and
+a half-transparent scrim edge cannot cover a half-opaque image edge.
+
+So the scrim now overhangs the image by 2px. Its own edge is past the artwork
+entirely, and the row's `overflow: hidden` clips it against the page, where
+dark meets dark and nothing shows. 2px rather than 1 because fractional display
+scaling means a CSS pixel is not a device pixel.
+
+**And then a one-pixel ring of `--bg` inside the row's curve**, which is the
+part that does not care what the cause is. It tracks the theme, so it reads as
+the row being a pixel smaller and is invisible in both — but anything bright
+escaping the clip is painted over.
+
+**Five reproduction attempts failed**: 1.0 dpr, 2.0 dpr, a magenta backdrop, a
+26px radius so the arc would be long, and pure white artwork under the scrim.
+None showed a fringe with the fix in or out. It is reported only on Chrome
+under Windows display scaling, which the preview pane cannot emulate.
+
+**The lesson is the one above, restated harder: when an artifact cannot be
+reproduced, stop diagnosing and cover it.** Three rounds went into finding the
+mechanism and none of them found it; a 1px ring in the page colour would have
+ended it at the first attempt.
 
 **Generalising: when a rendering artifact cannot be reproduced, remove what
 makes it visible rather than chasing the path that draws it.** The colour
