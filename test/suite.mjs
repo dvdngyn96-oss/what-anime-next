@@ -2080,6 +2080,56 @@ console.log('\n--- the way into the genre pages ---');
       'routeFromUrl does not match the bare /genre/ path');
   }
 
+  /* Banner rows, build 59: the artwork is the row, with the title over it. */
+  {
+    const page = readFileSync(`${ROOT}/genre/mystery/index.html`, 'utf8');
+    const idx = readFileSync(`${ROOT}/genre/index.html`, 'utf8');
+    const rows = [...page.matchAll(/<li style="--row-tint:[^"]*">[\s\S]*?<\/li>/g)].map((m) => m[0]);
+    const art = [...page.matchAll(/<img class="genre-art"[^>]*>/g)].map((m) => m[0]);
+
+    check('every row on a genre page carries artwork',
+      rows.length === 25 && art.length >= 22, `${rows.length} rows, ${art.length} banners`);
+
+    /* AniList's wide banner, not the portrait poster: the point of the layout
+       is art filling the row rather than sitting in a column beside it. */
+    check('and it is the wide banner rather than the poster',
+      art.every((t) => /src="https:\/\/s4\.anilist\.co\/file\/anilistcdn\/media\/anime\/banner\//.test(t)),
+      art.find((t) => !t.includes('anilistcdn'))?.slice(0, 80) || 'ok');
+
+    /* A banner averages 184 KB and AniList serves no smaller variant, so the
+       whole page is 4.5 MB if every row is fetched. Lazy is not a nicety. */
+    check('every banner is lazy-loaded, because each one is about 184 KB',
+      art.every((t) => /loading="lazy"/.test(t)),
+      `${art.filter((t) => !/loading="lazy"/.test(t)).length} not lazy`);
+
+    const artLi = /\.genre-list-art li\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+
+    /* Every row declares a colour, so it is never a grey hole while a 184 KB
+       banner is in flight -- and it is the whole background for the six rows
+       across the fourteen pages that have no banner at all. */
+    check('every row carries its own key-art colour behind the image',
+      rows.every((r) => /^<li style="--row-tint:#[0-9a-f]{6}"/.test(r)),
+      rows.find((r) => !/^<li style="--row-tint:#[0-9a-f]{6}"/.test(r))?.slice(0, 60) || 'ok');
+
+    /* The row has its own height, so it cannot grow when the banner lands and
+       push everything below it down mid-read. */
+    check('a row has a height of its own, so nothing reflows as art arrives',
+      /min-height:\s*96px/.test(artLi), artLi.replace(/\s+/g, ' ').trim().slice(0, 80));
+
+    /* Text sits on artwork nobody chose for legibility, so the scrim is the
+       only thing guaranteeing contrast. It is dark in both themes because the
+       text over it is always white. */
+    check('a scrim sits between the artwork and the text',
+      /\.genre-list-art li::after\s*\{[^}]*linear-gradient/.test(cssText)
+        && /\.genre-list-art a\s*\{\s*color:\s*#fff/.test(cssText),
+      'no scrim, or the text is not white over it');
+
+    /* The index over the fourteen uses the same list class without artwork. */
+    check('the genre index is left alone, with no artwork layout',
+      !idx.includes('genre-art') && !idx.includes('genre-list-art'),
+      'the index picked up the artwork layout');
+  }
+
   /* The landing page's other door. The chips still start a walk -- this opens
      the list instead -- so it is a link rather than a fifteenth chip. */
   check('the home page links to the index, beside the chips that start a walk',

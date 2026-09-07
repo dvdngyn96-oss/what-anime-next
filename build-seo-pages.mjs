@@ -231,6 +231,29 @@ const GENRE_SHOWN = 25;
 
 const genrePathFor = (genre) => `/genre/${slugify(genre)}/`;
 
+/* A thumbnail off MyAnimeList's own resizing endpoint rather than the full
+   poster.
+ *
+ * These pages exist to load fast on a phone from a search result, and 25 full
+ * posters is 1.4 MB of it. Measured on one title:
+ *
+ *   full            56,653 bytes
+ *   /r/192x272/     14,975
+ *   /r/100x140/      5,633
+ *   /r/50x70/        2,134
+ *
+ * So the list costs about 141 KB of images at 2x instead of 1.4 MB. Served
+ * with a srcset and `sizes="48px"`, which lets a 1x or 2x screen take the
+ * 100-wide file and only a 3x screen pay for the 192.
+ *
+ * `im` is on all 5,017 entries -- it is the *banner* that is missing on two
+ * in five, not the poster -- so there is no missing-image case to design for
+ * here. */
+const POSTER_W = 48;
+const POSTER_H = 67;
+const thumbAt = (image, size) =>
+  image.replace('https://cdn.myanimelist.net/images/', `https://cdn.myanimelist.net/r/${size}/images/`);
+
 /* The article a crawler reads and a visitor keeps.
  *
  * Unlike the anime pages, this block is NOT replaced when app.js boots — see
@@ -255,12 +278,43 @@ function genrePageFor(genre, entries, anchor) {
        same list while implying it was something else. */
     const v = w.__seo.verdict(e);
     const pct = v ? `<span class="genre-pct">${v.pct}% would recommend</span>` : '';
-    return `        <li>
-          <span class="genre-pos">${i + 1}</span>
-          <a href="${esc(pathFor(e))}"><strong>${esc(e.title)}</strong></a>
-          ${e.titleEnglish && e.titleEnglish !== e.title ? `<span class="genre-alt">${esc(e.titleEnglish)}</span>` : ''}
-          <span class="seo-meta">${bits}${e.rank ? ` · #${e.rank} on MyAnimeList` : ''}</span>
-          ${pct}
+    /* width and height on the element itself, not only in CSS: without them
+       the row has no height until the image arrives and the whole list
+       reflows as they land -- the same jitter the card is built to avoid, on
+       a page somebody is already reading. alt is empty because the title is
+       the link right beside it, so describing the poster would just make a
+       screen reader say everything twice. */
+    /* The artwork is the row, with the title over it.
+     *
+     * `bn` is AniList's wide banner, and it is on 344 of the 350 rows these
+     * fourteen pages actually print -- 98%, because every row here is well
+     * ranked. The 61% coverage figure for the whole catalogue is the wrong
+     * number to design against; it is the long tail that lacks banners, and
+     * the long tail does not appear on these pages.
+     *
+     * The six without one fall back to a flat wash of `cl`, the show's own
+     * key-art colour, exactly as the card does. That colour also sits under
+     * every banner, so a row is the right colour before its image arrives
+     * rather than a grey hole.
+     *
+     * loading="lazy" is load-bearing: a banner averages 184 KB and AniList
+     * serves no smaller variant, so only the rows somebody actually scrolls
+     * to are ever fetched. */
+    const tint = e.colour || '#3a3d42';
+    const art = e.banner
+      ? `<img class="genre-art" src="${esc(e.banner)}" loading="lazy" decoding="async" alt="">`
+      : '';
+    return `        <li style="--row-tint:${esc(tint)}">
+          ${art}
+          <span class="genre-row-body">
+            <span class="genre-pos">${i + 1}</span>
+            <span class="genre-row-text">
+              <a href="${esc(pathFor(e))}"><strong>${esc(e.title)}</strong></a>
+              ${e.titleEnglish && e.titleEnglish !== e.title ? `<span class="genre-alt">${esc(e.titleEnglish)}</span>` : ''}
+              <span class="seo-meta">${bits}${e.rank ? ` · #${e.rank} on MyAnimeList` : ''}</span>
+              ${pct}
+            </span>
+          </span>
         </li>`;
   }).join('\n');
 
@@ -278,7 +332,7 @@ function genrePageFor(genre, entries, anchor) {
       <p class="seo-lede">${esc(desc)}</p>
 ${cta}
       <h2>The list</h2>
-      <ol class="seo-list genre-list">
+      <ol class="seo-list genre-list genre-list-art">
 ${rows}
       </ol>
       <p class="seo-note"><strong>Why this is not MyAnimeList's ${esc(lower)} ranking.</strong>

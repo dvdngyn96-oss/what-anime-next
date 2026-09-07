@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 58.** `anime.json` holds **5,017 entries**
+**Build 59.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-453 checks pass via `npm test`.
+460 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1663,6 +1663,128 @@ the row busier, and that row was deliberately styled quiet so it would not
 become the loudest thing on a page that is a wordmark, a search box and two
 buttons.
 
+### The genre pages are artwork now
+
+Build 59, and it is the second of the two visual pieces the genre-page job was
+waiting on. The rows were text lists; each one is now the show's own banner art
+with the title over it, a large rank number down the left, and the meta and
+percentage under the title.
+
+**The layout is the Anime Corner one and only the layout.** No weekly framing —
+the catalogue rebuilds once a season, nothing here changes weekly — and no vote
+share or movement badges down the right. That reference was misread once before
+and the correction is above.
+
+#### The banner coverage warning did not apply
+
+This file said, twice, that `bn` is on only 3,047 of 5,017 entries and that two
+rows in five would need the colour fallback. **That is the whole catalogue and
+it is the wrong number for this page.** These fourteen pages print the top 25
+of each genre, and every one of those rows is well ranked:
+
+| | Banner |
+| --- | --- |
+| Whole catalogue | 3,047 of 5,017 — 61% |
+| **The 350 rows these pages actually print** | **344 — 98%** |
+
+Ten of the fourteen genres are at 100%, and the worst is Fantasy at 88%. Six
+rows in total lack a banner and every one of them has a key-art colour.
+
+Worth generalising: **a coverage figure for the catalogue is not a coverage
+figure for a page.** The thin data is in the long tail, and a page built from
+the top of the rankings never meets it. Measure the rows you are going to
+print.
+
+#### The colour is the placeholder as well as the fallback
+
+`cl` goes on every row as `--row-tint`, not just the six without art. A banner
+averages 184 KB, so there is a real window where the image has not arrived —
+and a row that is the show's own colour while it waits reads as intentional
+where a grey box reads as broken. The six with no banner simply keep it.
+
+#### It costs 4.5 MB and that was a decision, not an oversight
+
+**AniList serves banners at one size.** There is no resizing endpoint, unlike
+MyAnimeList's `/r/<w>x<h>/`, which the poster version of this page used to turn
+a 57 KB poster into a 5.6 KB thumbnail.
+
+| | Images per page |
+| --- | --- |
+| Poster thumbnails, `/r/100x140/` | 127 KB |
+| **Banner rows** | **~2.8 MB on load, 4.5 MB scrolled** |
+
+Roughly 25 times more, on pages whose stated job is loading fast on a phone
+from a search result. It was measured, put to the owner with the poster version
+as the alternative, and **chosen deliberately** — the art is most of why
+somebody stays on the page, and nothing here blocks rendering: the text paints
+immediately and the art fills in behind it.
+
+**The poster version is the thing to reach for if this is ever regretted.** It
+was built first and it works: `/r/100x140/` at 48x67 with a srcset offering
+`/r/192x272/` to 3x screens, 127 KB a page, +711 bytes gzipped on the HTML.
+
+#### `content-visibility: auto` was tried and removed
+
+Recorded because it is the obvious next thing to reach for, and it does
+nothing here.
+
+The problem is real: `loading="lazy"` is a hint, and Chrome takes it loosely —
+**15 of the 25 banners are fetched before a finger touches the screen.**
+Skipping the rendering work for far-offscreen rows looks like it should hold
+that back.
+
+**It changed nothing. Still 15 of 25, measured the same way.** And it cost
+something: a skipped row reports its `contain-intrinsic-size` rather than its
+real height to `getBoundingClientRect`, so the row-height check read 96px on a
+row that paints at 134. A property that buys no bytes and makes the page lie
+about its own layout is not worth carrying.
+
+#### Text on somebody else's artwork needs a guaranteed floor
+
+The scrim is the only thing making the title readable, because the backdrop is
+a photograph nobody chose for legibility. It is a left-heavy gradient —
+0.88 alpha at the number and title, clearing to 0.2 at the right so the art
+still reads — and it is **dark in both themes on purpose**, because the text
+over it is always white. White on a dark scrim is the one combination that
+cannot depend on the picture.
+
+Seven checks, and all seven broken on purpose: no artwork prints
+`25 rows, 0 banners`; the poster instead of the banner prints the
+`cdn.myanimelist.net` URL it found; no lazy prints `25 not lazy`; no tint
+prints `0 rows, 25 banners`; no `min-height` prints the rule with it missing;
+and no scrim prints `no scrim, or the text is not white over it`.
+
+#### A breaker pattern has to survive CRLF
+
+The `min-height` guard came back **SKIP** rather than FAIL, and the guard went
+unverified for a whole run. The mutation looked for `min-height: 96px;\n`;
+git's autocrlf makes every file in this repo `\r\n`, so it matched nothing.
+
+Two things out of it. **Every mutation pattern touching a file's line endings
+needs `\r?\n`**, and the same is true of any check that matches across lines.
+And **the SKIP is what saved it** — a breaker that reports "pattern did not
+match" tells you the guard was never exercised, where one that quietly moves on
+would have left it recorded as verified. Same family as the heredoc that halved
+its backslashes, and as the check that built its regex with `\s` inside a
+template literal.
+
+#### Two ways to lose work with a breaker script, both met
+
+**Never run two at once.** They snapshot and restore the same source files, so
+overlapping them means one restores the other's mutated state permanently. That
+happened, and it baked a missing `aria-expanded` into `app.js` until a verifier
+caught it.
+
+**Killing one mid-run leaves a mutation applied.** That happened too, and the
+check for it was one marker rather than all of them, so the working tree was
+declared clean while the poster template was still missing its `width` and
+`height`. Verify every mutation site, not one.
+
+And **do not use `git stash` to get a before/after measurement** in a tree with
+4,978 generated files in it. The pop silently did not run and the work sat in
+the stash while it looked live. `git show HEAD:<path>` answers the same
+question without touching the working tree.
+
 ### Link previews, crawlers and the preview image
 
 `index.html` carries Open Graph and Twitter card tags, and they are
@@ -3051,9 +3173,14 @@ index was built so "browse all genres" had an honest destination, and the
 landing page links to it under the chips — which still start a walk. See "The
 genre index" above, including the two shapes that were rejected.
 
-**What is left of this job is the two visual pieces**: poster cards on the
-genre pages, and the Anime Corner row restyle below. Both are now judgeable,
-because people can actually reach the pages.
+~~**What is left of this job is the two visual pieces.**~~ Both shipped in
+build 59 — see "The genre pages are artwork now" above. The rows are the show's
+own banner art with the title over it, which is the Anime Corner layout and
+only the layout. The poster-thumbnail version was built first and is the thing
+to reach for if the 4.5 MB of banner art is ever regretted.
+
+**This job is done.** What is left in this file is Show HN and the theme
+mechanism, both below.
 
 ~~The landing page needs deciding separately.~~ Decided and shipped in build
 58: the chips keep starting a walk and a quiet link beside them opens the new
