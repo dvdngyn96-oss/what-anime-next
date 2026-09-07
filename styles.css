@@ -364,6 +364,115 @@ a { color: inherit; }
   margin-bottom: 26px;
 }
 
+/* The genre menu overlays the card rather than pushing it down, which is why
+ * this is the positioning context and why .genre-menu is absolute. An
+ * expanding block here would move every button in the card underneath it —
+ * the one thing the card's whole design exists to prevent. */
+.genre-nav {
+  position: relative;
+  flex: none;
+  /* Always at the right end of whatever row it lands on. Without this the
+   * button wraps to the left edge at some widths, and .genre-menu is anchored
+   * to its right — so the menu hung 170px off the left of the screen. */
+  margin-left: auto;
+}
+
+/* Quiet, like the landing page's chips: this header is a wordmark and a search
+ * box, and a filled button here would compete with the card below it. */
+.genre-btn {
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 14px;
+  height: 40px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg-dim);
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.genre-btn:hover,
+.genre-btn[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.genre-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 8px;
+  min-width: 260px;
+  /* Never wider than the screen, however the header has wrapped. */
+  max-width: calc(100vw - 40px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+/* Load-bearing, and the reason is easy to miss: `display: grid` above is an
+ * author rule, and an author rule beats the browser's own
+ * `[hidden] { display: none }` whatever the specificity. So without this line
+ * the `hidden` attribute does nothing at all and the menu is permanently on
+ * screen — which is exactly how it shipped for one build.
+ *
+ * The property stays true throughout, so `menu.hidden === true` passes while
+ * the menu is plainly visible. Any check on this has to read the rule rather
+ * than the attribute. */
+.genre-menu[hidden] {
+  display: none;
+}
+
+.genre-menu a {
+  display: block;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--fg-dim);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.genre-menu a:hover,
+.genre-menu a:focus-visible {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+/* The index, spanning both columns under the fourteen — it is the one entry
+ * that is not a genre, so it should not read as another one. */
+.genre-menu-all {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding-top: 9px !important;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  color: var(--fg-faint) !important;
+}
+
+/* Quiet, and quieter than the chips beside it: the chips are the main path and
+ * this is the alternative. No underline for the same reason the housekeeping
+ * links dropped theirs in build 42 — the colour is enough to say "clickable",
+ * and this sits directly under the two buttons the page exists for. */
+.browse-genres {
+  font-size: 12px;
+  color: var(--fg-faint);
+  text-decoration: none;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.browse-genres:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
 .wordmark-sm {
   font-size: 19px;
   margin: 0;
@@ -1404,6 +1513,17 @@ a.service:hover {
   }
 
   .controls { gap: 8px; margin-bottom: 18px; }
+
+  /* The Genres button shares the header's second row with the mini search box,
+   * and at 320px the two together overrun by 30px — which pushes the button to
+   * a third row and drops the card most of a phone-screen further down. The
+   * same shape of regression the fourth format chip caused, and the same kind
+   * of fix: 40px off the search box's floor rather than anything off the
+   * content, since it grows to fill whatever is left anyway.
+   *
+   * Measured: at 320px the header is two rows with this and three without.
+   * 360px and up were already two rows either way and are unchanged. */
+  .mini-search { min-width: 180px; }
 
   .hero-actions .btn {
     font-size: 12px;

@@ -1938,6 +1938,174 @@ console.log('\n--- a genre page keeps its content when the app boots ---');
     'the search view was not shown');
 }
 
+console.log('\n--- the way into the genre pages ---');
+{
+  /* Build 57 left fourteen pages a crawler could reach from 4,924 internal
+     links and a person could not reach at all: the landing page's chips start
+     a walk rather than opening a page, and the result view had no route to
+     them. This is that route. */
+  const indexText = readFileSync(`${ROOT}/index.html`, 'utf8');
+  const cssText = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  const appText = readFileSync(`${ROOT}/app.js`, 'utf8');
+
+  /* In the result header, which is the screen a person is actually on when
+     they have a card and want to browse instead. Not in the card: anything
+     that grows there moves the buttons under somebody's cursor. */
+  const header = /<header class="result-header">([\s\S]*?)<\/header>/.exec(indexText)?.[1] || '';
+  check('the Genres button is in the result header',
+    header.includes('id="genre-btn"'), 'not found inside .result-header');
+
+  /* The whole reason the menu is a menu rather than a block that expands: it
+     lies over the card instead of pushing it down. jsdom has no layout, so
+     this reads the rule out of the stylesheet the way the streaming-row and
+     wordmark checks do. */
+  const navRule = /\.genre-nav\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+  const menuRule = /\.genre-menu\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+  check('the menu is positioned over the card, so opening it cannot move it',
+    /position:\s*absolute/.test(menuRule) && /position:\s*relative/.test(navRule),
+    `nav: ${navRule.trim().slice(0, 40)} | menu: ${menuRule.trim().slice(0, 40)}`);
+
+  /* Shipped broken for one build, and the reason is worth the check.
+     `.genre-menu { display: grid }` is an author rule, and an author rule beats
+     the browser's own `[hidden] { display: none }` however the specificity
+     falls -- so the hidden attribute did nothing and the menu was permanently
+     on screen. The `hidden` *property* stays true throughout, which is why
+     `menu.hidden === true` passed the whole time it was visible.
+
+     So this asserts the stylesheet, not the attribute: any rule that sets
+     display on .genre-menu has to be paired with a [hidden] override. */
+  const hiddenRule = /\.genre-menu\[hidden\]\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+  check('and the hidden attribute actually hides it, despite the display rule',
+    /display:\s*grid|display:\s*flex|display:\s*block/.test(menuRule)
+      ? /display:\s*none/.test(hiddenRule)
+      : true,
+    hiddenRule ? `[hidden] says ${hiddenRule.trim()}` : 'no .genre-menu[hidden] rule at all');
+
+  /* The menu is anchored to the button's right edge, so the button has to be
+     at the right end of its row. Without this it wrapped to the left at some
+     widths and the menu hung 170px off the left of the screen. */
+  check('the button is pinned right, so the menu cannot hang off the screen',
+    /margin-left:\s*auto/.test(navRule) && /max-width:\s*calc\(100vw/.test(menuRule),
+    `nav: ${navRule.replace(/\s+/g, ' ').trim().slice(0, 60)}`);
+
+  /* Measured in a real browser: the button shares the header's second row with
+     the mini search box, and at 320px the pair overruns by 30px and pushes the
+     button to a third row -- which drops the card most of a screen. 40px off
+     the search box's floor buys it back, and it only applies where the problem
+     is. The same shape as the fourth format chip's two pixels of padding. */
+  const small = cssText.slice(cssText.indexOf('@media (max-width: 400px)'));
+  check('and the small-phone block keeps the header to two rows at 320px',
+    /\.mini-search\s*\{\s*min-width:\s*180px/.test(cssText)
+      && cssText.indexOf('.mini-search { min-width: 180px; }') > cssText.indexOf('@media (max-width: 400px)'),
+    'the 320px min-width reduction is missing');
+
+  const NAMES = ['Broad', 'Other', 'Ecchi'];
+  const mk = (r, i, t, g) => ({
+    r, i, t, g, s: 8, m: 1000, th: [], st: 'fin', ty: 'TV', e: 12, y: 2015, im: 'x/y.jpg',
+  });
+  const rows = [];
+  for (let k = 0; k < 50; k++) rows.push(mk(1 + k, 900 + k, 'Broadly ' + k, [0]));
+  for (let k = 0; k < 30; k++) rows.push(mk(51 + k, 1000 + k, 'Otherly ' + k, [1]));
+  /* Comfortably over MOOD_MIN_SHARE, so it is withheld by name rather than by
+     being too thin -- which is what makes the next check mean anything. */
+  for (let k = 0; k < 20; k++) rows.push(mk(81 + k, 1100 + k, 'Ecchily ' + k, [2]));
+  const CAT = { built: '2026-09-06', count: rows.length, names: NAMES, anime: rows };
+
+  const dom = makeDom(CAT, { url: 'https://example.com/?id=900' });
+  const w = dom.window;
+  const d = w.document;
+  await sleep(500);
+
+  const btn = d.getElementById('genre-btn');
+  const menu = d.getElementById('genre-menu');
+  const links = () => [...menu.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  /* Everything but the trailing index link, which is not a genre. */
+  const genreLinks = () => [...menu.querySelectorAll('a:not(.genre-menu-all)')]
+    .map((a) => a.getAttribute('href'));
+
+  /* Hidden until the catalogue is in, like the chips: a button that opens an
+     empty menu reads as something failing to load. */
+  check('the button appears once the catalogue has landed',
+    btn && btn.hidden === false, 'the button is still hidden');
+
+  /* Built from moodGenres, which is also what the generator writes the pages
+     from -- so this can never offer a page that was never written. */
+  check('the menu holds one link per offered genre, and none besides',
+    genreLinks().length === 2 && genreLinks().join(' ') === '/genre/broad/ /genre/other/',
+    genreLinks().join(' ') || 'no links');
+
+  /* Ecchi clears the threshold and is withheld from the chips; linking it here
+     would point at a page the generator deliberately did not write. */
+  check('a withheld genre is not linked, so no link can 404',
+    !links().some((h) => h.includes('ecchi')), links().join(' '));
+
+  check('and every link is the trailing-slash form the server answers 200 for',
+    links().every((h) => /^\/genre\/([a-z0-9-]+\/)?$/.test(h)),
+    links().filter((h) => !/^\/genre\/([a-z0-9-]+\/)?$/.test(h)).join(', '));
+
+  /* A real anchor, not a scripted handler: the destination is a prerendered
+     document, so a middle-click and a copied link both have to work. */
+  check('the entries are real links rather than scripted buttons',
+    menu.querySelectorAll('a').length > 0 && menu.querySelectorAll('button').length === 0,
+    'the menu is built from buttons');
+
+  /* The index over the fourteen. It exists because the two doors into these
+     pages both need somewhere to point -- picking one of the fourteen
+     arbitrarily is not an index. */
+  check('the menu ends with a link to the genre index',
+    links().at(-1) === '/genre/' && menu.querySelector('.genre-menu-all'),
+    links().at(-1) || 'no links');
+
+  check('the index page was generated and is in the sitemap',
+    existsSync(`${ROOT}/genre/index.html`)
+      && readFileSync(`${ROOT}/sitemap.xml`, 'utf8').includes('<loc>https://whatanimeshouldiwatchnext.com/genre/</loc>'),
+    'no /genre/index.html or no sitemap entry');
+
+  /* It must list what was actually written -- a genre skipped for being too
+     thin must not be linked from the index. */
+  {
+    const idx = readFileSync(`${ROOT}/genre/index.html`, 'utf8');
+    const idxLinks = [...idx.matchAll(/href="(\/genre\/[a-z0-9-]+\/)"/g)].map((m) => m[1]);
+    check('and every genre it links to is a page on disk',
+      idxLinks.length >= 10 && idxLinks.every((rel) => existsSync(`${ROOT}${rel}index.html`)),
+      idxLinks.filter((rel) => !existsSync(`${ROOT}${rel}index.html`)).join(', ') || `${idxLinks.length} links`);
+
+    /* routeFromUrl matches /genre/<slug>/ and had to learn /genre/ itself, or
+       the index would hydrate into a card over its own list. */
+    /* A plain substring rather than a regex matching a regex: this project has
+       already shipped a check whose pattern was mangled by escaping and
+       silently matched nothing. */
+    check('the index keeps its list when the app boots, like the genre pages',
+      appText.includes('/^\\/genre\\/([a-z0-9-]+\\/?)?$/'),
+      'routeFromUrl does not match the bare /genre/ path');
+  }
+
+  /* The landing page's other door. The chips still start a walk -- this opens
+     the list instead -- so it is a link rather than a fifteenth chip. */
+  check('the home page links to the index, beside the chips that start a walk',
+    /class="browse-genres" href="\/genre\/"/.test(indexText)
+      && /<div id="mood-row"[\s\S]*?browse-genres[\s\S]*?<\/div>/.test(indexText),
+    'no browse-genres link inside #mood-row');
+
+  btn.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  check('clicking opens the menu and says so for a screen reader',
+    menu.hidden === false && btn.getAttribute('aria-expanded') === 'true',
+    `hidden=${menu.hidden} expanded=${btn.getAttribute('aria-expanded')}`);
+
+  /* The menu lies over the card, so a click meant for a button underneath
+     would otherwise be swallowed with the menu still up. */
+  d.body.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  check('a click anywhere else closes it',
+    menu.hidden === true && btn.getAttribute('aria-expanded') === 'false',
+    `hidden=${menu.hidden} expanded=${btn.getAttribute('aria-expanded')}`);
+
+  btn.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check('and so does Escape',
+    menu.hidden === true && btn.getAttribute('aria-expanded') === 'false',
+    `hidden=${menu.hidden} expanded=${btn.getAttribute('aria-expanded')}`);
+}
+
 console.log('\n--- a single genre still demotes ---');
 {
   /* Both demotions drop a candidate one tier, and the floor is 1 — so when a

@@ -301,6 +301,56 @@ ${rows}
     .replace('<main id="app">', `<main id="app">${block}`);
 }
 
+/* The index over the fourteen. It exists because the other two doors into the
+   genre pages both need somewhere to point: the header button's menu and the
+   line under the landing page's chips. Before it, "browse all genres" had no
+   honest destination — picking one of the fourteen arbitrarily is not an
+   index.
+
+   It is also the page for a query the individual lists cannot answer. "best
+   mystery anime" lands on /genre/mystery/; "anime genres" and "what genre of
+   anime should i watch" land here.
+
+   Like the genre pages and unlike the anime pages, this block survives app.js
+   booting: somebody who arrived here came for the list of genres. */
+function genreIndexPageFor(rows) {
+  const url = `${SITE}/genre/`;
+  const title = 'Anime by genre';
+  const desc = `Every genre worth browsing, ${rows.length} of them, each a ranked list of anime `
+    + `you can start from the beginning — no sequels, no side stories, no recap editions.`;
+
+  const items = rows.map(({ genre, path, count, top }) => `        <li>
+          <a href="${esc(path)}"><strong>${esc(genre)}</strong></a>
+          <span class="seo-meta">${count} you can start cold</span>
+          <span class="genre-alt">${esc(top.join(' · '))}</span>
+        </li>`).join('\n');
+
+  const block = `
+    <div id="seo-content" class="seo-content genre-page">
+      <p class="genre-home"><a href="/">whatanimeshouldiwatchnext</a></p>
+      <h1>${esc(title)}</h1>
+      <p class="seo-lede">${esc(desc)}</p>
+      <ol class="seo-list genre-list genre-index">
+${items}
+      </ol>
+      <p class="seo-note"><strong>Why these are not MyAnimeList's genre rankings.</strong>
+      Every title on every one of these lists is one you can start from the beginning. Anything
+      with a prequel or a parent story is left out, as are recaps and compilation editions —
+      about half of what MyAnimeList ranks. Genres too thin to browse are not listed.</p>
+    </div>`;
+
+  return html
+    .replace('<title>whatanimeshouldiwatchnext</title>', `<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
+    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(desc)}">`)
+    .replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${esc(url)}">`)
+    .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${esc(title)}">`)
+    .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${esc(desc)}">`)
+    .replace(/<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${esc(url)}">`)
+    .replace(/<meta name="twitter:title" content="[^"]*">/, `<meta name="twitter:title" content="${esc(title)}">`)
+    .replace(/<meta name="twitter:description" content="[^"]*">/, `<meta name="twitter:description" content="${esc(desc)}">`)
+    .replace('<main id="app">', `<main id="app">${block}`);
+}
+
 /* ---------- generate ---------- */
 
 if (existsSync(OUT)) rmSync(OUT, { recursive: true, force: true });
@@ -338,11 +388,11 @@ process.stderr.write('\r');
    anchor search costs about twenty walks per genre — cheap at fourteen pages,
    which is why this runs once at the end rather than per entry. */
 const genreUrls = [];
+const indexRows = [];
 let genreCount = 0;
 for (const genre of w.__seo.genres()) {
-  const entries = all
-    .filter((a) => a.local && a.genres.includes(genre))
-    .slice(0, GENRE_SHOWN);
+  const carrying = all.filter((a) => a.local && a.genres.includes(genre));
+  const entries = carrying.slice(0, GENRE_SHOWN);
   if (entries.length < 5) continue;      // too thin to be a page worth having
 
   const anchor = w.__seo.anchorFor(genre);
@@ -351,8 +401,21 @@ for (const genre of w.__seo.genres()) {
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, genrePageFor(genre, entries, anchor));
   genreUrls.push(rel);
+  /* The whole count rather than the 25 shown, because the index is describing
+     how much there is to browse, not how much one page prints. */
+  indexRows.push({
+    genre, path: rel, count: carrying.length,
+    top: entries.slice(0, 3).map((e) => e.title),
+  });
   genreCount += 1;
 }
+
+/* The index over them, written last because it reports what actually got
+   written -- a genre skipped for being too thin must not be listed. */
+const indexFile = join(GENRE_OUT, 'index.html');
+mkdirSync(GENRE_OUT, { recursive: true });
+writeFileSync(indexFile, genreIndexPageFor(indexRows));
+genreUrls.unshift('/genre/');
 
 /* The sitemap is written here rather than by hand, because it has to list
    exactly what was generated. It used to hold a single URL, with a comment
@@ -387,4 +450,5 @@ writeFileSync(join(ROOT, 'sitemap.xml'), sitemap);
 console.log(`wrote ${written} pages under /anime/`);
 console.log(`skipped ${targets.length - written} with nothing to recommend`);
 console.log(`wrote ${genreCount} pages under /genre/`);
+console.log(`wrote the /genre/ index over ${indexRows.length}`);
 console.log(`sitemap.xml lists ${urls.length + genreUrls.length + 2} URLs`);

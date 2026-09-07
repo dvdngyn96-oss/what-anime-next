@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 57;
+const BUILD = 58;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -3340,6 +3340,61 @@ $('mood-chips')?.addEventListener('click', (event) => {
   if (chip) startFromGenre(chip.dataset.genre);
 });
 
+/* ------------------------------------------------------------------ *
+ * The way into the genre pages
+ * ------------------------------------------------------------------ */
+
+/* Built from `moodGenres`, which is also what build-seo-pages.mjs writes the
+   pages from — so this can never offer a link to a page that was never
+   generated. Ecchi is withheld from both for the same reason, which keeps that
+   one decision in one place rather than repeated here.
+
+   Plain <a href> rather than a scripted handler: the destination is a real
+   prerendered document, so a middle-click, a copied link and a page opened
+   with scripting off all behave the way somebody expects. */
+function renderGenreMenu() {
+  const btn = $('genre-btn');
+  const menu = $('genre-menu');
+  if (!btn || !menu || !moodGenres.length) return;
+  menu.innerHTML = moodGenres
+    .map((g) => `<a role="menuitem" href="/genre/${genreSlug(g)}/">${esc(g)}</a>`)
+    .join('')
+    /* The index last, spanning both columns. It is the page for somebody who
+       wants to see what the genres are rather than one they have already
+       decided on, and it is the only entry here that is not a genre. */
+    + '<a role="menuitem" class="genre-menu-all" href="/genre/">All genres</a>';
+  btn.hidden = false;
+}
+
+function closeGenreMenu() {
+  const btn = $('genre-btn');
+  const menu = $('genre-menu');
+  if (!btn || !menu) return;
+  menu.hidden = true;
+  btn.setAttribute('aria-expanded', 'false');
+}
+
+$('genre-btn')?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  const btn = $('genre-btn');
+  const menu = $('genre-menu');
+  if (!menu) return;
+  const open = menu.hidden;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+
+/* Anywhere else on the page closes it, including the card underneath — the
+   menu lies over the card, so a click meant for a button below would otherwise
+   be swallowed with the menu still up. */
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('.genre-nav')) closeGenreMenu();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeGenreMenu();
+});
+
 async function startFromGenre(genre) {
   showLoading(`Finding somewhere to start in ${genre}…`);
   try {
@@ -3459,7 +3514,7 @@ async function routeFromUrl() {
      one route whose prerendered content is the point rather than a placeholder
      for a card, so `dropPrerendered` must not run. Somebody arriving from a
      search for "best mystery anime" came for the list. */
-  if (/^\/genre\/[a-z0-9-]+\/?$/.test(location.pathname)
+  if (/^\/genre\/([a-z0-9-]+\/?)?$/.test(location.pathname)
       && document.getElementById('seo-content')) {
     resultView.hidden = true;
     searchView.hidden = true;
@@ -3519,5 +3574,5 @@ console.info(`whatanimeshouldiwatchnext — build ${BUILD}`);
 
 // The rejection is handled inside loadCatalogue, which raises the notice; this
 // only keeps the warm-up from counting as unhandled.
-loadCatalogue().then(renderMoodChips).catch(() => {});
+loadCatalogue().then(() => { renderMoodChips(); renderGenreMenu(); }).catch(() => {});
 routeFromUrl();

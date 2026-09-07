@@ -41,7 +41,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
        change, otherwise a stale script keeps running against fresh data. -->
-  <link rel="stylesheet" href="/styles.css?v=57">
+  <link rel="stylesheet" href="/styles.css?v=58">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍥</text></svg>">
 </head>
 <body>
@@ -88,6 +88,14 @@
       <div id="mood-row" class="mood-row" hidden>
         <span class="mood-label">or start from a genre</span>
         <span id="mood-chips" class="mood-chips"></span>
+        <!-- The other door. The chips start a walk, which is the faster path
+             for somebody who just wants a recommendation and is still the main
+             job; this opens the ranked list instead, for somebody who would
+             rather read one than be handed a single card.
+
+             A link rather than a fifteenth chip, deliberately: fourteen chips
+             and one beside them that behaved differently would be a trap. -->
+        <a class="browse-genres" href="/genre/">browse all genres</a>
       </div>
 
       <!-- Raised only when the catalogue fails to load. Without it the landing
@@ -136,13 +144,33 @@
           <input id="mini-input" type="text" autocomplete="off" spellcheck="false" placeholder="Another anime…" aria-label="Search another anime">
           <ul id="mini-suggestions" class="suggestions suggestions-mini" role="listbox" hidden></ul>
         </div>
+
+        <!-- The way into the genre pages from inside the site. Without it those
+             fourteen pages are reachable by a crawler, from 4,924 internal
+             links, and by nobody else — the landing page's chips start a walk
+             rather than opening a page, and this view had no route to them at
+             all.
+
+             The menu is absolutely positioned, so opening it lays over the card
+             instead of pushing it down. That is the whole reason it is not a
+             block that expands in the header: the buttons in the card must not
+             move, and this one sits directly above them.
+
+             Filled by app.js from the same `moodGenres` list the generator
+             writes the pages from, so it cannot link to a page that was never
+             written. Hidden until then, like the chips. -->
+        <div class="genre-nav">
+          <button id="genre-btn" class="genre-btn" type="button" hidden
+                  aria-expanded="false" aria-controls="genre-menu">Genres</button>
+          <div id="genre-menu" class="genre-menu" role="menu" hidden></div>
+        </div>
       </header>
 
       <div id="result-body"></div>
     </section>
   </main>
 
-  <script src="/app.js?v=57"></script>
+  <script src="/app.js?v=58"></script>
 
   <!-- Cloudflare Web Analytics. Cookieless: no cookies, no fingerprinting, no
        cross-site identifier, so there is nothing to put a consent banner in

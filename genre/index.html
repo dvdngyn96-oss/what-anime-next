@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anime by genre · whatanimeshouldiwatchnext</title>
+  <meta name="description" content="Every genre worth browsing, 14 of them, each a ranked list of anime you can start from the beginning — no sequels, no side stories, no recap editions.">
+
+  <!-- Link previews. Everything below is deliberately static: every /?id=N URL
+       serves this same document, and the card is built client-side, so a
+       scraper never sees a per-anime title no matter which link was shared.
+       Describing the site is honest; templating a title we cannot fill is not.
+
+       og:image must be absolute — a relative path resolves against the
+       scraper's own host and silently yields no preview at all. og.png is
+       1200x630, regenerate it from make-og-image.html. -->
+  <link rel="canonical" href="https://whatanimeshouldiwatchnext.com/genre/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="whatanimeshouldiwatchnext">
+  <meta property="og:url" content="https://whatanimeshouldiwatchnext.com/genre/">
+  <meta property="og:title" content="Anime by genre">
+  <meta property="og:description" content="Every genre worth browsing, 14 of them, each a ranked list of anime you can start from the beginning — no sequels, no side stories, no recap editions.">
+  <meta property="og:image" content="https://whatanimeshouldiwatchnext.com/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="whatanimeshouldiwatchnext — a search box over the tagline: type an anime you've already watched, get the next one up the rankings that shares its genres.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Anime by genre">
+  <meta name="twitter:description" content="Every genre worth browsing, 14 of them, each a ranked list of anime you can start from the beginning — no sequels, no side stories, no recap editions.">
+  <meta name="twitter:image" content="https://whatanimeshouldiwatchnext.com/og.png">
+  <meta name="twitter:image:alt" content="whatanimeshouldiwatchnext — a search box over the tagline: type an anime you've already watched, get the next one up the rankings that shares its genres.">
+
+  <!-- Matches --bg in styles.css at both ends, so the phone browser chrome
+       does not sit in the opposite scheme to the page under it. -->
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17181a" media="(prefers-color-scheme: dark)">
+  <!-- The ?v= markers below only help if this document is itself fresh, so
+       ask the browser not to serve a cached copy of it. -->
+  <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
+       change, otherwise a stale script keeps running against fresh data. -->
+  <link rel="stylesheet" href="/styles.css?v=58">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍥</text></svg>">
+</head>
+<body>
+  <main id="app">
+    <div id="seo-content" class="seo-content genre-page">
+      <p class="genre-home"><a href="/">whatanimeshouldiwatchnext</a></p>
+      <h1>Anime by genre</h1>
+      <p class="seo-lede">Every genre worth browsing, 14 of them, each a ranked list of anime you can start from the beginning — no sequels, no side stories, no recap editions.</p>
+      <ol class="seo-list genre-list genre-index">
+        <li>
+          <a href="/genre/comedy/"><strong>Comedy</strong></a>
+          <span class="seo-meta">1663 you can start cold</span>
+          <span class="genre-alt">Gintama · Bocchi the Rock! · Dungeon Meshi</span>
+        </li>
+        <li>
+          <a href="/genre/action/"><strong>Action</strong></a>
+          <span class="seo-meta">1446 you can start cold</span>
+          <span class="genre-alt">Fullmetal Alchemist: Brotherhood · Steel Ball Run: JoJo no Kimyou na Bouken · Hunter x Hunter (2011)</span>
+        </li>
+        <li>
+          <a href="/genre/fantasy/"><strong>Fantasy</strong></a>
+          <span class="seo-meta">1427 you can start cold</span>
+          <span class="genre-alt">Sousou no Frieren · Fullmetal Alchemist: Brotherhood · Hunter x Hunter (2011)</span>
+        </li>
+        <li>
+          <a href="/genre/adventure/"><strong>Adventure</strong></a>
+          <span class="seo-meta">1233 you can start cold</span>
+          <span class="genre-alt">Sousou no Frieren · Fullmetal Alchemist: Brotherhood · Steel Ball Run: JoJo no Kimyou na Bouken</span>
+        </li>
+        <li>
+          <a href="/genre/drama/"><strong>Drama</strong></a>
+          <span class="seo-meta">1099 you can start cold</span>
+          <span class="genre-alt">Sousou no Frieren · Fullmetal Alchemist: Brotherhood · Steins;Gate</span>
+        </li>
+        <li>
+          <a href="/genre/sci-fi/"><strong>Sci-Fi</strong></a>
+          <span class="seo-meta">993 you can start cold</span>
+          <span class="genre-alt">Steins;Gate · Ginga Eiyuu Densetsu · Gintama</span>
+        </li>
+        <li>
+          <a href="/genre/romance/"><strong>Romance</strong></a>
+          <span class="seo-meta">944 you can start cold</span>
+          <span class="genre-alt">Rurouni Kenshin: Meiji Kenkaku Romantan - Tsuioku-hen · Howl no Ugoku Shiro · Shigatsu wa Kimi no Uso</span>
+        </li>
+        <li>
+          <a href="/genre/supernatural/"><strong>Supernatural</strong></a>
+          <span class="seo-meta">492 you can start cold</span>
+          <span class="genre-alt">Steel Ball Run: JoJo no Kimyou na Bouken · Mushishi · Death Note</span>
+        </li>
+        <li>
+          <a href="/genre/mystery/"><strong>Mystery</strong></a>
+          <span class="seo-meta">359 you can start cold</span>
+          <span class="genre-alt">Steel Ball Run: JoJo no Kimyou na Bouken · Monster · Kusuriya no Hitorigoto</span>
+        </li>
+        <li>
+          <a href="/genre/slice-of-life/"><strong>Slice of Life</strong></a>
+          <span class="seo-meta">292 you can start cold</span>
+          <span class="genre-alt">Mushishi · Chiikawa · Ookami Kodomo no Ame to Yuki</span>
+        </li>
+        <li>
+          <a href="/genre/sports/"><strong>Sports</strong></a>
+          <span class="seo-meta">213 you can start cold</span>
+          <span class="genre-alt">Hajime no Ippo · The First Slam Dunk · Ping Pong the Animation</span>
+        </li>
+        <li>
+          <a href="/genre/suspense/"><strong>Suspense</strong></a>
+          <span class="seo-meta">192 you can start cold</span>
+          <span class="genre-alt">Steins;Gate · Monster · Shiguang Dailiren</span>
+        </li>
+        <li>
+          <a href="/genre/horror/"><strong>Horror</strong></a>
+          <span class="seo-meta">156 you can start cold</span>
+          <span class="genre-alt">Kenpuu Denki Berserk · Perfect Blue · Hellsing Ultimate</span>
+        </li>
+        <li>
+          <a href="/genre/award-winning/"><strong>Award Winning</strong></a>
+          <span class="seo-meta">151 you can start cold</span>
+          <span class="genre-alt">Sousou no Frieren · Koe no Katachi · Kimi no Na wa.</span>
+        </li>
+      </ol>
+      <p class="seo-note"><strong>Why these are not MyAnimeList's genre rankings.</strong>
+      Every title on every one of these lists is one you can start from the beginning. Anything
+      with a prequel or a parent story is left out, as are recaps and compilation editions —
+      about half of what MyAnimeList ranks. Genres too thin to browse are not listed.</p>
+    </div>
+    <!-- Landing / search view -->
+    <section id="search-view" class="view">
+      <h1 class="wordmark">
+        <span class="w-what">what</span><span class="w-anime">anime</span><span class="w-should">should</span><span class="w-i">i</span><span class="w-watch">watch</span><span class="w-next">next</span>
+      </h1>
+      <p class="tagline">Type an anime you've already watched. You'll get something you can start from the beginning.</p>
+
+      <div class="search-wrap">
+        <div class="search-box" id="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"/></svg>
+          <input
+            id="search-input"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="Tokyo Ravens"
+            aria-label="Anime you've already watched"
+            aria-autocomplete="list"
+            aria-controls="suggestions"
+          >
+          <button id="clear-btn" class="clear-btn" type="button" aria-label="Clear" hidden>&times;</button>
+        </div>
+        <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+      </div>
+
+      <div class="actions">
+        <button id="go-btn" class="btn" type="button">Recommend me one</button>
+        <button id="random-btn" class="btn btn-ghost" type="button">Surprise me</button>
+      </div>
+
+      <!-- The genre picker: the way in for somebody with a direction but no
+           title. Filled by app.js once the catalogue is loaded, because which
+           genres are broad enough to offer is counted from the data rather
+           than written down — see markMoodGenres.
+
+           It may change height as it fills, which is allowed here and nowhere
+           else: this is the landing view, there is no card on it to keep
+           still, and the same licence is why #catalogue-notice sits below. -->
+      <div id="mood-row" class="mood-row" hidden>
+        <span class="mood-label">or start from a genre</span>
+        <span id="mood-chips" class="mood-chips"></span>
+        <!-- The other door. The chips start a walk, which is the faster path
+             for somebody who just wants a recommendation and is still the main
+             job; this opens the ranked list instead, for somebody who would
+             rather read one than be handed a single card.
+
+             A link rather than a fifteenth chip, deliberately: fourteen chips
+             and one beside them that behaved differently would be a trap. -->
+        <a class="browse-genres" href="/genre/">browse all genres</a>
+      </div>
+
+      <!-- Raised only when the catalogue fails to load. Without it the landing
+           page renders perfectly and then ignores everything you type, which
+           reads as the site being broken in some way you caused. -->
+      <p id="catalogue-notice" class="catalogue-notice" role="status" hidden></p>
+
+      <!-- The watched list. Sits below the credit because it is housekeeping,
+           not part of the main flow, and because it is the only thing on this
+           page allowed to change height as you use it. -->
+      <p class="watched-bar">
+        <span id="watched-count">Nothing marked as watched yet</span>
+        <button id="username-toggle" class="linkish" type="button">Import from your MyAnimeList username</button>
+        <button id="import-btn" class="linkish" type="button">or a file</button>
+        <button id="clear-watched-btn" class="linkish" type="button" hidden>Clear</button>
+        <button id="forget-ratings-btn" class="linkish" type="button">Remove my ratings</button>
+        <input id="import-input" type="file" accept=".xml,.gz" hidden>
+      </p>
+
+      <!-- The username row. Hidden until asked for, and it lives in the
+           watched bar's block because that is the one part of this page
+           allowed to change height as you use it. -->
+      <p id="username-row" class="username-row" hidden>
+        <input id="mal-username" type="text" autocomplete="username" autocapitalize="off"
+               spellcheck="false" placeholder="MyAnimeList username" aria-label="MyAnimeList username">
+        <button id="username-go" class="btn" type="button">Read my list</button>
+        <span class="username-note">Your list has to be public. Nothing is saved except the shows themselves.</span>
+      </p>
+
+      <!-- Raised after an import, once the file has been read on this machine
+           and there is a real number to put in the question. Hidden until then,
+           and it lives here rather than in the card because the watched bar is
+           the one part of this page allowed to change height. -->
+      <div id="share-offer" class="share-offer" hidden></div>
+
+      <p class="credit">Rankings from <a href="https://myanimelist.net/topanime.php" target="_blank" rel="noopener">MyAnimeList</a> · genres from <a href="https://anilist.co" target="_blank" rel="noopener">AniList</a> · <a href="/privacy">Privacy</a></p>
+    </section>
+
+    <!-- Results view -->
+    <section id="result-view" class="view" hidden>
+      <header class="result-header">
+        <button id="home-btn" class="wordmark wordmark-sm" type="button">
+          <span class="w-what">what</span><span class="w-anime">anime</span><span class="w-should">should</span><span class="w-i">i</span><span class="w-watch">watch</span><span class="w-next">next</span>
+        </button>
+        <div class="mini-search">
+          <input id="mini-input" type="text" autocomplete="off" spellcheck="false" placeholder="Another anime…" aria-label="Search another anime">
+          <ul id="mini-suggestions" class="suggestions suggestions-mini" role="listbox" hidden></ul>
+        </div>
+
+        <!-- The way into the genre pages from inside the site. Without it those
+             fourteen pages are reachable by a crawler, from 4,924 internal
+             links, and by nobody else — the landing page's chips start a walk
+             rather than opening a page, and this view had no route to them at
+             all.
+
+             The menu is absolutely positioned, so opening it lays over the card
+             instead of pushing it down. That is the whole reason it is not a
+             block that expands in the header: the buttons in the card must not
+             move, and this one sits directly above them.
+
+             Filled by app.js from the same `moodGenres` list the generator
+             writes the pages from, so it cannot link to a page that was never
+             written. Hidden until then, like the chips. -->
+        <div class="genre-nav">
+          <button id="genre-btn" class="genre-btn" type="button" hidden
+                  aria-expanded="false" aria-controls="genre-menu">Genres</button>
+          <div id="genre-menu" class="genre-menu" role="menu" hidden></div>
+        </div>
+      </header>
+
+      <div id="result-body"></div>
+    </section>
+  </main>
+
+  <script src="/app.js?v=58"></script>
+
+  <!-- Cloudflare Web Analytics. Cookieless: no cookies, no fingerprinting, no
+       cross-site identifier, so there is nothing to put a consent banner in
+       front of. The token is public by design — it ships in the page source of
+       every site that uses one — which is why it lives here rather than
+       alongside the two gitignored build-time credentials.
+
+       Written out rather than switched on in the Pages project settings, so it
+       is visible in the repo and survives the site moving off Pages. It is a
+       module script, so it defers itself and never blocks the catalogue fetch;
+       an ad blocker dropping it costs nothing but the pageview. -->
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "298adc94c7bc41a28eb27dc2d58d097d"}'></script>
+</body>
+</html>

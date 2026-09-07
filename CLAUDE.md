@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 57.** `anime.json` holds **5,017 entries**
+**Build 58.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-435 checks pass via `npm test`.
+453 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1481,6 +1481,188 @@ Fourteen files, about 20 KB each. The sitemap goes from 4,958 URLs to 4,972,
 and the genre pages are listed at a higher priority and a weekly changefreq
 than the per-anime ones, because they are the pages worth recrawling.
 
+### The way into the genre pages
+
+Build 58, and it closes the gap build 57 left. `/genre/mystery/` was in the
+sitemap and linked from 4,924 anime pages, so a **crawler** reached it easily
+and **a person could not reach it at all** — the landing page's chips start a
+walk rather than opening a page, and the result view had no route to the genres
+whatsoever. Somebody had to already know the URL, which nobody did.
+
+A **Genres** button sits at the right of the result header, next to the mini
+search box, and opens a two-column menu of the fourteen pages.
+
+**The menu lies over the card rather than pushing it down**, and that is the
+whole reason it is a menu instead of a block that expands in the header.
+`.genre-nav` is the positioning context and `.genre-menu` is `absolute`. An
+expanding block there would move every button in the card underneath it, which
+is the one thing the card's design exists to prevent — verified directly rather
+than assumed: `.hero`'s top does not shift by a pixel when the menu opens.
+
+**It is built from `moodGenres`, which is also what the generator writes the
+pages from.** So it structurally cannot offer a link to a page that was never
+written, and Ecchi stays withheld from the menu for exactly the reason it is
+withheld from the chips, without that decision being written down twice. The
+entries are real `<a href>` elements rather than scripted buttons, so a
+middle-click and a copied link both behave the way somebody expects.
+
+#### The button costs a header row at 320px, and that had to be bought back
+
+The third item in the header is the same class of problem as the fourth format
+chip. Measured in a browser rather than guessed — the wordmark is 243px, the
+button 70px, and `.mini-search` has a 220px floor:
+
+| | Header at 320px |
+| --- | --- |
+| Without the button | 2 rows |
+| With it, `min-width: 220px` | **3 rows** |
+| With it, `min-width: 180px` | 2 rows |
+
+At 320px the button and the search box together overrun the second row by 30px,
+so the button wraps to a third and the card drops most of a screen. **360px and
+up were free all along** — the button joins the wordmark's row there.
+
+The fix is 40px off the search box's floor inside the existing
+`max-width: 400px` block that already trims chrome rather than content; the box
+grows to fill whatever is left anyway, so nothing is lost. Checked at 320, 360,
+375, 390, 414 and 1280: the header is the same row count with the button and
+without it at every one of them.
+
+**This is the third time a row has been the binding constraint on a feature**,
+after the year chip and the film chip. The toggle row was the previous two; the
+header is a new one, and it now has the same rule — anything added there has to
+be measured first.
+
+#### Eleven checks, and all ten guards broken on purpose
+
+Removing the button prints `not found inside .result-header`; making the menu
+`position: static` names the rule; dropping the 320px reduction says the
+reduction is missing; leaving the button hidden, ignoring the withheld list,
+writing links without the trailing slash, building the menu from buttons, and
+dropping each of the three close behaviours all fail with the offending value
+printed. The withheld-genre guard is the one worth having: it prints
+`/genre/broad/ /genre/other/ /genre/ecchi/`, which is a link to a page that does
+not exist.
+
+**The breaker script itself is the cautionary tale, and it is worth recording
+because it cost more than the feature did.** It snapshots the three source
+files, mutates one thing, runs the suite, and restores. Two runs were started
+overlapping — so the second one's "clean" snapshot was really the first one's
+mutated state, and its final restore wrote that back **permanently**. One
+mutation survived into `app.js`: the `aria-expanded` line replaced by a comment,
+which would have shipped a button telling a screen reader nothing about whether
+the menu was open.
+
+Two rules out of it. **Never run two of these at once** — they share the files
+they are protecting. And **verify the restore rather than trusting it**: a
+script now asserts all 24 mutation sites are back in their intended state, and
+it is what caught the survivor. The first version of that verifier also raised a
+false alarm on `.credit { position: static }`, a legitimate pre-existing rule,
+which is the reminder that a forbid pattern has to be as specific as the
+mutation it is looking for.
+
+The first breaker run reported `NOTHING FAILED` for all ten mutations, and that
+was the script rather than the guards: it sliced the suite output between
+`--- the way into the genre pages ---` and the next `---`, and the next `---` is
+the one at the end of that same header line, so every segment was empty. It now
+counts every `FAIL` in the whole run and depends on no slicing at all.
+
+#### `display` beats `hidden`, and it shipped that way for a day
+
+**The menu was permanently on screen, and the check for it passed throughout.**
+Found by the owner looking at the running site, from a screenshot, which is how
+most real bugs here get found.
+
+`.genre-menu` sets `display: grid`. That is an **author** rule, and an author
+rule beats the browser's own `[hidden] { display: none }` however the
+specificity falls — so the `hidden` attribute did nothing at all. The menu was
+painted from page load and never closed.
+
+**The `hidden` *property* stays true the whole time**, which is the trap. The
+check asserted `menu.hidden === true`, and that was true while the menu was
+plainly visible, because jsdom has no cascade to consult. Another check passing
+for the wrong reason, in a new costume.
+
+So the guard now reads the stylesheet instead: if any rule sets `display` on
+`.genre-menu`, a `[hidden]` override has to exist. Broken on purpose it prints
+`no .genre-menu[hidden] rule at all`.
+
+**Generalising, because this will happen again the moment anything else is
+toggled with `hidden`:** the `hidden` attribute is only a *default*, and any
+`display` declaration in this stylesheet silently overrides it. Setting
+`display` on something that is also toggled with `hidden` means pairing it with
+an explicit `[hidden] { display: none }`. Nothing in a jsdom test can see the
+difference — it has to be a check on the rule, or a look at the real page.
+
+The same screenshot showed a second fault. The menu is anchored to the button's
+right edge with `right: 0`, and at some widths the header wraps the button onto
+its own row at the **left**, so the menu ran from `left: -170px` — most of it
+off the screen. `.genre-nav` now takes `margin-left: auto`, which pins the
+button to the right end of whatever row it lands on, and the menu takes
+`max-width: calc(100vw - 40px)` so it can never exceed the screen whatever
+happens above it.
+
+### The genre index
+
+Also build 58, and it is what the two doors actually point at. `/genre/`, one
+page, fourteen rows.
+
+**It exists because "browse all genres" had no honest destination.** The header
+button opens a menu of the fourteen, but the landing page needed a link and a
+link needs somewhere to go — and picking one of the fourteen arbitrarily is not
+an index. Three things point here now: the line under the landing page's chips,
+an **All genres** row at the foot of the header menu, and the sitemap.
+
+It is also the page for a query the individual lists cannot answer. *"best
+mystery anime"* lands on `/genre/mystery/`; *"anime genres"* and *"what genre of
+anime should i watch"* land here.
+
+Each row carries the genre, how many startable titles it has, and its top
+three:
+
+> **Comedy** · 1663 you can start cold · Gintama · Bocchi the Rock! · Dungeon Meshi
+>
+> **Horror** · 156 you can start cold · Kenpuu Denki Berserk · Perfect Blue · Hellsing Ultimate
+
+**The count is the whole catalogue's, not the 25 the page prints.** The index is
+describing how much there is to browse rather than how much one page lists, and
+those are different numbers — Comedy prints 25 and holds 1,663.
+
+**Generated last, from what was actually written.** A genre skipped for being
+too thin must never be linked, so the index is built from the list of pages the
+loop produced rather than from `moodGenres` directly. A check asserts every
+`/genre/` link on it resolves to a file on disk, and breaking it on purpose
+prints `/genre/nonexistent/`.
+
+**`routeFromUrl` had to learn the bare path.** It matched `/genre/<slug>/` and
+nothing else, so the index would have hydrated a recommendation card over its
+own list — the bait and switch the genre pages exist to avoid. The pattern is
+now `/^\/genre\/([a-z0-9-]+\/?)?$/`, and the check for it is a plain substring
+match rather than a regex matching a regex, because this project has already
+shipped a check whose pattern was mangled by escaping and silently matched
+nothing.
+
+#### The landing page keeps its chips
+
+The chips still start a walk. That is the faster path for somebody who just
+wants a recommendation and is still the main job — making them open the pages
+instead would trade a one-click walk for a page view.
+
+So the index gets a **link** beside them rather than a fifteenth chip, and that
+distinction is the point: fourteen chips and one beside them that behaved
+differently would be a trap. It takes the quiet treatment the housekeeping
+links took in build 42 — no underline until hover, because the colour is enough
+to say "clickable" and this sits directly under the two buttons the page exists
+for.
+
+The other two shapes were considered and are worth recording. Putting the same
+**Genres dropdown** on the landing page duplicates the fourteen words already
+on screen as chips, with two controls sharing a vocabulary and doing different
+things. Giving **each chip a second affordance** maps most directly but makes
+the row busier, and that row was deliberately styled quiet so it would not
+become the loudest thing on a page that is a wordmark, a search box and two
+buttons.
+
 ### Link previews, crawlers and the preview image
 
 `index.html` carries Open Graph and Twitter card tags, and they are
@@ -2851,7 +3033,7 @@ thing only a human can do, listed at the end of this section.
 
 ### 1. The genre pages need a way in from the site itself
 
-**Not started, and it is the gap build 57 left.** `/genre/mystery/` exists, is
+**The button is done; the other two pieces are not.** `/genre/mystery/` exists, is
 in the sitemap, and is linked from 4,924 anime pages — so a *crawler* finds it
 easily. **A person on the site cannot.** The landing-page chips start a walk
 rather than opening the page, and the result view has no route to the genres at
@@ -2859,15 +3041,23 @@ all. Somebody has to already know the URL, which nobody does.
 
 Three pieces, in the order they are worth doing:
 
-**A button, probably top right.** The result view's header holds the wordmark
-and the mini search box and nothing else, so there is room. This is the piece
-that matters: it turns fourteen orphan pages into part of the site.
+~~**A button, probably top right.**~~ Shipped in build 58 — see "The way into
+the genre pages" above. Fourteen orphan pages are part of the site now. It cost
+a header row at 320px and the row had to be bought back, which is the third
+time a row has been the binding constraint here.
 
-The landing page needs deciding separately, because it already has the chips.
-The options are to leave them starting a walk and add a small "browse genres"
-link beside them, or to make the chips themselves link to the pages and lose
-the one-click walk. **Prefer the first** — the chip is the faster path for
-somebody who just wants a recommendation, and that is still the main job.
+~~**The landing page needs deciding separately.**~~ Also build 58. A `/genre/`
+index was built so "browse all genres" had an honest destination, and the
+landing page links to it under the chips — which still start a walk. See "The
+genre index" above, including the two shapes that were rejected.
+
+**What is left of this job is the two visual pieces**: poster cards on the
+genre pages, and the Anime Corner row restyle below. Both are now judgeable,
+because people can actually reach the pages.
+
+~~The landing page needs deciding separately.~~ Decided and shipped in build
+58: the chips keep starting a walk and a quiet link beside them opens the new
+`/genre/` index. That was the preferred option and it survived contact.
 
 **Poster cards on the genre pages.** They are text lists today. Every entry has
 `im` in the catalogue, so a thumbnail per row is free of new data — the cost is
