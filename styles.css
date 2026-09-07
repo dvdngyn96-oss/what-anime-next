@@ -834,7 +834,25 @@ a { color: inherit; }
    * A row that grows when its banner lands would push everything below it
    * down while somebody is reading — the card's rule, on a longer page. */
   min-height: 96px;
+  /* Darkened, and that is the actual fix for the pale outline round the
+   * corners rather than the matching radii below.
+   *
+   * --row-tint is the show's *key-art* colour, so it is often bright — one row
+   * is rgb(93, 187, 241). It sits behind artwork the scrim has darkened, so
+   * wherever a corner's antialiasing blends even a fraction of it back in, the
+   * result is a light hairline on a dark row. Reported on Chrome on a Windows
+   * PC and not reproducible in a 1.0-dpr pane, which points at fractional
+   * display scaling — 125% and 150% are where this class of artifact lives.
+   *
+   * Rather than chase the compositing path, take away what makes it visible:
+   * mixed 38% into the page's own dark, the backdrop is never lighter than the
+   * scrimmed art in front of it, so a blended edge cannot read as white. It
+   * also improves the six rows across the fourteen pages that have no banner
+   * at all and show this colour outright, since white text sits on them.
+   *
+   * The plain value first, for anything without color-mix. */
   background: var(--row-tint, var(--surface-2));
+  background: color-mix(in srgb, var(--row-tint, var(--surface-2)) 38%, #101114);
 }
 
 /* `content-visibility: auto` was tried here and removed, which is worth
@@ -864,6 +882,18 @@ a { color: inherit; }
   object-fit: cover;
   object-position: center 35%;
   display: block;
+  /* Rounded in its own right, not merely clipped by the row.
+   *
+   * `overflow: hidden` on the row alone left a pale hairline round every
+   * corner, and the reason is the tint: --row-tint is the show's *key-art*
+   * colour, so it is often bright — one row is rgb(93, 187, 241) — and it
+   * sits behind artwork the scrim has darkened. The antialiased edge of the
+   * clip blends a fraction of that bright background back in, which reads as
+   * a white outline on a dark row.
+   *
+   * Matching the radius here and on the scrim below means all three edges
+   * land on the same curve, so there is no sliver of tint left to show. */
+  border-radius: inherit;
 }
 
 /* The scrim. Text sits on artwork nobody chose for legibility, so it needs a
@@ -875,6 +905,8 @@ a { color: inherit; }
   content: "";
   position: absolute;
   inset: 0;
+  /* Same curve as the row and the artwork — see .genre-art above. */
+  border-radius: inherit;
   /* The falloff is set by where the *text* ends, not by taste. A row is about
    * 750px on desktop and the meta line runs to roughly 70% of it; at the first
    * draft the scrim was down to 0.45 there, which over bright art — The First

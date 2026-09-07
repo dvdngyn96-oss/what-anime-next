@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 59.** `anime.json` holds **5,017 entries**
+**Build 60.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-460 checks pass via `npm test`.
+462 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1753,6 +1753,47 @@ Seven checks, and all seven broken on purpose: no artwork prints
 `cdn.myanimelist.net` URL it found; no lazy prints `25 not lazy`; no tint
 prints `0 rows, 25 banners`; no `min-height` prints the rule with it missing;
 and no scrim prints `no scrim, or the text is not white over it`.
+
+#### The pale outline round every corner
+
+Build 60. **Reported from a screenshot of the live site**, Chrome on a Windows
+PC: a faint light hairline round the rounded corners of every row.
+
+**It was never reproduced.** Forced a magenta backdrop so any bleed would be
+unmissable, dropped to 1.0 device pixel ratio, pushed the radius to 26px so a
+fringe would be a long arc rather than a single pixel — clean with the fix in
+and clean with it out. One run appeared to show a magenta hairline and it did
+not repeat, so that is noise rather than evidence.
+
+**The likely cause is fractional device pixel ratio.** Windows display scaling
+at 125% or 150% puts Chrome on a non-integer DPR, which is exactly where
+corner-clipping artifacts live, and the preview pane offers only 1.0 and 2.0.
+So the mechanism is a guess and is written down as one.
+
+**The fix does not depend on the mechanism, which is the point.** The symptom
+is a *light* outline, and it can only be light because what sits behind the
+artwork is bright: `--row-tint` is the show's key-art colour and one row is
+`rgb(93, 187, 241)`. That backdrop is now mixed 38% into the page's own dark,
+so wherever a corner's antialiasing blends it back in the result is dark on
+dark. Whatever compositing path is producing the edge, there is no longer a
+bright colour for it to expose.
+
+It also improves the six rows across the fourteen pages that have no banner and
+show this colour outright, since white text sits on them.
+
+The artwork and the scrim also take `border-radius: inherit` rather than
+relying on the row's `overflow: hidden` to clip them. That is correct practice
+and means less blended edge exists at all — but it is **not** what the fix
+rests on, and the note is here so nobody removes the darkening on the grounds
+that the radii already handle it.
+
+**Generalising: when a rendering artifact cannot be reproduced, remove what
+makes it visible rather than chasing the path that draws it.** The colour
+behind the art had no reason to be bright.
+
+Two checks, both broken on purpose. Reverting the darkening prints the rule
+without the `color-mix`; dropping the radius prints `art: none | scrim:
+border-radius: inherit`.
 
 #### A breaker pattern has to survive CRLF
 

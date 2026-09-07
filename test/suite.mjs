@@ -2116,6 +2116,23 @@ console.log('\n--- the way into the genre pages ---');
     check('a row has a height of its own, so nothing reflows as art arrives',
       /min-height:\s*96px/.test(artLi), artLi.replace(/\s+/g, ' ').trim().slice(0, 80));
 
+    /* A pale outline round every corner, reported on Chrome on a Windows PC.
+       --row-tint is the show's key-art colour and is often bright, so wherever
+       a corner's antialiasing blends a fraction of it back in over darkened
+       art, it reads as a white hairline. Darkening the backdrop takes away
+       what makes it visible, whatever the compositing path. */
+    check('the row backdrop is darkened, so a blended edge cannot read as white',
+      /background:\s*color-mix\(in srgb, var\(--row-tint[^)]*\)[^;]*#101114\)/.test(artLi),
+      artLi.replace(/\s+/g, ' ').trim().slice(0, 90));
+
+    /* And the three edges land on the same curve, so there is less of a
+       blended edge to begin with. The scrim and the artwork inherit it. */
+    const artImgRule = /\.genre-art\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+    const scrimRule = /\.genre-list-art li::after\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+    check('and the artwork and scrim share the row radius rather than relying on the clip',
+      /border-radius:\s*inherit/.test(artImgRule) && /border-radius:\s*inherit/.test(scrimRule),
+      `art: ${/border-radius[^;]*/.exec(artImgRule)?.[0] || 'none'} | scrim: ${/border-radius[^;]*/.exec(scrimRule)?.[0] || 'none'}`);
+
     /* Text sits on artwork nobody chose for legibility, so the scrim is the
        only thing guaranteeing contrast. It is dark in both themes because the
        text over it is always white. */
