@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 62.** `anime.json` holds **5,017 entries**
+**Build 63.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-462 checks pass via `npm test`.
+463 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1846,6 +1846,34 @@ encode a wrong design as confidently as a right one.
 disproved: the report was at 100% scaling and 100% browser zoom, which is
 device pixel ratio 1.0, exactly what had already been tested. The likeliest
 remaining difference is GPU rasterisation, which the preview pane does not do.
+
+**Build 63: the fix from build 61 was the bug.** Worth the space, because it is
+the most self-inflicted failure in this file.
+
+Build 61 painted `box-shadow: inset 0 0 0 1px var(--bg)` inside each row to
+cover the pale outline. **That ring is what the reader was then looking at.**
+The scrim is 0.90 black at the left edge, so the row there sits at luminance
+5-9; `--bg` is 23.9. Painting the page colour into the darkest part of the row
+draws a line three to four times brighter than everything around it — a pale
+outline, in exactly the place the original complaint described.
+
+It even explains the symptom shrinking rather than vanishing across builds. By
+build 62 the artwork was held back from the boundary, which fixed the real
+leak; what survived, reported as "just the bottom left corner now on some", was
+the ring alone.
+
+**The mistake was reaching for a cover-up while the diagnosis was still
+unknown, and then reasoning about the cover-up in the wrong colour space.** The
+ring was chosen as "the page's own colour, therefore invisible" — true against
+the page, false against a row the scrim has taken far darker than the page. A
+colour is only invisible against the thing it is actually drawn on.
+
+The arithmetic that settled it took one command and should have come first:
+compute the rendered colour at the edge, compare it with what is being painted
+there. Three builds went by on visual comparison of compressed screenshots,
+which could not resolve a one-pixel difference.
+
+A check now asserts the ring stays gone.
 
 **Generalising: when a rendering artifact cannot be reproduced, remove what
 makes it visible rather than chasing the path that draws it.** The colour

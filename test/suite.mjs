@@ -2125,6 +2125,16 @@ console.log('\n--- the way into the genre pages ---');
       /background:\s*color-mix\(in srgb, var\(--row-tint[^)]*\)[^;]*#101114\)/.test(artLi),
       artLi.replace(/\s+/g, ' ').trim().slice(0, 90));
 
+    /* No ring of --bg inside the row, and this one is a scar rather than a
+       precaution. Build 61 added `box-shadow: inset 0 0 0 1px var(--bg)` to
+       paint over the pale outline, and it *became* the pale outline: the scrim
+       is 0.90 black at the left edge, which takes the row down to luminance
+       5-9, while --bg is 23.9. Painting the page colour there draws a line
+       three to four times brighter than what surrounds it. */
+    check('and no ring of the page colour is painted inside the row',
+      !/box-shadow:\s*inset[^;]*var\(--bg\)/.test(artLi),
+      artLi.replace(/\s+/g, ' ').trim().slice(0, 90));
+
     /* The artwork is held back from the row's rounded boundary, and the scrim
        overhangs past it. This is the invariant that actually removes the pale
        outline, and it took three goes to find.

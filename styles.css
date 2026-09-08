@@ -853,21 +853,6 @@ a { color: inherit; }
    * The plain value first, for anything without color-mix. */
   background: var(--row-tint, var(--surface-2));
   background: color-mix(in srgb, var(--row-tint, var(--surface-2)) 38%, #101114);
-  /* A one-pixel ring of the page's own colour, drawn inside the row's curve.
-   *
-   * This is the belt-and-braces half, and it is here because the artifact was
-   * never reproducible: not at 1.0 device pixel ratio, not at 2.0, not with a
-   * magenta backdrop, not with a 26px radius, and not with pure white
-   * artwork. It is reported on Chrome under Windows display scaling, which
-   * puts the browser on a fractional device pixel ratio that this pane cannot
-   * emulate — so instead of chasing the compositing path that draws the edge,
-   * this paints over exactly where the edge is.
-   *
-   * It tracks --bg, so it is invisible in both themes: the ring is the same
-   * colour as the page behind it, which simply reads as the row being a pixel
-   * smaller. Anything bright leaking from the artwork's clipped edge is
-   * covered by it. */
-  box-shadow: inset 0 0 0 1px var(--bg);
 }
 
 /* `content-visibility: auto` was tried here and removed, which is worth
