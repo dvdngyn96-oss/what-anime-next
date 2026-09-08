@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 65.** `anime.json` holds **5,017 entries**
+**Build 66.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-465 checks pass via `npm test`.
+462 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1924,6 +1924,46 @@ its place:
 | `::before`, the tint | 2px | never at the boundary, never level with the scrim |
 | the artwork | 2px | opaque, covers the tint |
 | `::after`, the scrim | 1px | overhangs both, still 1px clear of the boundary |
+
+#### All of it was reverted, and the write-up is the point
+
+Build 66. **The owner's call: the fringe is real but slight, and the plain
+arrangement looked better.** Builds 60 to 65 are gone from the stylesheet —
+the darkened backdrop, the separate tint layer, the nested radii, the insets,
+the ring. A row is once again the show's raw key-art colour with the artwork
+filling it, exactly as build 59 shipped.
+
+**Two things were deliberately kept**, because they fixed a different
+complaint: the scrim clears at 62% rather than 70%, and the text column is
+capped at `minmax(0, 60%)`. Together those stop the gradient burying the
+centre-left of every banner, which is where banner art puts its subject. That
+was reported separately as the pictures no longer being "on subject" and has
+nothing to do with the corners.
+
+**The account above stays even though the code is gone.** Six builds went into
+a one-pixel line and every one of them failed in a way worth knowing:
+
+- **59** the raw tint at the boundary
+- **60** the darkened tint, still lighter than the page — and matching radii,
+  which put two antialiased edges on the same pixels and made it worse
+- **61** a ring of `--bg`, which was three to four times brighter than the
+  scrimmed row edge and *became* the line
+- **62** the artwork held off the boundary — the first real improvement
+- **64** the page colour at the edge with everything inset behind it
+- **65** the tint and the scrim sharing an edge, the build-60 error repeated
+  one layer down while fixing it
+
+**The single lesson, if only one survives: compute the luminance of what you
+are painting against the luminance of what is actually beneath it.** One
+command comparing those two numbers identified build 61's ring as the culprit
+after three builds of comparing compressed screenshots by eye. "It is the page
+colour, so it is invisible" was true against the page and false against a row
+the scrim had taken four times darker.
+
+And the meta-lesson, which cost more than the bug: **an artifact that cannot be
+reproduced locally should be shown to the person who can see it before another
+fix is shipped.** Three fixes went out for a line that was never once
+reproduced in the preview pane, and one of them made it worse.
 
 #### The scrim was hiding the artwork, which is a separate complaint
 

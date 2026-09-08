@@ -831,40 +831,22 @@ a { color: inherit; }
   border-radius: 10px;
   overflow: hidden;
   min-height: 96px;
-  /* The page's own colour, exactly — every tinted layer is inset off the
-   * boundary below. That is what finally removes the pale edge: the clip's
-   * antialiasing now blends --bg against the page behind it, which is the
-   * same colour, so there is nothing for it to expose.
+  /* The show's own key-art colour, undarkened, and the artwork below fills the
+   * row rather than being held off its edge.
    *
-   * The backdrop used to live here, and it is 75.5 luminance against the
-   * page's 23.9, so any fraction of it bleeding round the curve read as a
-   * light line. Painting the page colour over that (build 61) only made it
-   * worse — see the note in CLAUDE.md. */
-  background: var(--bg);
+   * Builds 60-65 stacked insets, a darkened backdrop and a separate tint layer
+   * here to chase a faint pale line round the rounded corners. Reverted on the
+   * owner's call: the fringe is real but slight, and the plain arrangement
+   * looked better. The whole write-up of what was tried, and why each attempt
+   * failed, is kept in CLAUDE.md — the useful part is the reasoning, not the
+   * code, and it should not be re-derived from scratch if this is revisited.
+   *
+   * What is deliberately KEPT from that stretch is the scrim clearing at 62%
+   * and the capped text column below: those fixed a different complaint, that
+   * the artwork was buried centre-left where banner art puts its subject. */
+  background: var(--row-tint, var(--surface-2));
 }
 
-/* The show's own key-art colour, held 1px off the boundary. Also the whole
- * backdrop for the six rows across the fourteen pages that have no banner. */
-.genre-list-art li::before {
-  content: "";
-  position: absolute;
-  /* 2px, matching the artwork rather than the scrim — and that distinction is
-   * the whole bug this fixed.
-   *
-   * At 1px it sat on exactly the same edge as the scrim above it, so their
-   * antialiased boundaries coincided and the scrim could not fully cover it.
-   * The tint is luminance 75 against the page's 24, so the fraction that got
-   * through read as a light line along the bottom of every row with bright
-   * art. That is the same failure as build 60's matching radii, one layer
-   * down: two stacked layers must never share an edge.
-   *
-   * The artwork is opaque and sits at the same 2px, so the two cover each
-   * other, and the scrim at 1px overhangs both. */
-  inset: 2px;
-  border-radius: 8px;
-  background: var(--row-tint, var(--surface-2));
-  background: color-mix(in srgb, var(--row-tint, var(--surface-2)) 38%, #101114);
-}
 
 /* `content-visibility: auto` was tried here and removed, which is worth
  * recording because it is the obvious next thing to reach for.
@@ -887,33 +869,12 @@ a { color: inherit; }
  * centre because banner art puts faces in the upper half. */
 .genre-art {
   position: absolute;
-  /* Inset by 2px, so the artwork never reaches the row's rounded boundary.
-   *
-   * This is the fix that actually holds, and the reason the two before it did
-   * not is worth stating: *anything* painted inside a rounded clip is
-   * antialiased at that same boundary, including a covering ring. Its own
-   * outermost pixel blends with whatever lies beneath it inside the layer —
-   * the bright artwork — so covering from the inside can never fully win.
-   *
-   * Holding the art back 2px means the outer edge of the row is its own dark
-   * background, and the clip's antialiasing then blends dark against the dark
-   * page, which shows nothing. The boundary has no bright pixel to expose. */
-  inset: 2px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: center 35%;
   display: block;
-  /* Rounded in its own right, not merely clipped by the row.
-   *
-   * `overflow: hidden` on the row alone left a pale hairline round every
-   * corner, and the reason is the tint: --row-tint is the show's *key-art*
-   * colour, so it is often bright — one row is rgb(93, 187, 241) — and it
-   * sits behind artwork the scrim has darkened. The antialiased edge of the
-   * clip blends a fraction of that bright background back in, which reads as
-   * a white outline on a dark row.
-   *
-   * Matching the radius here and on the scrim below means all three edges
-   * land on the same curve, so there is no sliver of tint left to show. */
-  border-radius: 8px;
 }
 
 /* The scrim. Text sits on artwork nobody chose for legibility, so it needs a
@@ -924,17 +885,12 @@ a { color: inherit; }
 .genre-list-art li::after {
   content: "";
   position: absolute;
-  /* 1px off the boundary, matching the tint beneath it, so the outermost
-   * pixel of the row is untouched page colour. Still overhangs the artwork,
-   * which sits at 2px, so the art's own edge stays covered. */
-  inset: 1px;
-  border-radius: 9px;
-  /* Clears at 62% rather than 70%, which it can now that the text column is
-   * capped below. Holding the dark out to 70% protected the meta line but
-   * buried the middle of every banner — and banner art puts its subject
-   * centre-left, so what survived was the far right, which is usually just
-   * background. Reported as the pictures no longer being "on subject", and
-   * it was this gradient rather than the crop. */
+  inset: 0;
+  /* Clears at 62% rather than 70%, kept from build 64. Holding the dark out to
+   * 70% protected the meta line but buried the middle of every banner, and
+   * banner art puts its subject centre-left — so what survived was the far
+   * right, which is usually background. The capped text column below is what
+   * lets it clear this early without putting a character on a bright pixel. */
   background: linear-gradient(90deg,
     rgba(0, 0, 0, 0.90) 0%,
     rgba(0, 0, 0, 0.82) 42%,

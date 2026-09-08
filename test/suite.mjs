@@ -2121,67 +2121,31 @@ console.log('\n--- the way into the genre pages ---');
        a corner's antialiasing blends a fraction of it back in over darkened
        art, it reads as a white hairline. Darkening the backdrop takes away
        what makes it visible, whatever the compositing path. */
-    /* The outermost pixel of a row is the page's own colour, and every tinted
-       layer is inset off the boundary. That is what finally removed the pale
-       edge: the clip's antialiasing blends --bg against the page behind it,
-       which is the same colour, so there is nothing to expose. The backdrop
-       used to sit here and is luminance 75.5 against the page's 23.9. */
-    const beforeRule = /\.genre-list-art li::before\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
-    check('the row edge is the page colour, with the tint inset behind it',
-      /background:\s*var\(--bg\)/.test(artLi)
-        && /inset:\s*2px/.test(beforeRule)
-        && /color-mix\(in srgb, var\(--row-tint/.test(beforeRule),
-      `row: ${/background[^;]*/.exec(artLi)?.[0] || 'none'} | tint inset: ${/inset[^;]*/.exec(beforeRule)?.[0] || 'none'}`);
+    /* Builds 60-65 stacked insets, a darkened backdrop and a separate tint
+       layer to chase a faint pale line round the rounded corners. Reverted on
+       the owner's call — the fringe is real but slight and the plain version
+       looked better — so this asserts the simple arrangement is what ships:
+       the row carries the show's raw key-art colour and the artwork fills it.
 
-    /* No ring of --bg inside the row, and this one is a scar rather than a
-       precaution. Build 61 added `box-shadow: inset 0 0 0 1px var(--bg)` to
-       paint over the pale outline, and it *became* the pale outline: the scrim
-       is 0.90 black at the left edge, which takes the row down to luminance
-       5-9, while --bg is 23.9. Painting the page colour there draws a line
-       three to four times brighter than what surrounds it. */
+       If that is ever revisited, CLAUDE.md has the full account of what was
+       tried and why each attempt failed. The reasoning is the valuable part. */
+    const artImgRule = /\.genre-art\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+    const scrimRule = /\.genre-list-art li::after\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
+
+    check('a row is the raw key-art colour with the artwork filling it',
+      /background:\s*var\(--row-tint, var\(--surface-2\)\);/.test(artLi)
+        && !/color-mix/.test(artLi)
+        && /inset:\s*0/.test(artImgRule),
+      `row: ${/background[^;]*/.exec(artLi)?.[0] || 'none'} | art: ${/inset[^;]*/.exec(artImgRule)?.[0] || 'none'}`);
+
+    /* No ring of --bg inside the row, and this one is a scar. Build 61 added
+       `box-shadow: inset 0 0 0 1px var(--bg)` to paint over the fringe and it
+       *became* the fringe: the scrim takes the row edge to luminance 5-9 while
+       --bg is 23.9, so painting the page colour there drew a line three to
+       four times brighter than its surroundings. Never do that again. */
     check('and no ring of the page colour is painted inside the row',
       !/box-shadow:\s*inset[^;]*var\(--bg\)/.test(artLi),
       artLi.replace(/\s+/g, ' ').trim().slice(0, 90));
-
-    /* The artwork is held back from the row's rounded boundary, and the scrim
-       overhangs past it. This is the invariant that actually removes the pale
-       outline, and it took three goes to find.
-
-       Anything painted *inside* a rounded clip is antialiased at that same
-       boundary — a covering ring included, since its own outermost pixel
-       blends with the bright artwork beneath it. So the fix is not to cover
-       the edge but to keep bright content away from it: the outer 2px of the
-       row is its own dark background, and the clip then blends dark against
-       the dark page, which shows nothing.
-
-       Matching the radii was the *wrong* instinct and is what the earlier
-       version of this check enforced -- aligning the scrim and image on one
-       curve puts their antialiased edges on identical pixels, which is the
-       problem rather than the cure. */
-    const artImgRule = /\.genre-art\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
-    const scrimRule = /\.genre-list-art li::after\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
-    check('the artwork is held back from the row edge, and the scrim overhangs it',
-      /inset:\s*2px/.test(artImgRule) && /inset:\s*1px/.test(scrimRule),
-      `art: ${/inset[^;]*/.exec(artImgRule)?.[0] || 'none'} | scrim: ${/inset[^;]*/.exec(scrimRule)?.[0] || 'none'}`);
-
-    /* No two stacked layers share an edge. The tint sits at 2px with the
-       artwork, and the scrim overhangs both at 1px. When the tint was also at
-       1px their antialiased boundaries coincided, the scrim could not cover
-       it, and the tint — luminance 75 against the page's 24 — showed as a
-       light line along the bottom of every row with bright art. */
-    check('the scrim overhangs the tint rather than sharing its edge',
-      /inset:\s*2px/.test(beforeRule) && /inset:\s*1px/.test(scrimRule),
-      `tint: ${/inset[^;]*/.exec(beforeRule)?.[0] || 'none'} | scrim: ${/inset[^;]*/.exec(scrimRule)?.[0] || 'none'}`);
-
-    /* The text column is capped rather than 1fr, which is what allows the
-       scrim to clear at 62% instead of 70%. Holding the dark out to 70%
-       protected the meta line and buried the middle of every banner, where
-       the subject usually is. */
-    const bodyRule = /\.genre-row-body\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
-    check('the text column is capped, so the scrim can clear and show the art',
-      /grid-template-columns:\s*46px minmax\(0, 60%\)/.test(bodyRule)
-        && /rgba\(0, 0, 0, 0\.68\) 62%/.test(scrimRule),
-      `${/grid-template-columns[^;]*/.exec(bodyRule)?.[0] || 'none'}`);
 
     /* Text sits on artwork nobody chose for legibility, so the scrim is the
        only thing guaranteeing contrast. It is dark in both themes because the
