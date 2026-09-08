@@ -10,7 +10,7 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 61.** `anime.json` holds **5,017 entries**
+**Build 62.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
 462 checks pass via `npm test`.
 
@@ -1816,6 +1816,36 @@ under Windows display scaling, which the preview pane cannot emulate.
 reproduced, stop diagnosing and cover it.** Three rounds went into finding the
 mechanism and none of them found it; a 1px ring in the page colour would have
 ended it at the first attempt.
+
+**Build 62 is the one that worked, and it took three goes.** Neither of the
+first two did, and the reason they could not is the useful part:
+
+**Anything painted inside a rounded clip is antialiased at that same
+boundary — a covering ring included.** The 1px ring of `--bg` from build 61
+has its own outermost pixel blended against what lies beneath it *inside* the
+layer, which is the bright artwork. Covering the edge from the inside cannot
+win, however many layers are stacked up.
+
+**And matching the radii, from build 60, was actively the wrong instinct.**
+Clipping the scrim and the image to the same curve puts their antialiased
+edges on identical pixels, so a half-transparent scrim edge sits exactly over
+a half-opaque image edge and lets the art through. That fix made the thing it
+was aimed at more likely, not less.
+
+What works is to keep bright content away from the boundary: the artwork is
+`inset: 2px`, nested at an 8px radius inside the row's 10px. The outer two
+pixels of every row are its own dark background, so the clip blends dark
+against the dark page and there is no bright pixel at the edge to expose. The
+scrim overhangs at `inset: -2px` for the same reason from the other side.
+
+The check enforces exactly that pair, and the version of it that shipped in
+build 60 asserted the **opposite** — that the radii matched. A guard can
+encode a wrong design as confidently as a right one.
+
+**Windows display scaling was a red herring**, guessed at in build 60 and
+disproved: the report was at 100% scaling and 100% browser zoom, which is
+device pixel ratio 1.0, exactly what had already been tested. The likeliest
+remaining difference is GPU rasterisation, which the preview pane does not do.
 
 **Generalising: when a rendering artifact cannot be reproduced, remove what
 makes it visible rather than chasing the path that draws it.** The colour

@@ -2125,13 +2125,26 @@ console.log('\n--- the way into the genre pages ---');
       /background:\s*color-mix\(in srgb, var\(--row-tint[^)]*\)[^;]*#101114\)/.test(artLi),
       artLi.replace(/\s+/g, ' ').trim().slice(0, 90));
 
-    /* And the three edges land on the same curve, so there is less of a
-       blended edge to begin with. The scrim and the artwork inherit it. */
+    /* The artwork is held back from the row's rounded boundary, and the scrim
+       overhangs past it. This is the invariant that actually removes the pale
+       outline, and it took three goes to find.
+
+       Anything painted *inside* a rounded clip is antialiased at that same
+       boundary — a covering ring included, since its own outermost pixel
+       blends with the bright artwork beneath it. So the fix is not to cover
+       the edge but to keep bright content away from it: the outer 2px of the
+       row is its own dark background, and the clip then blends dark against
+       the dark page, which shows nothing.
+
+       Matching the radii was the *wrong* instinct and is what the earlier
+       version of this check enforced -- aligning the scrim and image on one
+       curve puts their antialiased edges on identical pixels, which is the
+       problem rather than the cure. */
     const artImgRule = /\.genre-art\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
     const scrimRule = /\.genre-list-art li::after\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
-    check('and the artwork and scrim share the row radius rather than relying on the clip',
-      /border-radius:\s*inherit/.test(artImgRule) && /border-radius:\s*inherit/.test(scrimRule),
-      `art: ${/border-radius[^;]*/.exec(artImgRule)?.[0] || 'none'} | scrim: ${/border-radius[^;]*/.exec(scrimRule)?.[0] || 'none'}`);
+    check('the artwork is held back from the row edge, and the scrim overhangs it',
+      /inset:\s*2px/.test(artImgRule) && /inset:\s*-2px/.test(scrimRule),
+      `art: ${/inset[^;]*/.exec(artImgRule)?.[0] || 'none'} | scrim: ${/inset[^;]*/.exec(scrimRule)?.[0] || 'none'}`);
 
     /* Text sits on artwork nobody chose for legibility, so the scrim is the
        only thing guaranteeing contrast. It is dark in both themes because the

@@ -891,9 +891,18 @@ a { color: inherit; }
  * centre because banner art puts faces in the upper half. */
 .genre-art {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  /* Inset by 2px, so the artwork never reaches the row's rounded boundary.
+   *
+   * This is the fix that actually holds, and the reason the two before it did
+   * not is worth stating: *anything* painted inside a rounded clip is
+   * antialiased at that same boundary, including a covering ring. Its own
+   * outermost pixel blends with whatever lies beneath it inside the layer —
+   * the bright artwork — so covering from the inside can never fully win.
+   *
+   * Holding the art back 2px means the outer edge of the row is its own dark
+   * background, and the clip's antialiasing then blends dark against the dark
+   * page, which shows nothing. The boundary has no bright pixel to expose. */
+  inset: 2px;
   object-fit: cover;
   object-position: center 35%;
   display: block;
@@ -908,7 +917,7 @@ a { color: inherit; }
    *
    * Matching the radius here and on the scrim below means all three edges
    * land on the same curve, so there is no sliver of tint left to show. */
-  border-radius: inherit;
+  border-radius: 8px;
 }
 
 /* The scrim. Text sits on artwork nobody chose for legibility, so it needs a
