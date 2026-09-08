@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 63.** `anime.json` holds **5,017 entries**
+**Build 64.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-463 checks pass via `npm test`.
+464 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1874,6 +1874,49 @@ there. Three builds went by on visual comparison of compressed screenshots,
 which could not resolve a one-pixel difference.
 
 A check now asserts the ring stays gone.
+
+**Build 64 finished it, and the shape of the answer is worth keeping.** The
+outermost pixel of a row is now `--bg` — the page's own colour, exactly — and
+**every** coloured layer is inset behind it:
+
+| Layer | Inset | What it is |
+| --- | --- | --- |
+| the row | 0 | `--bg`, so the clip blends page against page |
+| `::before` | 1px | the darkened key-art tint |
+| the artwork | 2px | the banner |
+| `::after` | 1px | the scrim, overhanging the art |
+
+The clip's antialiasing therefore has nothing to expose: at the boundary it is
+mixing the page colour with the page colour. Every earlier attempt left
+*something* brighter than the page at that edge — the raw tint in build 59, the
+darkened tint in 60, the artwork's own edge in 61, and in 61 a ring that was
+brighter than either.
+
+**Generalising properly, since four builds went into it: a rounded clip will
+expose whatever sits at its boundary, so put the page's own colour there and
+inset everything else.** Do not try to cover the edge from inside; anything
+painted inside the clip is antialiased at the same boundary and blends with
+whatever is beneath it.
+
+#### The scrim was hiding the artwork, which is a separate complaint
+
+Reported as the pictures no longer being "on subject". **The crop never
+changed** — `object-fit: cover` on a 1900x400 banner scales by width, so
+nothing horizontal is ever cut. What changed was the scrim.
+
+Build 59's legibility fix held the gradient at 0.72 out to **70%** of the row
+so the meta line could not land on bright art. Banner art puts its subject
+centre-left, so that buried it and left only the far right visible, which is
+usually background.
+
+The fix is not to weaken the scrim but to **stop the text needing so much of
+it**: `.genre-row-body` is now `46px minmax(0, 60%)` rather than `46px 1fr`, so
+the text finishes well inside the dark part, and the gradient can clear from
+**62%**. That returns about a fifth of the row to the artwork without putting a
+single character back over a bright pixel.
+
+Worth remembering as a pattern: when a protective overlay is eating the thing
+it is protecting, shrink what needs protecting rather than the overlay.
 
 **Generalising: when a rendering artifact cannot be reproduced, remove what
 makes it visible rather than chasing the path that draws it.** The colour

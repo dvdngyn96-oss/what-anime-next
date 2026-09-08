@@ -830,27 +830,26 @@ a { color: inherit; }
   border: none;
   border-radius: 10px;
   overflow: hidden;
-  /* The row's own height, so it never depends on the image having arrived.
-   * A row that grows when its banner lands would push everything below it
-   * down while somebody is reading — the card's rule, on a longer page. */
   min-height: 96px;
-  /* Darkened, and that is the actual fix for the pale outline round the
-   * corners rather than the matching radii below.
+  /* The page's own colour, exactly — every tinted layer is inset off the
+   * boundary below. That is what finally removes the pale edge: the clip's
+   * antialiasing now blends --bg against the page behind it, which is the
+   * same colour, so there is nothing for it to expose.
    *
-   * --row-tint is the show's *key-art* colour, so it is often bright — one row
-   * is rgb(93, 187, 241). It sits behind artwork the scrim has darkened, so
-   * wherever a corner's antialiasing blends even a fraction of it back in, the
-   * result is a light hairline on a dark row. Reported on Chrome on a Windows
-   * PC and not reproducible in a 1.0-dpr pane, which points at fractional
-   * display scaling — 125% and 150% are where this class of artifact lives.
-   *
-   * Rather than chase the compositing path, take away what makes it visible:
-   * mixed 38% into the page's own dark, the backdrop is never lighter than the
-   * scrimmed art in front of it, so a blended edge cannot read as white. It
-   * also improves the six rows across the fourteen pages that have no banner
-   * at all and show this colour outright, since white text sits on them.
-   *
-   * The plain value first, for anything without color-mix. */
+   * The backdrop used to live here, and it is 75.5 luminance against the
+   * page's 23.9, so any fraction of it bleeding round the curve read as a
+   * light line. Painting the page colour over that (build 61) only made it
+   * worse — see the note in CLAUDE.md. */
+  background: var(--bg);
+}
+
+/* The show's own key-art colour, held 1px off the boundary. Also the whole
+ * backdrop for the six rows across the fourteen pages that have no banner. */
+.genre-list-art li::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 9px;
   background: var(--row-tint, var(--surface-2));
   background: color-mix(in srgb, var(--row-tint, var(--surface-2)) 38%, #101114);
 }
@@ -913,44 +912,33 @@ a { color: inherit; }
 .genre-list-art li::after {
   content: "";
   position: absolute;
-  /* Overhanging the artwork by 2px, and this is what actually removes the pale
-   * outline round the corners.
-   *
-   * Matching the radii was not enough — it made things worse in a way that is
-   * easy to miss. When the scrim and the image are clipped to the *same*
-   * curve, their antialiased edges land on exactly the same pixels, and a
-   * half-transparent scrim edge cannot cover a half-opaque image edge. The
-   * artwork leaks through, which is why the rows that showed it worst were the
-   * ones with bright art — The First Slam Dunk, Ping Pong, Cross Game — and
-   * not the ones with a bright tint, which is where the first fix aimed.
-   *
-   * Pulling the scrim 2px outwards puts its own edge past the image entirely.
-   * The row's `overflow: hidden` then clips the scrim to the corner, and that
-   * clipped edge blends scrim-dark against page-dark, which shows nothing.
-   * 2px rather than 1 because Windows display scaling puts Chrome on a
-   * fractional device pixel ratio, where a single CSS pixel is not a whole
-   * device one. */
-  inset: -2px;
-  border-radius: inherit;
-  /* The falloff is set by where the *text* ends, not by taste. A row is about
-   * 750px on desktop and the meta line runs to roughly 70% of it; at the first
-   * draft the scrim was down to 0.45 there, which over bright art — The First
-   * Slam Dunk, Ping Pong — computed to about 1.9:1. So it holds 0.72 out to
-   * 70% and only then clears. The right third is still mostly picture, which
-   * is the part doing the work. */
+  /* 1px off the boundary, matching the tint beneath it, so the outermost
+   * pixel of the row is untouched page colour. Still overhangs the artwork,
+   * which sits at 2px, so the art's own edge stays covered. */
+  inset: 1px;
+  border-radius: 9px;
+  /* Clears at 62% rather than 70%, which it can now that the text column is
+   * capped below. Holding the dark out to 70% protected the meta line but
+   * buried the middle of every banner — and banner art puts its subject
+   * centre-left, so what survived was the far right, which is usually just
+   * background. Reported as the pictures no longer being "on subject", and
+   * it was this gradient rather than the crop. */
   background: linear-gradient(90deg,
     rgba(0, 0, 0, 0.90) 0%,
-    rgba(0, 0, 0, 0.84) 45%,
-    rgba(0, 0, 0, 0.72) 70%,
-    rgba(0, 0, 0, 0.32) 88%,
-    rgba(0, 0, 0, 0.18) 100%);
+    rgba(0, 0, 0, 0.82) 42%,
+    rgba(0, 0, 0, 0.68) 62%,
+    rgba(0, 0, 0, 0.22) 82%,
+    rgba(0, 0, 0, 0.10) 100%);
 }
 
 .genre-row-body {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 46px 1fr;
+  /* Capped rather than 1fr: the text must finish inside the dark part of
+   * the scrim, and capping it is what lets the scrim clear at 62% instead
+   * of 70% and give the artwork back a fifth of the row. */
+  grid-template-columns: 46px minmax(0, 60%);
   align-items: center;
   gap: 6px;
   min-height: 96px;
