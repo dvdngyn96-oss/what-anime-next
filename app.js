@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 64;
+const BUILD = 65;
 
 /* ------------------------------------------------------------------ *
  * Catalogue

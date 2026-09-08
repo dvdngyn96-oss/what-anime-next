@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 64.** `anime.json` holds **5,017 entries**
+**Build 65.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-464 checks pass via `npm test`.
+465 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -1897,6 +1897,33 @@ expose whatever sits at its boundary, so put the page's own colour there and
 inset everything else.** Do not try to cover the edge from inside; anything
 painted inside the clip is antialiased at the same boundary and blends with
 whatever is beneath it.
+
+#### And then a light line along the bottom, which was the same mistake again
+
+Build 65. Build 64 put the tint on `::before` at `inset: 1px` and the scrim on
+`::after` at `inset: 1px` — **the same edge**. Their antialiased boundaries
+coincided, so the scrim could not fully cover the tint, and the tint is
+luminance 75 against the page's 24. The fraction that got through read as a
+light line along the bottom of every row with bright art.
+
+That is build 60's matching-radii error a second time, one layer down, made
+while writing the fix for the first one. The rule it should have followed was
+already in this file.
+
+**So: no two stacked layers may share an edge.** The tint moved to 2px, level
+with the artwork — which is opaque and covers it — and the scrim stays at 1px,
+overhanging both. A check asserts the tint and scrim insets differ, and
+reverting the tint to 1px fails it by name.
+
+The final stack, and it is worth reading as a whole because each inset earns
+its place:
+
+| Layer | Inset | Why |
+| --- | --- | --- |
+| the row | 0 | `--bg`, so the clip blends page against page |
+| `::before`, the tint | 2px | never at the boundary, never level with the scrim |
+| the artwork | 2px | opaque, covers the tint |
+| `::after`, the scrim | 1px | overhangs both, still 1px clear of the boundary |
 
 #### The scrim was hiding the artwork, which is a separate complaint
 

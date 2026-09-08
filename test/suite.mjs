@@ -2129,7 +2129,7 @@ console.log('\n--- the way into the genre pages ---');
     const beforeRule = /\.genre-list-art li::before\s*\{([^}]*)\}/.exec(cssText)?.[1] || '';
     check('the row edge is the page colour, with the tint inset behind it',
       /background:\s*var\(--bg\)/.test(artLi)
-        && /inset:\s*1px/.test(beforeRule)
+        && /inset:\s*2px/.test(beforeRule)
         && /color-mix\(in srgb, var\(--row-tint/.test(beforeRule),
       `row: ${/background[^;]*/.exec(artLi)?.[0] || 'none'} | tint inset: ${/inset[^;]*/.exec(beforeRule)?.[0] || 'none'}`);
 
@@ -2163,6 +2163,15 @@ console.log('\n--- the way into the genre pages ---');
     check('the artwork is held back from the row edge, and the scrim overhangs it',
       /inset:\s*2px/.test(artImgRule) && /inset:\s*1px/.test(scrimRule),
       `art: ${/inset[^;]*/.exec(artImgRule)?.[0] || 'none'} | scrim: ${/inset[^;]*/.exec(scrimRule)?.[0] || 'none'}`);
+
+    /* No two stacked layers share an edge. The tint sits at 2px with the
+       artwork, and the scrim overhangs both at 1px. When the tint was also at
+       1px their antialiased boundaries coincided, the scrim could not cover
+       it, and the tint — luminance 75 against the page's 24 — showed as a
+       light line along the bottom of every row with bright art. */
+    check('the scrim overhangs the tint rather than sharing its edge',
+      /inset:\s*2px/.test(beforeRule) && /inset:\s*1px/.test(scrimRule),
+      `tint: ${/inset[^;]*/.exec(beforeRule)?.[0] || 'none'} | scrim: ${/inset[^;]*/.exec(scrimRule)?.[0] || 'none'}`);
 
     /* The text column is capped rather than 1fr, which is what allows the
        scrim to clear at 62% instead of 70%. Holding the dark out to 70%

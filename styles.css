@@ -848,8 +848,20 @@ a { color: inherit; }
 .genre-list-art li::before {
   content: "";
   position: absolute;
-  inset: 1px;
-  border-radius: 9px;
+  /* 2px, matching the artwork rather than the scrim — and that distinction is
+   * the whole bug this fixed.
+   *
+   * At 1px it sat on exactly the same edge as the scrim above it, so their
+   * antialiased boundaries coincided and the scrim could not fully cover it.
+   * The tint is luminance 75 against the page's 24, so the fraction that got
+   * through read as a light line along the bottom of every row with bright
+   * art. That is the same failure as build 60's matching radii, one layer
+   * down: two stacked layers must never share an edge.
+   *
+   * The artwork is opaque and sits at the same 2px, so the two cover each
+   * other, and the scrim at 1px overhangs both. */
+  inset: 2px;
+  border-radius: 8px;
   background: var(--row-tint, var(--surface-2));
   background: color-mix(in srgb, var(--row-tint, var(--surface-2)) 38%, #101114);
 }
