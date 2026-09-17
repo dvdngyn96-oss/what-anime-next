@@ -41,7 +41,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
        change, otherwise a stale script keeps running against fresh data. -->
-  <link rel="stylesheet" href="/styles.css?v=66">
+  <link rel="stylesheet" href="/styles.css?v=67">
   <!-- Real files rather than an emoji in a data: URL, which Chrome on Windows
        drew as a blank circle and Google ignores. favicon.svg is the source;
        regenerate the others with make-icons.mjs. -->
@@ -56,6 +56,11 @@
       <h1 class="wordmark">
         <span class="w-what">what</span><span class="w-anime">anime</span><span class="w-should">should</span><span class="w-i">i</span><span class="w-watch">watch</span><span class="w-next">next</span>
       </h1>
+      <!-- Browsing by genre takes the whole landing page over, so it needs a
+           visible way back to the search box. Shown only while browsing, by
+           the .browsing class rather than the hidden attribute — see the
+           browse styles for why. -->
+      <a id="browse-back" class="browse-back" href="/">&larr; Back to search</a>
       <p class="tagline">Type an anime you've already watched. You'll get something you can start from the beginning.</p>
 
       <div class="search-wrap">
@@ -93,15 +98,20 @@
       <div id="mood-row" class="mood-row" hidden>
         <span class="mood-label">or start from a genre</span>
         <span id="mood-chips" class="mood-chips"></span>
-        <!-- The other door. The chips start a walk, which is the faster path
-             for somebody who just wants a recommendation and is still the main
-             job; this opens the ranked list instead, for somebody who would
-             rather read one than be handed a single card.
+        <!-- The other door. Since build 67 the chips open a ranked list on this
+             page, with a button to go straight to a card; this opens the index
+             of the prerendered genre pages instead.
 
              A link rather than a fifteenth chip, deliberately: fourteen chips
              and one beside them that behaved differently would be a trap. -->
         <a class="browse-genres" href="/genre/">browse all genres</a>
       </div>
+
+      <!-- Browsing by genre. Clicking a chip above fills this with narrowing
+           chips and a ranked list, and hides the search box, the two buttons
+           and the tagline so the list is the page. Empty until then. Filled by
+           app.js — see "Browse by genre" there. -->
+      <div id="browse" class="browse"></div>
 
       <!-- Raised only when the catalogue fails to load. Without it the landing
            page renders perfectly and then ignores everything you type, which
@@ -175,7 +185,7 @@
     </section>
   </main>
 
-  <script src="/app.js?v=66"></script>
+  <script src="/app.js?v=67"></script>
 
   <!-- Cloudflare Web Analytics. Cookieless: no cookies, no fingerprinting, no
        cross-site identifier, so there is nothing to put a consent banner in

@@ -335,6 +335,272 @@ a { color: inherit; }
   color: var(--fg);
 }
 
+/* ---------- Browse by genre ---------- */
+
+/* Clicking a genre chip hands the landing page to the list. Everything the
+ * page is normally for — the tagline, the search box, both buttons, the
+ * housekeeping links — steps aside until you leave.
+ *
+ * Shown and hidden by a class on #search-view, never by the `hidden`
+ * attribute. Several of these set `display` (the list, the back link), and an
+ * author `display` rule beats the browser's own `[hidden] { display: none }` —
+ * the build-58 menu shipped permanently open that way. A class cannot be
+ * overridden like that, so there is no trap to fall into. */
+#search-view.browsing {
+  justify-content: flex-start;
+  padding-top: 40px;
+}
+
+.browsing .tagline,
+.browsing .search-wrap,
+.browsing .actions,
+.browsing .mood-label,
+.browsing .browse-genres,
+.browsing .watched-bar,
+.browsing .username-row,
+.browsing .share-offer {
+  display: none;
+}
+
+.browsing .wordmark { cursor: pointer; }
+
+/* The credit line is pinned to the bottom of the screen, which is fine over a
+   page with nothing under it and not over a list somebody is scrolling. */
+.browsing .credit {
+  position: static;
+  margin-top: 36px;
+}
+
+.browse-back {
+  display: none;
+  font-size: 13px;
+  color: var(--fg-dim);
+  text-decoration: none;
+  margin: 2px 0 4px;
+}
+.browsing .browse-back { display: inline-block; }
+.browse-back:hover { color: var(--fg); text-decoration: underline; }
+
+.browsing .mood-row { margin: 14px 0 0; }
+
+/* "Change genre" only exists on a phone. There, while browsing, the other
+   thirteen genre chips fold away until it is pressed: at 360px the full set
+   took four rows and pushed the list most of a screen down. */
+.mood-change { display: none; }
+
+@media (max-width: 480px) {
+  .browsing .mood-row:not(.genres-open) .mood-chip:not([aria-pressed="true"]):not(.mood-change) {
+    display: none;
+  }
+  .browsing .mood-row:not(.genres-open) .mood-change { display: inline-block; }
+}
+
+/* Bigger while browsing: they are the page's main control now, not a quiet
+   alternative under two buttons. Not on a phone, where fourteen chips at this
+   size take five rows and push the list most of a screen down. */
+@media (min-width: 481px) {
+  .browsing .mood-chip {
+    font-size: 14px;
+    padding: 7px 14px;
+  }
+}
+
+/* White on --accent-fill, the colour kept for exactly that job — see its
+   definition for why it is not --accent. */
+.mood-chip[aria-pressed="true"],
+.narrow-chip[aria-pressed="true"] {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: #fff;
+}
+
+.browse {
+  display: none;
+  width: 100%;
+  max-width: 580px;
+}
+.browsing .browse { display: block; }
+
+.browse-label {
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin: 22px 0 9px;
+}
+
+.narrow-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.narrow-chip {
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.narrow-chip:hover { border-color: var(--border-strong); color: var(--fg); }
+
+.narrow-count {
+  margin-left: 5px;
+  color: var(--fg-faint);
+}
+.narrow-chip[aria-pressed="true"] .narrow-count { color: inherit; }
+
+.narrow-more {
+  background: none;
+  color: var(--fg-faint);
+}
+
+/* The card screen's own filter chips, centred under the narrowing chips. */
+.controls.browse-filters {
+  justify-content: center;
+  margin: 18px 0 0;
+}
+
+.browse-recommend { margin: 22px auto 0; }
+
+.browse-count {
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin: 14px 0 8px;
+}
+
+.browse-pct-note {
+  display: block;
+  margin-top: 3px;
+}
+
+.browse-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+
+/* A row is the link plus a side column holding the percentage and "Seen it",
+   which cannot live inside the link. The hover sits on the whole row so the
+   two read as one thing. */
+.browse-row {
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+}
+.browse-row:hover,
+.browse-row:focus-within { background: var(--hover); }
+
+.browse-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0 7px 8px;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.browse-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 0 8px 0 10px;
+}
+
+.browse-alt {
+  font-size: 12px;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Quiet until hovered: it is an occasional action beside the thing people
+   came for. */
+.browse-seen {
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.browse-seen:hover { border-color: var(--border-strong); color: var(--fg); }
+
+.browse-undo {
+  font-size: 13px;
+  color: var(--fg-dim);
+  margin: 14px 0 0;
+}
+
+.browse-place {
+  flex: none;
+  width: 24px;
+  text-align: right;
+  font-size: 16px;
+  color: var(--fg-faint);
+}
+
+/* Fixed size, so nothing reflows as the posters arrive. */
+.browse-poster {
+  flex: none;
+  width: 50px;
+  height: 70px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.browse-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.browse-title {
+  font-size: 14px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.browse-meta {
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.browse-pct {
+  flex: none;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+.browse-more {
+  display: block;
+  margin: 10px auto 0;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--accent);
+}
+
 .credit {
   position: fixed;
   bottom: 16px;
@@ -911,6 +1177,14 @@ a { color: inherit; }
   gap: 6px;
   min-height: 96px;
   padding: 12px 16px 12px 10px;
+}
+
+/* The genres index uses the same artwork rows with no number: it is a list of
+   doors, not a ranking. The text column keeps the 60% cap so it still
+   finishes inside the dark part of the scrim. */
+.genre-index-body {
+  grid-template-columns: minmax(0, 60%);
+  padding-left: 18px;
 }
 
 /* Big, down the left. The number is the point of a ranked list. */

@@ -372,18 +372,40 @@ function genreIndexPageFor(rows) {
   const desc = `Every genre worth browsing, ${rows.length} of them, each a ranked list of anime `
     + `you can start from the beginning — no sequels, no side stories, no recap editions.`;
 
-  const items = rows.map(({ genre, path, count, top }) => `        <li>
-          <a href="${esc(path)}"><strong>${esc(genre)}</strong></a>
-          <span class="seo-meta">${count} you can start cold</span>
-          <span class="genre-alt">${esc(top.join(' · '))}</span>
-        </li>`).join('\n');
+  /* Artwork rows, the same treatment as the genre pages themselves — the
+     index was the one plain text list left, and it looked it.
+
+     Each genre borrows the banner of a well-ranked show carrying it, and no
+     banner is used twice. Without that rule Frieren's art would fill four of
+     the fourteen rows, since it tops Fantasy, Adventure, Drama and Award
+     Winning. A genre whose shows have all been used falls back to its top
+     show's colour, the same fallback the genre pages use. */
+  const usedArt = new Set();
+  const items = rows.map(({ genre, path, count, top, entries }) => {
+    const pick = entries.find((e) => e.banner && !usedArt.has(e.banner)) || null;
+    if (pick) usedArt.add(pick.banner);
+    const tint = (pick || entries[0])?.colour || '#3a3d42';
+    const art = pick
+      ? `<img class="genre-art" src="${esc(pick.banner)}" loading="lazy" decoding="async" alt="">`
+      : '';
+    return `        <li style="--row-tint:${esc(tint)}">
+          ${art}
+          <span class="genre-row-body genre-index-body">
+            <span class="genre-row-text">
+              <a href="${esc(path)}"><strong>${esc(genre)}</strong></a>
+              <span class="seo-meta">${count} you can start cold</span>
+              <span class="genre-alt">${esc(top.join(' · '))}</span>
+            </span>
+          </span>
+        </li>`;
+  }).join('\n');
 
   const block = `
     <div id="seo-content" class="seo-content genre-page">
       <p class="genre-home"><a href="/">whatanimeshouldiwatchnext</a></p>
       <h1>${esc(title)}</h1>
       <p class="seo-lede">${esc(desc)}</p>
-      <ol class="seo-list genre-list genre-index">
+      <ol class="seo-list genre-list genre-list-art genre-index">
 ${items}
       </ol>
       <p class="seo-note"><strong>Why these are not MyAnimeList's genre rankings.</strong>
@@ -459,6 +481,7 @@ for (const genre of w.__seo.genres()) {
   indexRows.push({
     genre, path: rel, count: carrying.length,
     top: entries.slice(0, 3).map((e) => e.title),
+    entries,
   });
   genreCount += 1;
 }

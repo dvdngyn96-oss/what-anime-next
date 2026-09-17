@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 66;
+const BUILD = 67;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -2234,7 +2234,9 @@ function showSearchView() {
   dropPrerendered();
   resultView.hidden = true;
   searchView.hidden = false;
-  searchInput.focus();
+  /* Not while browsing: the search box is hidden then, and focusing a hidden
+     input would pull a phone's keyboard up over the list. */
+  if (!browse) searchInput.focus();
 }
 
 function showResultView() {
@@ -2905,6 +2907,7 @@ function goHome() {
      sat at the root. */
   history.pushState({}, '', '/');
   $('mini-input').value = '';
+  closeBrowse();
   showSearchView();
 }
 
@@ -3327,37 +3330,470 @@ function renderMoodChips() {
   const chips = $('mood-chips');
   if (!row || !chips || !moodGenres.length) return;
   chips.innerHTML = moodGenres
-    .map((g) => `<button class="mood-chip" type="button" data-genre="${esc(g)}">${esc(g)}</button>`)
-    .join('');
+    .map((g) => `<button class="mood-chip" type="button" data-genre="${esc(g)}" aria-pressed="${browse?.labels[0] === g}">${esc(g)}</button>`)
+    .join('')
+    /* "Change genre", shown only on a phone while browsing — see the browse
+       styles. It exists because the fourteen chips took four rows at 360px and
+       pushed the list most of a screen down, so on a phone only the picked
+       genre stays up until this is pressed. */
+    + (browse ? '<button class="mood-chip mood-change" type="button">Change genre</button>' : '');
+  row.classList.toggle('genres-open', !!browse?.genresOpen);
   row.hidden = false;
 }
 
 /* One listener on the container rather than one per chip: the chips are
    rewritten wholesale when the catalogue lands, and a listener per chip would
-   have to be rewired with them. */
+   have to be rewired with them.
+
+   Since build 67 a chip opens the browse view rather than going straight to a
+   card. The one-click card is still there, as the "Recommend me one from"
+   button at the top of the list. */
 $('mood-chips')?.addEventListener('click', (event) => {
   const chip = event.target.closest('.mood-chip');
-  if (chip) startFromGenre(chip.dataset.genre);
+  if (!chip) return;
+  if (chip.classList.contains('mood-change')) {
+    if (browse) { browse.genresOpen = true; renderMoodChips(); }
+    return;
+  }
+  const genre = chip.dataset.genre;
+  if (browse?.labels[0] === genre) { leaveBrowse(); return; }   // the lit chip again
+  openBrowse([genre], { push: !browse });
+});
+
+/* ------------------------------------------------------------------ *
+ * Browse by genre
+ * ------------------------------------------------------------------ */
+
+/**
+ * Pick a genre, narrow it by up to two more labels, read a ranked list.
+ *
+ * Build 67. **The genre pages were the ranked lists, and people did not use
+ * them** — Web Analytics shows nearly all their traffic arriving from Google —
+ * while the landing chips are the one genre control everybody sees. So the
+ * browsing moved onto the chips, and it takes the page over: the tagline, the
+ * search box and both buttons are hidden until you leave.
+ *
+ * **Nothing here touches the matcher.** It filters and sorts the catalogue the
+ * page already holds; `walkRankings` is only reached through the two routes it
+ * always had, a clicked row and the recommend button. `npm run walks` came out
+ * byte-identical.
+ *
+ * **A filter, not a tree.** Narrowing chips are every other genre *and* theme
+ * carried alongside the picked one, and each pick intersects. A themes-under-
+ * genres flowchart was turned down earlier because MyAnimeList files them as
+ * parallel labels, not nested ones; picking order here means nothing, which is
+ * the same fact expressed as a control.
+ */
+let browse = null;   // { labels: [genre, ...extras], shown, allChips } or null
+
+/* A narrowing chip must leave at least a screenful of shows.
+ *
+ * **A count, deliberately, where the picker's genre floor is a share.** A
+ * share is right when the question is "is this rare relative to the corpus",
+ * and a rebuild moves every count at once. The question here is "is this list
+ * long enough to be worth opening", and the answer is a number of rows on a
+ * screen however big the catalogue grows. Measured on build 66: Mystery has 27
+ * labels clearing 8, Comedy 62, Sports 13 — every genre has plenty to offer. */
+const BROWSE_MIN = 8;
+
+/* How many narrowing chips before "more". Comedy has 62 candidates, and a wall
+   of 62 chips would bury the list this view exists to show. */
+const BROWSE_CHIPS = 12;
+
+/* Six on a phone. Twelve took five rows at 360px, which with the genre chips
+   above put the first show three quarters of the way down the screen. Decided
+   once per render from the width, so rotating a phone takes effect on the
+   next click rather than instantly — not worth a resize listener. */
+const BROWSE_CHIPS_PHONE = 6;
+const PHONE_QUERY = '(max-width: 480px)';
+
+/* The genre plus two. Past three labels most combinations run below
+   BROWSE_MIN anyway, and the ones that do not are rarely what anyone meant. */
+const BROWSE_MAX_LABELS = 3;
+
+const BROWSE_PAGE = 10;
+
+/* Starting shows tried for a combination's recommend button — the same search
+   pickMoodAnchor runs for a genre, over the best-ranked carriers of all the
+   picked labels. */
+const BROWSE_ANCHOR_TRIES = 12;
+
+function labelsOf(anime) {
+  return [...anime.genres, ...anime.themes];
+}
+
+function carriesAll(anime, labels) {
+  const own = labelsOf(anime);
+  return labels.every((l) => own.includes(l));
+}
+
+/* Every label, keyed by the slug the address uses. Built lazily from the
+   catalogue so a rebuild that adds a theme needs no code change. */
+let browseLabelSlugs = null;
+function labelFromSlug(slug) {
+  if (!browseLabelSlugs) {
+    browseLabelSlugs = new Map();
+    for (const anime of ranked) {
+      for (const label of labelsOf(anime)) browseLabelSlugs.set(genreSlug(label), label);
+    }
+  }
+  return browseLabelSlugs.get(genreSlug(slug)) || null;
+}
+
+/**
+ * The shows a list is drawn from, and how many the watched list took out.
+ *
+ * **The format and year filters apply**, for the reason "Surprise me" applies
+ * them: somebody who switched ONA off would read a list full of donghua as the
+ * toggle not working. Those chips live on the card screen, not here, so the
+ * count line names them whenever they are narrowing anything — a filter the
+ * reader cannot see has to be said out loud.
+ *
+ * **Watched shows are left out, and counted.** A list of the best mysteries
+ * that opens on three you finished last year is a worse list; a list that
+ * silently lacks Monster reads as broken. So both: hidden, and the number said.
+ *
+ * Catalogue entries only. A title pulled in live from AniList has no MyAnimeList
+ * rank and was never checked against the startable rules.
+ */
+function browseMatches(labels) {
+  let watchedHidden = 0;
+  const list = [];
+  for (const anime of ranked) {
+    if (!anime.local || !anime.rank) continue;
+    if (anime.type && !formats.has(anime.type)) continue;
+    if (modernOnly && anime.year && anime.year < MODERN_FROM) continue;
+    if (!carriesAll(anime, labels)) continue;
+    if (watched.has(anime.id)) { watchedHidden += 1; continue; }
+    list.push(anime);
+  }
+  return { list, watchedHidden };
+}
+
+/**
+ * Which labels narrow the current list, and to how many.
+ *
+ * Skipped: anything already picked, anything leaving fewer than BROWSE_MIN,
+ * anything every show on the list already carries (it would narrow nothing),
+ * and the genres withheld from the picker — Ecchi does not become a door in
+ * by the side route either.
+ *
+ * Biggest first. That is not the same as most useful, but it is the order in
+ * which a chip is most likely to be what somebody meant, and "more" is there
+ * for the rest.
+ */
+function narrowingOptions(list, labels) {
+  const counts = new Map();
+  for (const anime of list) {
+    for (const label of labelsOf(anime)) {
+      if (labels.includes(label) || MOOD_EXCLUDED.has(label)) continue;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+  }
+  return [...counts]
+    .filter(([, n]) => n >= BROWSE_MIN && n < list.length)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+/**
+ * Where "Recommend me one from Mystery + Psychological" starts.
+ *
+ * With only a genre picked this is `pickMoodAnchor`, unchanged. With narrowing
+ * labels it runs the same search over carriers of *all* of them: walk from each
+ * and keep whichever returns the most results carrying every label.
+ *
+ * **Weaker than a genre alone, and that was measured rather than hidden.**
+ * Across sixteen common combinations, 90 of the first 128 results carried both
+ * labels — against 111 of 112 for the genres. The walk matches on genres, so a
+ * theme only carries as far as the tags pull it: Mystery + Psychological
+ * delivers 8 of 8, Supernatural + Vampire 3. The list above the button is exact
+ * either way; the button is "start a recommendation from here", and the card
+ * names where it started.
+ */
+const browseAnchors = new Map();
+function pickBrowseAnchor(labels) {
+  if (labels.length === 1) return pickMoodAnchor(labels[0]);
+  const key = labels.join('|');
+  if (browseAnchors.has(key)) return browseAnchors.get(key);
+  const carriers = ranked.filter((a) => a.local && a.genres.length && carriesAll(a, labels));
+  let best = null;
+  for (const candidate of carriers.slice(0, BROWSE_ANCHOR_TRIES)) {
+    const { list } = walkRankings(candidate, 'down', new Set([candidate.id]));
+    if (!list.length) continue;
+    const top = list.slice(0, 8);
+    const carrying = top.filter((a) => carriesAll(a, labels)).length;
+    const ranks = top.map((a) => positionOf(a) || 0).sort((x, y) => x - y);
+    const median = ranks[Math.floor(ranks.length / 2)] || 0;
+    const score = carrying - median / (ranked.length * 2);
+    if (!best || score > best.score) best = { score, anchor: candidate };
+  }
+  const anchor = best ? best.anchor : carriers[0] || null;
+  browseAnchors.set(key, anchor);
+  return anchor;
+}
+
+function browseUrl(labels) {
+  return `/?browse=${labels.map(genreSlug).join(',')}`;
+}
+
+/* A browse address, read back. The first label must be a genre the picker
+   offers — the chips are the only way in — and the rest any label at all.
+   Anything unrecognised is dropped rather than failing the whole address, so a
+   link to a theme a rebuild renamed still opens the genre. */
+function labelsFromBrowseParam(value) {
+  const [first, ...rest] = String(value || '').split(',');
+  const genre = moodGenres.find((g) => genreSlug(g) === genreSlug(first));
+  if (!genre) return null;
+  const extras = [];
+  for (const slug of rest) {
+    const label = labelFromSlug(slug);
+    if (label && label !== genre && !extras.includes(label) && !MOOD_EXCLUDED.has(label)) extras.push(label);
+  }
+  return [genre, ...extras.slice(0, BROWSE_MAX_LABELS - 1)];
+}
+
+function openBrowse(labels, { push = false } = {}) {
+  browse = { labels, shown: BROWSE_PAGE, allChips: false };
+  const url = browseUrl(labels);
+  if (location.pathname + location.search !== url) {
+    /* Pushed on the way in, so the browser's back button leaves the browse
+       view; replaced for every change after that, so back does not step
+       through each chip somebody tried. */
+    history[push ? 'pushState' : 'replaceState']({ browse: labels }, '', url);
+  }
+  searchView.classList.add('browsing');
+  showSearchView();
+  renderMoodChips();
+  renderBrowse();
+  window.scrollTo({ top: 0 });
+}
+
+function closeBrowse() {
+  if (!browse) return;
+  browse = null;
+  searchView.classList.remove('browsing');
+  const panel = $('browse');
+  if (panel) panel.innerHTML = '';
+  renderMoodChips();
+}
+
+/* All three visible ways out — the back link, the wordmark and the lit chip —
+   land here. The browser's own back button arrives through routeFromUrl. */
+function leaveBrowse() {
+  history.pushState({}, '', '/');
+  closeBrowse();
+  showSearchView();
+  window.scrollTo({ top: 0 });
+}
+
+/* The format and year filters are not named here: their chips sit directly
+   above the list, showing their own state. The watched list has no switch on
+   this page, so its effect is the one that has to be said. */
+function browseCountLine(count, labels, watchedHidden) {
+  const what = labels.map((l) => l.toLowerCase()).join(' + ');
+  const parts = [`${count} ${what} anime you can start from the beginning, best first`];
+  if (watchedHidden) parts.push(`${watchedHidden} you have watched hidden`);
+  return parts.join(' · ');
+}
+
+/* The percentage down the right is MyAnimeList's, and it is always named as
+   theirs — the same rule the card follows. Said once above the list rather
+   than on every row. */
+const BROWSE_PCT_NOTE = '% = MyAnimeList scorers who would recommend it';
+
+/* MyAnimeList serves resized copies under /r/<w>x<h>/, which turns a 57 KB
+   poster into about 6 KB. 100x140 is sharp at the 50x70 the row shows on a
+   2x screen. */
+function posterThumb(anime) {
+  return anime.image
+    ? anime.image.replace('cdn.myanimelist.net/images/', 'cdn.myanimelist.net/r/100x140/images/')
+    : '';
+}
+
+function browseRow(anime, place) {
+  const verdict = malVerdict(anime);
+  const episodes = anime.type === 'Film' || !anime.episodes
+    ? null : `${anime.episodes} episode${anime.episodes === 1 ? '' : 's'}`;
+  const meta = [anime.type, anime.year, episodes, `#${anime.rank} on MyAnimeList`].filter(Boolean).join(' · ');
+  /* The English title under the romaji, where there is one and it says
+     something different. Somebody browsing is scanning for a name they
+     recognise, and "Kusuriya no Hitorigoto" means far less to most of them
+     than "The Apothecary Diaries". Only here: the card and the search box stay
+     on MyAnimeList's romaji, which is what the catalogue is keyed on. */
+  const english = anime.titleEnglish
+    && anime.titleEnglish.toLowerCase() !== anime.title.toLowerCase() ? anime.titleEnglish : '';
+  /* "Seen it" sits outside the link — a button inside an <a> is invalid and
+     would open MyAnimeList as well. */
+  return `
+    <li class="browse-row">
+      <a class="browse-item" href="${esc(anime.url)}" target="_blank" rel="noopener" data-id="${esc(anime.id)}">
+        <span class="browse-place">${place}</span>
+        ${anime.image
+          ? `<img class="browse-poster" src="${esc(posterThumb(anime))}" alt="" width="50" height="70" loading="lazy">`
+          : '<span class="browse-poster"></span>'}
+        <span class="browse-text">
+          <span class="browse-title">${esc(anime.title)}</span>
+          ${english ? `<span class="browse-alt">${esc(english)}</span>` : ''}
+          <span class="browse-meta">${esc(meta)}</span>
+        </span>
+      </a>
+      <span class="browse-side">
+        <span class="browse-pct">${verdict ? `${verdict.pct}%` : ''}</span>
+        <button class="browse-seen" type="button" data-action="browse-seen" data-id="${esc(anime.id)}"
+          title="Hide it here and stop recommending it — adds it to your watched list">Seen it</button>
+      </span>
+    </li>`;
+}
+
+function renderBrowse() {
+  const panel = $('browse');
+  if (!panel || !browse) return;
+  const { labels } = browse;
+  const { list, watchedHidden } = browseMatches(labels);
+  const options = labels.length < BROWSE_MAX_LABELS ? narrowingOptions(list, labels) : [];
+  const phone = typeof window.matchMedia === 'function' && window.matchMedia(PHONE_QUERY).matches;
+  const offered = browse.allChips ? options : options.slice(0, phone ? BROWSE_CHIPS_PHONE : BROWSE_CHIPS);
+  const extras = labels.slice(1);
+
+  /* Picked labels first and lit, so one is always there to click off again —
+     including once the limit is reached and nothing else is offered. */
+  const chip = (label, count, on) => `
+    <button class="narrow-chip" type="button" data-narrow="${esc(label)}" aria-pressed="${on}">${esc(label)}${count != null ? `<span class="narrow-count">${count}</span>` : ''}</button>`;
+  const chips = [
+    ...extras.map((l) => chip(l, null, true)),
+    ...offered.map(([l, n]) => chip(l, n, false)),
+  ].join('');
+  const moreChips = options.length > offered.length
+    ? `<button class="narrow-chip narrow-more" type="button" data-action="browse-chips">${options.length - offered.length} more</button>` : '';
+
+  /* The same two filters the card screen carries, and the same saved state —
+     switching ONA off here switches it off there. They used to live only on
+     the card screen, which meant somebody browsing had to open a card, flip a
+     switch and come back. */
+  const filters = `
+    <div class="controls browse-filters">
+      <div class="direction" role="group" aria-label="Release years to show">
+        <button type="button" data-action="browse-modern" aria-pressed="${modernOnly}"
+          title="Leave out anything released before ${MODERN_FROM}">${MODERN_FROM} or later</button>
+      </div>
+      <div class="direction formats" role="group" aria-label="Formats to show">
+        ${ALL_FORMATS.map((f) => `
+          <button type="button" data-action="browse-format" data-value="${f}"
+            aria-pressed="${formats.has(f)}" title="${FORMAT_HINTS[f]}">${f}</button>`).join('')}
+      </div>
+    </div>`;
+
+  /* "Seen it" writes to the watched list for good, so a mis-tap has to be
+     undoable right where it happened. Shown until the next change to the list. */
+  const seen = browse.lastSeen && byId.get(browse.lastSeen);
+  const undo = seen
+    ? `<p class="browse-undo">Marked <strong>${esc(seen.title)}</strong> as watched · <button class="linkish" type="button" data-action="browse-undo">Undo</button></p>`
+    : '';
+
+  const label = labels.join(' + ');
+  panel.innerHTML = `
+    ${chips ? `
+      <p class="browse-label">narrow it down</p>
+      <div class="narrow-chips">${chips}${moreChips}</div>` : ''}
+    ${filters}
+    ${list.length ? `
+      <button class="btn browse-recommend" type="button" data-action="browse-recommend">Recommend me one from ${esc(label)}</button>
+      ${undo}
+      <p class="browse-count">${esc(browseCountLine(list.length, labels, watchedHidden))}<span class="browse-pct-note">${esc(BROWSE_PCT_NOTE)}</span></p>
+      <ol class="browse-list">${list.slice(0, browse.shown).map((a, i) => browseRow(a, i + 1)).join('')}</ol>
+      ${list.length > browse.shown ? `<button class="browse-more" type="button" data-action="browse-more">Show more</button>` : ''}`
+    : `<p class="browse-count">${esc(browseCountLine(0, labels, watchedHidden))}. The filters above, or your watched list, have taken out everything here.</p>`}`;
+}
+
+$('browse')?.addEventListener('click', (event) => {
+  if (!browse) return;
+  const narrow = event.target.closest('[data-narrow]');
+  if (narrow) {
+    const label = narrow.dataset.narrow;
+    const labels = browse.labels.includes(label)
+      ? browse.labels.filter((l) => l !== label)
+      : [...browse.labels, label].slice(0, BROWSE_MAX_LABELS);
+    openBrowse(labels);
+    return;
+  }
+  const action = event.target.closest('[data-action]')?.dataset.action;
+  if (action === 'browse-format') {
+    const format = event.target.closest('[data-value]').dataset.value;
+    /* Same guard as the card screen: the last format stays on, or the list
+       empties with nothing on screen to explain it. */
+    if (formats.has(format) && formats.size === 1) return;
+    if (formats.has(format)) formats.delete(format);
+    else formats.add(format);
+    saveFormats();
+    renderBrowse();
+    return;
+  }
+  if (action === 'browse-modern') { modernOnly = !modernOnly; saveModernOnly(); renderBrowse(); return; }
+  /* The same watched list "Seen it too" writes on the card, so the show stops
+     being recommended everywhere, not just hidden from this list. */
+  if (action === 'browse-seen') {
+    const id = Number(event.target.closest('[data-id]').dataset.id);
+    markWatched([id]);
+    browse.lastSeen = id;
+    renderWatchedBar();
+    renderBrowse();
+    return;
+  }
+  if (action === 'browse-undo') {
+    if (browse.lastSeen != null) {
+      watched.delete(browse.lastSeen);
+      saveWatched();
+      browse.lastSeen = null;
+      renderWatchedBar();
+      renderBrowse();
+    }
+    return;
+  }
+  if (action === 'browse-chips') { browse.allChips = true; renderBrowse(); return; }
+  if (action === 'browse-more') { browse.shown += BROWSE_PAGE * 2; renderBrowse(); return; }
+  if (action === 'browse-recommend') {
+    const { labels } = browse;
+    if (labels.length === 1) { startFromGenre(labels[0]); return; }
+    const anchor = pickBrowseAnchor(labels);
+    if (anchor) recommendFor(anchor, 'down', { mood: labels.join(' + ') });
+    return;
+  }
+  /* Rows are plain links to MyAnimeList, opening in a new tab, and nothing
+     here intercepts them. They opened a recommendation card at first, and the
+     owner caught why that is backwards: somebody browsing has not watched
+     these, so a card saying "Because you watched Dungeon Meshi" answers a
+     question nobody asked. A title in this list means "tell me about this
+     one". The tab is new so the list, and its narrowing, is still there. */
+});
+
+$('browse-back')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  leaveBrowse();
+});
+
+searchView.querySelector('.wordmark')?.addEventListener('click', () => {
+  if (browse) leaveBrowse();
 });
 
 /* ------------------------------------------------------------------ *
  * The way into the genre pages
  * ------------------------------------------------------------------ */
 
-/* Built from `moodGenres`, which is also what build-seo-pages.mjs writes the
-   pages from — so this can never offer a link to a page that was never
-   generated. Ecchi is withheld from both for the same reason, which keeps that
-   one decision in one place rather than repeated here.
+/* Built from `moodGenres`, so it offers exactly the genres the chips do, and
+   Ecchi stays withheld for the one reason written down at MOOD_EXCLUDED.
 
-   Plain <a href> rather than a scripted handler: the destination is a real
-   prerendered document, so a middle-click, a copied link and a page opened
-   with scripting off all behave the way somebody expects. */
+   Since build 67 each entry opens the browse view (`/?browse=<genre>`), not
+   the prerendered genre page. Those pages are for Google, and Web Analytics
+   showed people barely used them; the browse view is the same list with
+   narrowing and filters. Still real <a href> links, so a middle-click and a
+   copied link work — a plain click is handled in place below, without a page
+   load. "All genres" still goes to the prerendered index. */
 function renderGenreMenu() {
   const btn = $('genre-btn');
   const menu = $('genre-menu');
   if (!btn || !menu || !moodGenres.length) return;
   menu.innerHTML = moodGenres
-    .map((g) => `<a role="menuitem" href="/genre/${genreSlug(g)}/">${esc(g)}</a>`)
+    .map((g) => `<a role="menuitem" href="${esc(browseUrl([g]))}" data-genre="${esc(g)}">${esc(g)}</a>`)
     .join('')
     /* The index last, spanning both columns. It is the page for somebody who
        wants to see what the genres are rather than one they have already
@@ -3373,6 +3809,17 @@ function closeGenreMenu() {
   menu.hidden = true;
   btn.setAttribute('aria-expanded', 'false');
 }
+
+/* A plain click on a genre opens the browse view in place. Modified clicks
+   fall through to the link, so a new tab still gets the address. */
+$('genre-menu')?.addEventListener('click', (event) => {
+  const link = event.target.closest('a[data-genre]');
+  if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+  event.preventDefault();
+  closeGenreMenu();
+  $('mini-input').value = '';
+  openBrowse([link.dataset.genre], { push: true });
+});
 
 $('genre-btn')?.addEventListener('click', (event) => {
   event.stopPropagation();
@@ -3520,6 +3967,17 @@ async function routeFromUrl() {
     searchView.hidden = true;
     return;
   }
+
+  /* Browsing by genre. Its own parameter, never `genre`: that one already
+     means "go straight to a card" and is linked from every genre page, so it
+     has to keep meaning that. */
+  const browsing = params.get('browse');
+  if (browsing) {
+    await loadCatalogue().catch(() => {});
+    const labels = labelsFromBrowseParam(browsing);
+    if (labels) { openBrowse(labels); return; }
+  }
+  closeBrowse();
 
   /* Starting a walk from a genre, which is what the button on that page links
      to. A link rather than a script hook, so the page works before app.js has

@@ -341,10 +341,15 @@ console.log('\n--- the genre picker ---');
     d.getElementById('search-view')?.contains(d.getElementById('mood-row')),
     'the mood row is outside #search-view');
 
+  /* Since build 67 a chip opens the browse list, and the one-click card lives
+     on its "Recommend me one from" button. Everything below is the same
+     picker behaviour, reached one click later. */
   d.querySelector('.mood-chip').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(300);
+  d.querySelector('[data-action="browse-recommend"]')?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   await sleep(500);
   const hero = d.querySelector('.hero h2')?.textContent;
-  check('clicking a chip produces a recommendation',
+  check('the recommend button on a chip\'s list produces a recommendation',
     !!hero, 'no card was rendered');
 
   /* Down, always. Walking up from an anchor this well ranked runs out of its
@@ -368,6 +373,257 @@ console.log('\n--- the genre picker ---');
   const shown = [...d.querySelectorAll('.hero h2, .more-title')].map((n) => n.textContent);
   check('and the results carry the genre that was asked for',
     shown.length > 0 && shown.every((t) => t.startsWith('Broad')), shown.join(','));
+}
+
+console.log('\n--- browse by genre ---');
+{
+  /* Build 67: a chip opens a ranked list that takes over the landing page,
+     with narrowing chips for other genres and themes.
+
+     NAMES: 0 Mystery, 1 Drama, 2 Comedy, 3 Psychological, 4 Detective,
+     5 Ecchi, 6 Rare. The shape is chosen so each rule has something to bite:
+       ranks 1-10   Mystery+Drama, themes Psychological+Detective
+       ranks 11-20  Mystery+Drama, theme Psychological
+       ranks 21-30  Mystery, theme Detective
+       ranks 31-39  Mystery+Ecchi           -> 9, clears the floor, withheld
+       ranks 40-42  Mystery, theme Rare     -> 3, under the floor of 8
+       ranks 43-52  Comedy
+     Rank 3 is an ONA and rank 4 is from 2001, for the filter checks. */
+  const NAMES = ['Mystery', 'Drama', 'Comedy', 'Psychological', 'Detective', 'Ecchi', 'Rare', 'Twist', 'Alpha', 'Beta', 'Gamma', 'Delta'];
+  const mk = (r, g, th, extra = {}) => ({
+    r, i: 5000 + r, t: `Show ${r}`, s: 8, m: 1000, g, th, st: 'fin', ty: 'TV', e: 12, y: 2015, im: 'x/y.jpg', ...extra,
+  });
+  const rows = [];
+  /* Twist on ranks 1-9 only: nine of the ten carrying Mystery, Psychological
+     and Detective, so it clears the floor as a fourth label and the limit is
+     the only thing keeping it off screen. */
+  /* English titles: rank 1 has a different one, rank 2 only repeats its
+     romaji in another case, which must not print twice. */
+  const extraFor = (r) => ({ 1: { en: 'English One' }, 2: { en: 'SHOW 2' }, 3: { ty: 'ONA' }, 4: { y: 2001 } })[r] || {};
+  for (let r = 1; r <= 10; r++) rows.push(mk(r, [0, 1], r <= 9 ? [3, 4, 7] : [3, 4], extraFor(r)));
+  for (let r = 11; r <= 20; r++) rows.push(mk(r, [0, 1], [3]));
+  /* Alpha to Delta give Mystery eight narrowing labels in all, so the phone
+     cap of six has something to hide. */
+  for (let r = 21; r <= 30; r++) rows.push(mk(r, [0], [4, 8, 9, 10, 11]));
+  for (let r = 31; r <= 39; r++) rows.push(mk(r, [0, 5], []));
+  for (let r = 40; r <= 42; r++) rows.push(mk(r, [0], [6]));
+  for (let r = 43; r <= 52; r++) rows.push(mk(r, [2], []));
+  const CAT = { built: '2026-09-17', count: rows.length, names: NAMES, anime: rows };
+  const click = (w, el) => el?.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+  const narrowOffered = (d) => [...d.querySelectorAll('.narrow-chip[aria-pressed="false"]')]
+    .map((c) => [c.dataset.narrow, Number(c.querySelector('.narrow-count')?.textContent)]);
+  const titles = (d) => [...d.querySelectorAll('.browse-title')].map((t) => t.textContent);
+
+  const dom = makeDom(CAT);
+  const w = dom.window;
+  const d = w.document;
+  await sleep(300);
+  click(w, d.querySelector('.mood-chip[data-genre="Mystery"]'));
+  await sleep(300);
+
+  const view = d.getElementById('search-view');
+  check('a genre chip opens the browse view, on the landing page',
+    view.classList.contains('browsing') && view.contains(d.getElementById('browse')), view.className);
+  check('with its own address, never ?genre= (that one goes straight to a card)',
+    w.location.search === '?browse=mystery', w.location.search);
+  check('and the picked chip lit',
+    d.querySelector('.mood-chip[data-genre="Mystery"]')?.getAttribute('aria-pressed') === 'true', 'not pressed');
+
+  /* jsdom has no cascade, so the takeover is asserted on the rules themselves.
+     Toggled by a class rather than `hidden` on purpose — see the build-58 menu
+     note in CLAUDE.md for what `hidden` plus an author `display` rule does. */
+  const css = readFileSync(`${ROOT}/styles.css`, 'utf8');
+  const hides = ['.browsing .tagline', '.browsing .search-wrap', '.browsing .actions'];
+  const hideBlock = css.split('.browsing .tagline')[1]?.split('}')[0] || '';
+  check('browsing hides the tagline, the search box and both buttons',
+    hides.every((s) => css.includes(s)) && hideBlock.includes('display: none'),
+    hides.filter((s) => !css.includes(s)).join(', ') || 'no display: none on the block');
+  check('the panel is shown by the class, not the hidden attribute',
+    !/<div id="browse"[^>]*hidden/.test(html) && css.includes('.browsing .browse { display: block; }'),
+    'the browse panel relies on hidden, or the class rule is missing');
+
+  check('the list is ranked best first and carries the genre',
+    titles(d)[0] === 'Show 1' && titles(d).length === 10, titles(d).join(','));
+  const count = d.querySelector('.browse-count')?.textContent || '';
+  check('the count line gives the whole list, not the page',
+    count.startsWith('42 mystery anime'), count);
+  check('and names the percentage as MyAnimeList\'s',
+    count.includes('MyAnimeList'), count);
+
+  const alt = (n) => d.querySelectorAll('.browse-row')[n]?.querySelector('.browse-alt')?.textContent ?? null;
+  check('the English title shows under the romaji, only where it differs',
+    alt(0) === 'English One' && alt(1) === null, `row 1: ${alt(0)} | row 2: ${alt(1)}`);
+
+  /* "Seen it" writes to the watched list for good, so it must be undoable. */
+  click(w, d.querySelector('.browse-row .browse-seen'));
+  await sleep(150);
+  const storedSeen = () => JSON.parse(w.localStorage.getItem('wanx:watched:v1') || '[]');
+  check('"Seen it" hides the show and adds it to the watched list',
+    titles(d)[0] === 'Show 2' && storedSeen().includes(5001)
+      && (d.querySelector('.browse-count')?.textContent || '').includes('1 you have watched hidden'),
+    `${titles(d)[0]} | ${JSON.stringify(storedSeen())}`);
+  check('and offers an undo naming it',
+    (d.querySelector('.browse-undo')?.textContent || '').includes('Show 1'), d.querySelector('.browse-undo')?.textContent || 'no undo');
+  click(w, d.querySelector('[data-action="browse-undo"]'));
+  await sleep(150);
+  check('undo puts it back and takes it off the watched list',
+    titles(d)[0] === 'Show 1' && !storedSeen().includes(5001) && !d.querySelector('.browse-undo'),
+    `${titles(d)[0]} | ${JSON.stringify(storedSeen())}`);
+
+  const offered = narrowOffered(d);
+  const names = offered.map(([n]) => n);
+  check('narrowing chips carry live counts',
+    JSON.stringify(offered.find(([n]) => n === 'Psychological')) === '["Psychological",20]'
+      && JSON.stringify(offered.find(([n]) => n === 'Detective')) === '["Detective",20]',
+    JSON.stringify(offered));
+  check('a label leaving fewer than eight shows is not offered',
+    !names.includes('Rare'), names.join(','));
+  check('a genre withheld from the picker is not offered by the side route either',
+    !names.includes('Ecchi'), names.join(','));
+
+  click(w, d.querySelector('.narrow-chip[data-narrow="Psychological"]'));
+  await sleep(200);
+  check('picking one narrows the list and the address',
+    w.location.search === '?browse=mystery,psychological'
+      && (d.querySelector('.browse-count')?.textContent || '').startsWith('20 mystery + psychological'),
+    w.location.search + ' | ' + d.querySelector('.browse-count')?.textContent);
+  check('a label every show on the list already carries is not offered',
+    !narrowOffered(d).map(([n]) => n).includes('Drama'), narrowOffered(d).map(([n]) => n).join(','));
+
+  click(w, d.querySelector('.narrow-chip[data-narrow="Detective"]'));
+  await sleep(200);
+  const pressed = [...d.querySelectorAll('.narrow-chip[aria-pressed="true"]')].map((c) => c.dataset.narrow);
+  check('three labels is the limit, and the picked ones stay to click off',
+    narrowOffered(d).length === 0 && pressed.join(',') === 'Psychological,Detective', pressed.join(',') + ' | ' + narrowOffered(d).length);
+  click(w, d.querySelector('.narrow-chip[data-narrow="Detective"]'));
+  await sleep(200);
+
+  click(w, d.querySelector('[data-action="browse-recommend"]'));
+  await sleep(500);
+  const because = d.querySelector('.because')?.textContent || '';
+  check('the recommend button names every picked label on the card',
+    because.includes('Because you picked Mystery + Psychological'), because.trim().slice(0, 90));
+
+  w.history.back();
+  await sleep(400);
+  check('the back button returns to the list with its narrowing intact',
+    view.classList.contains('browsing') && w.location.search === '?browse=mystery,psychological'
+      && d.querySelector('.narrow-chip[data-narrow="Psychological"]')?.getAttribute('aria-pressed') === 'true',
+    w.location.search);
+
+  /* A row is a plain link to MyAnimeList in a new tab. It opened a
+     recommendation card at first, which the owner caught as backwards:
+     somebody browsing has not watched these, so "Because you watched" answers
+     nothing. Asserted on the link itself and on nothing intercepting a click —
+     dispatchEvent returns false only if the page called preventDefault. */
+  const row = d.querySelectorAll('.browse-item')[1];
+  check('a row links to its MyAnimeList page, in a new tab',
+    row?.getAttribute('href') === 'https://myanimelist.net/anime/5002'
+      && row?.getAttribute('target') === '_blank' && /noopener/.test(row?.getAttribute('rel') || ''),
+    row ? `${row.getAttribute('href')} target=${row.getAttribute('target')}` : 'no row');
+  const rowEvent = new w.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  row?.addEventListener('click', (e) => e.preventDefault(), { once: true });   // stop jsdom navigating
+  row?.dispatchEvent(rowEvent);
+  await sleep(300);
+  check('and clicking one leaves the list where it is, with no card',
+    d.getElementById('result-view').hidden === true && view.classList.contains('browsing')
+      && w.location.search === '?browse=mystery,psychological',
+    `result view hidden: ${d.getElementById('result-view').hidden} | ${w.location.href}`);
+
+  click(w, d.getElementById('browse-back'));
+  await sleep(200);
+  check('"Back to search" leaves the list for the plain landing page',
+    !view.classList.contains('browsing') && w.location.pathname === '/' && !w.location.search,
+    w.location.href);
+
+  click(w, d.querySelector('.mood-chip[data-genre="Mystery"]'));
+  await sleep(200);
+  click(w, d.querySelector('.mood-chip[data-genre="Mystery"]'));
+  await sleep(200);
+  check('clicking the lit chip again leaves too',
+    !view.classList.contains('browsing') && !w.location.search, w.location.href);
+
+  click(w, d.querySelector('.mood-chip[data-genre="Mystery"]'));
+  await sleep(200);
+  click(w, view.querySelector('.wordmark'));
+  await sleep(200);
+  check('and so does the wordmark',
+    !view.classList.contains('browsing') && !w.location.search, w.location.href);
+
+  /* Arriving on a shared browse address, and on a broken one. */
+  const shared = makeDom(CAT, { url: 'https://example.com/?browse=mystery,psychological' });
+  await sleep(400);
+  check('a shared browse address opens the same list',
+    shared.window.document.getElementById('search-view').classList.contains('browsing')
+      && (shared.window.document.querySelector('.browse-count')?.textContent || '').startsWith('20 '),
+    shared.window.document.querySelector('.browse-count')?.textContent);
+  const broken = makeDom(CAT, { url: 'https://example.com/?browse=not-a-genre' });
+  await sleep(400);
+  check('an address naming no offered genre falls back to the landing page',
+    !broken.window.document.getElementById('search-view').classList.contains('browsing'), 'it opened a browse view');
+
+  /* On a phone: the genre chips fold down to the picked one plus "Change
+     genre", and six narrowing chips show before "more". jsdom has no layout,
+     so the folding is asserted on the rule and the width decision on a
+     stubbed matchMedia — set before the chip is clicked, because the count is
+     decided at render time. */
+  const small = makeDom(CAT);
+  await sleep(300);
+  small.window.matchMedia = (q) => ({ matches: q.includes('480'), media: q });
+  const sd = small.window.document;
+  check('"Change genre" only exists while browsing',
+    !sd.querySelector('.mood-change'), 'present on the plain landing page');
+  click(small.window, sd.querySelector('.mood-chip[data-genre="Mystery"]'));
+  await sleep(300);
+  check('on a phone, six narrowing chips then "more"',
+    narrowOffered(sd).length === 6 && !!sd.querySelector('.narrow-more'),
+    `${narrowOffered(sd).length} offered, more: ${!!sd.querySelector('.narrow-more')}`);
+  const foldRule = css.split('@media (max-width: 480px)').slice(1).join('');
+  check('and the other genre chips fold away behind "Change genre"',
+    !!sd.querySelector('.mood-change')
+      && foldRule.includes('.browsing .mood-row:not(.genres-open) .mood-chip:not([aria-pressed="true"]):not(.mood-change)')
+      && foldRule.includes('.browsing .mood-row:not(.genres-open) .mood-change { display: inline-block; }'),
+    'the fold rule or the chip is missing');
+  click(small.window, sd.querySelector('.mood-change'));
+  await sleep(100);
+  check('"Change genre" unfolds them',
+    sd.getElementById('mood-row').classList.contains('genres-open'), 'still folded');
+
+  /* The card screen's format and year filters apply here, and since the
+     owner asked for them they are also on this page, as chips — so the count
+     line no longer spells them out. The watched list has no switch here, so
+     its effect is the one still said. */
+  const filtered = makeDom(CAT, { url: 'https://example.com/?browse=mystery', seedFormats: ['TV', 'OVA'], seedModern: true, seedWatched: [5001] });
+  await sleep(400);
+  const fd = filtered.window.document;
+  const fcount = fd.querySelector('.browse-count')?.textContent || '';
+  check('the format, year and watched filters apply to the list',
+    !titles(fd).includes('Show 1') && !titles(fd).includes('Show 3') && !titles(fd).includes('Show 4')
+      && titles(fd)[0] === 'Show 2', titles(fd).slice(0, 4).join(','));
+  check('the count line says how many watched shows were hidden',
+    fcount.startsWith('39 ') && fcount.includes('1 you have watched hidden'), fcount);
+  const fw = filtered.window;
+  const onaChip = fd.querySelector('[data-action="browse-format"][data-value="ONA"]');
+  const yearChip = fd.querySelector('[data-action="browse-modern"]');
+  check('the format and year filters are on the browse page too, showing their state',
+    onaChip?.getAttribute('aria-pressed') === 'false' && yearChip?.getAttribute('aria-pressed') === 'true',
+    `ONA ${onaChip?.getAttribute('aria-pressed')} | year ${yearChip?.getAttribute('aria-pressed')}`);
+  click(fw, onaChip);
+  await sleep(150);
+  click(fw, fd.querySelector('[data-action="browse-modern"]'));
+  await sleep(150);
+  check('and switching them updates the list and is saved for the card screen',
+    titles(fd).includes('Show 3') && titles(fd).includes('Show 4')
+      && JSON.parse(fw.localStorage.getItem('wanx:formats')).includes('ONA') && fw.localStorage.getItem('wanx:modern') === '0',
+    titles(fd).slice(0, 4).join(',') + ' | ' + fw.localStorage.getItem('wanx:formats'));
+  for (const fmt of ['TV', 'OVA', 'ONA']) {
+    click(fw, fd.querySelector(`[data-action="browse-format"][data-value="${fmt}"]`));
+    await sleep(80);
+  }
+  check('the last format left on cannot be switched off',
+    fd.querySelector('[data-action="browse-format"][data-value="ONA"]')?.getAttribute('aria-pressed') === 'true'
+      && JSON.parse(fw.localStorage.getItem('wanx:formats')).join(',') === 'ONA',
+    fw.localStorage.getItem('wanx:formats'));
 }
 
 console.log('\n--- themes, status and hidden gems ---');
@@ -2090,8 +2346,10 @@ console.log('\n--- the way into the genre pages ---');
 
   /* Built from moodGenres, which is also what the generator writes the pages
      from -- so this can never offer a page that was never written. */
-  check('the menu holds one link per offered genre, and none besides',
-    genreLinks().length === 2 && genreLinks().join(' ') === '/genre/broad/ /genre/other/',
+  /* Since build 67 each genre opens the browse view rather than the
+     prerendered genre page, which people barely used. */
+  check('the menu holds one browse link per offered genre, and none besides',
+    genreLinks().length === 2 && genreLinks().join(' ') === '/?browse=broad /?browse=other',
     genreLinks().join(' ') || 'no links');
 
   /* Ecchi clears the threshold and is withheld from the chips; linking it here
@@ -2099,9 +2357,24 @@ console.log('\n--- the way into the genre pages ---');
   check('a withheld genre is not linked, so no link can 404',
     !links().some((h) => h.includes('ecchi')), links().join(' '));
 
-  check('and every link is the trailing-slash form the server answers 200 for',
-    links().every((h) => /^\/genre\/([a-z0-9-]+\/)?$/.test(h)),
-    links().filter((h) => !/^\/genre\/([a-z0-9-]+\/)?$/.test(h)).join(', '));
+  /* The genre links are browse addresses; the one prerendered link left, the
+     index, still has to be the trailing-slash form the server answers 200 for. */
+  check('and every link is a browse address or the trailing-slash index',
+    genreLinks().every((h) => /^\/\?browse=[a-z0-9-]+$/.test(h)) && links().at(-1) === '/genre/',
+    links().join(', '));
+
+  /* A plain click opens the list in place rather than loading a page. */
+  btn.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(50);
+  const menuEvent = new w.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  const followed = menu.querySelector('a[data-genre="Broad"]')?.dispatchEvent(menuEvent);
+  await sleep(300);
+  check('clicking a genre in the menu opens the browse view without a page load',
+    followed === false && d.getElementById('search-view').classList.contains('browsing')
+      && d.getElementById('result-view').hidden && w.location.search === '?browse=broad',
+    `followed=${followed} ${w.location.href}`);
+  w.history.back();
+  await sleep(400);
 
   /* A real anchor, not a scripted handler: the destination is a prerendered
      document, so a middle-click and a copied link both have to work. */
@@ -2215,10 +2488,16 @@ console.log('\n--- the way into the genre pages ---');
         && /\.genre-list-art a\s*\{\s*color:\s*#fff/.test(cssText),
       'no scrim, or the text is not white over it');
 
-    /* The index over the fourteen uses the same list class without artwork. */
-    check('the genre index is left alone, with no artwork layout',
-      !idx.includes('genre-art') && !idx.includes('genre-list-art'),
-      'the index picked up the artwork layout');
+    /* Since build 67 the index uses the artwork rows too — it was the one
+       plain text list left. Each genre borrows a banner from a show carrying
+       it, and none is used twice: Frieren tops four genres and would
+       otherwise fill four rows. */
+    const idxBanners = [...idx.matchAll(/<img class="genre-art" src="([^"]+)"/g)].map((m) => m[1]);
+    const idxRows = (idx.match(/<li style="--row-tint/g) || []).length;
+    check('the genre index rows carry artwork, and no banner repeats',
+      idx.includes('genre-list-art') && idxRows >= 10 && idxBanners.length >= idxRows - 1
+        && new Set(idxBanners).size === idxBanners.length,
+      `${idxRows} rows, ${idxBanners.length} banners, ${new Set(idxBanners).size} distinct`);
   }
 
   /* The landing page's other door. The chips still start a walk -- this opens

@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 66.** `anime.json` holds **5,017 entries**
+**Build 67.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-462 checks pass via `npm test`.
+504 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -635,6 +635,205 @@ watched bar and the credit line. Four rows at 375px, three at desktop.
 Fifteen checks cover it and all six guards were broken on purpose — taking the
 top carrier prints `picked Broad But Busy`, which is the failure the search
 exists to prevent.
+
+**Since build 67 a chip no longer goes straight to a card.** It opens the
+browse view below, and the picker described here is what that view's
+"Recommend me one from Mystery" button runs — unchanged, one click later.
+
+### Browse by genre
+
+Build 67. **Click a genre chip and the landing page becomes a ranked list.**
+The tagline, the search box, both buttons and the housekeeping links step
+aside; what is left reads top to bottom as the wordmark, "← Back to search",
+the genre chips (the picked one lit), "narrow it down" chips with live counts,
+the "2010 or later" and TV / ONA / OVA / Film filters, a "Recommend me one
+from …" button, and the list — best first, ten at a time. **Each title links
+to its MyAnimeList page in a new tab.**
+
+**Why it exists: the genre pages were the ranked lists, and people did not use
+them.** Web Analytics showed their traffic arriving almost entirely from
+Google, while the landing chips are the one genre control every visitor sees.
+The owner asked for browsing to live on the chips instead, chose the layout
+from an interactive mock-up, and asked for it to take the page over rather
+than sit under the search box.
+
+**Nothing in the matcher changes.** It filters and sorts what the page already
+holds; `walkRankings` is reached only through the two routes it always had.
+`npm run walks` came out byte-identical apart from the build line.
+
+#### A filter, not a tree
+
+Narrowing chips are every other genre *and* theme carried alongside the picked
+genre, and each pick intersects. That is the shape the earlier flowchart idea
+could not have: MyAnimeList files themes and genres as parallel labels, so
+"Fantasy → Isekai" drew a containment that does not exist, while "Fantasy and
+Isekai, in either order" is exactly true.
+
+- **A chip must leave at least 8 shows** (`BROWSE_MIN`). A count, deliberately,
+  where the picker's genre floor is a share: the question there is rarity
+  relative to the corpus, and here it is whether a list is long enough to open,
+  which is a number of rows on a screen however big the catalogue grows.
+  Measured on build 66: Mystery has 27 labels clearing 8, Comedy 62, Sports 13.
+- **A label every show on the list carries is not offered** — it would narrow
+  nothing.
+- **Ecchi is not offered here either.** `MOOD_EXCLUDED` withholds it as a door
+  in, and a narrowing chip is a door in by the side route.
+- **Twelve chips, then "N more"** (`BROWSE_CHIPS`), biggest count first. Comedy
+  has 62 candidates and a wall of them would bury the list.
+- **Three labels at most** (`BROWSE_MAX_LABELS`). Picked chips stay on screen,
+  lit, so there is always one to click off.
+
+#### The filters are on this page too
+
+Format, "2010 or later" and the watched list all filter the list, for the
+reason "Surprise me" respects them: somebody who switched ONA off reads a list
+of donghua as the toggle being broken.
+
+**The first version left the filter chips on the card screen only** and named
+them in the count line instead — *"… · TV, OVA only · 2010 or later"*. The
+owner, trying it locally, pointed out that changing one meant opening a card,
+flipping a switch and coming back. So the card screen's own chips are
+rendered here, under the narrowing chips, with the same saved state: switching
+ONA off on either screen switches it off on both. The last format left on
+cannot be switched off, the same guard as the card screen.
+
+With the chips on screen showing their own state, the count line stopped
+naming them — the rule the year filter already follows on the card screen.
+**The watched list has no switch on this page, so its effect is still said**:
+*"39 mystery anime … · 1 you have watched hidden"*.
+
+Watched shows are hidden *and counted*: a list of the best mysteries that
+opens on three you finished is worse, and one silently missing Monster reads
+as broken.
+
+**The percentage is named as MyAnimeList's** in a line above the list, the
+same rule the card's figure follows.
+
+#### Its own address, and it is not `?genre=`
+
+`/?browse=mystery,psychological`. `?genre=` already means "go straight to a
+card" and every genre page links to it, so it keeps meaning that; a check
+asserts the browse address never reuses it. Entering pushes a history entry, so
+the browser's back button leaves; every narrowing after that replaces it, so
+back does not step through each chip somebody tried. Back from a card returns
+to the list with its narrowing intact.
+
+**Four ways out**, all checked: "Back to search", the wordmark, clicking the
+lit chip again, and the browser's back button.
+
+#### The combination button is weaker than a genre alone, and that is recorded
+
+"Recommend me one from Mystery + Psychological" runs the picker's own anchor
+search over carriers of *every* picked label (`pickBrowseAnchor`). Across
+sixteen common combinations **90 of the first 128 results carried both
+labels**, against 111 of 112 for genres alone — because the walk matches on
+genres, and a theme carries only as far as the tags pull it. Mystery +
+Psychological delivers 8 of 8 from Serial Experiments Lain; Supernatural +
+Vampire 3 of 8. The list above the button is exact either way, and the card
+says where it started. If this is ever worth improving, it is the theme
+mechanism under "Open", not a tweak here.
+
+#### A title opens MyAnimeList, not a recommendation card
+
+**The first version opened the card**, starting a recommendation from the
+clicked show, and the owner caught why that is backwards: somebody browsing has
+not watched these. A card reading *"Because you watched Dungeon Meshi"* answers
+a question nobody asked. A title in this list means "tell me about this one",
+so each row is a plain link to its MyAnimeList page, in a new tab so the list
+and its narrowing are still there to come back to. Nothing intercepts the
+click.
+
+Worth keeping as a rule for anything else that lists shows: **what a click on
+a title should do depends on whether the person has seen it.** The search box
+and the card are built on "I watched this"; a browse list is built on "I have
+not".
+
+**Known quirk, not fixed on purpose:** Steel Ball Run tops Mystery because
+MyAnimeList files it there. A plain ranked list cannot see that; hand-editing
+it would be the allowlist this file keeps warning about.
+
+#### English titles, "Seen it", and the phone layout
+
+Three additions the owner chose from a list of suggestions after trying it
+locally.
+
+**The English title sits under the romaji**, where there is one that says
+something different (compared case-insensitively, so "SHOW 2" under "Show 2"
+never prints). Somebody browsing is scanning for a name they recognise, and
+*Kusuriya no Hitorigoto* means far less to most people than *The Apothecary
+Diaries*. **Only on this list**: the card and the search box stay on
+MyAnimeList's romaji, which the catalogue is keyed on — changing those is the
+much bigger question recorded under the TikTok notes.
+
+**"Seen it" on every row** hides the show and writes it to the watched list,
+the same list the card's "Seen it too" writes, so it stops being recommended
+everywhere rather than only vanishing from this list. It is permanent, so a
+mis-tap has to be undoable where it happened: an "Undo" line names the show
+until the list next changes. The button sits outside the row's link, because a
+button inside an `<a>` is invalid and would open MyAnimeList as well.
+
+**On a phone the list was three quarters of the way down the first screen**,
+under four rows of genre chips and five of narrowing chips. Two changes, both
+only below 480px:
+
+- **The genre chips fold down to the picked one plus "Change genre"**, which
+  unfolds them; picking a genre folds them again. CSS on `.genres-open`, so
+  desktop is untouched.
+- **Six narrowing chips before "more", not twelve** (`BROWSE_CHIPS_PHONE`).
+  Decided from `matchMedia` at render time, so rotating a phone takes effect
+  on the next click — not worth a resize listener.
+
+The first show now starts about halfway down a 360x780 screen.
+
+#### The card screen's Genres menu opens this, not the genre pages
+
+The **Genres** button in the result header (build 58) linked to the
+prerendered `/genre/<slug>/` pages, which is exactly the traffic Web Analytics
+showed nobody using. Each entry is now `/?browse=<genre>`: a real link, so a
+middle-click or a copied address works, and a plain click opens the browse view
+in place without a page load. **All genres** still goes to the prerendered
+`/genre/` index. The genre pages themselves are unchanged and stay for Google.
+
+#### Shown by a class, never by `hidden`
+
+Everything that appears or disappears is keyed off `.browsing` on
+`#search-view`, not the `hidden` attribute — several of these elements set
+`display`, and an author `display` rule silently beats `[hidden]`, which is how
+the build-58 menu shipped permanently open. The credit line, normally pinned to
+the bottom of the screen, becomes static while browsing so it does not sit over
+a list being scrolled. The genre chips grow while browsing, but only above
+480px: at 360px the larger size took five rows and pushed the list most of a
+screen down.
+
+Posters come from MyAnimeList's `/r/100x140/` resize at a fixed 50x70, so
+nothing reflows as they arrive.
+
+#### Checks, and one that was lying
+
+37 checks. Eleven guards were broken on purpose in the first round, three
+more after the filters and the MyAnimeList links went in, and eight after the
+phone layout, English titles, "Seen it", the menu and the index artwork. **Two came back MISSED on
+the first run, and both were checks passing for the wrong reason.** Removing
+the row click's `preventDefault` still passed "a row opens the card", because
+the card appears whether or not the link is also followed. (Moot since
+rows became MyAnimeList links, but the lesson stands: assert on the thing that
+would go wrong, not on a side effect that happens either way.) Raising the label limit to four still
+passed, because the fixture had no fourth label that could be offered; a
+`Twist` theme on nine of the ten triple-carriers now clears the floor, so the
+limit is the only thing holding it back. Both re-broken and caught.
+
+**The first run also printed
+a jsdom "navigation not implemented" error while every check passed.** The
+suite's click helper built its events without `cancelable: true`, so the page's
+`preventDefault` on a row link was ignored and jsdom tried to load the page. A
+real browser click is always cancelable, and a debug run with cancelable events
+showed no link escaping — but a check that clicks with an uncancelable event
+cannot tell an intercepted link from one that navigates away. The helper is
+cancelable now, which is what let the "row click not intercepted" mutation be
+caught at all.
+
+Also verified in a real browser with Playwright, 28 interactions end to end, at
+1280px and 360px in both themes, with no horizontal overflow.
 
 ### The format filter
 
@@ -1623,6 +1822,14 @@ three:
 > **Comedy** · 1663 you can start cold · Gintama · Bocchi the Rock! · Dungeon Meshi
 >
 > **Horror** · 156 you can start cold · Kenpuu Denki Berserk · Perfect Blue · Hellsing Ultimate
+
+**Since build 67 the rows are artwork**, the same banner-and-scrim rows as the
+genre pages, minus the rank number — it is a list of doors, not a ranking. It
+was the one plain text list left, and the owner flagged it from a screenshot.
+Each genre borrows the banner of a well-ranked show carrying it, **and no
+banner is used twice**: Frieren tops Fantasy, Adventure, Drama and Award
+Winning, so taking each genre's top show would have put the same picture on
+four of the fourteen rows. A check asserts the banners are distinct.
 
 **The count is the whole catalogue's, not the 25 the page prints.** The index is
 describing how much there is to browse rather than how much one page lists, and
