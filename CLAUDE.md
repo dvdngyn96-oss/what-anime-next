@@ -3418,8 +3418,8 @@ own banner art with the title over it, which is the Anime Corner layout and
 only the layout. The poster-thumbnail version was built first and is the thing
 to reach for if the 4.5 MB of banner art is ever regretted.
 
-**This job is done.** What is left in this file is Show HN and the theme
-mechanism, both below.
+**This job is done.** What is left in this file is the theme mechanism,
+below. Show HN was taken off the list by the owner on 16 September 2026.
 
 ~~The landing page needs deciding separately.~~ Decided and shipped in build
 58: the chips keep starting a walk and a quiet link beside them opens the new
@@ -3561,8 +3561,45 @@ see "When there is no tier to demote into" above.
   flair and the rest are text-only or industry news), title of four or more
   words, no link shorteners. Do not lead on the MAL rankings: posts *about*
   database aggregate ratings are prohibited, and the tool merely uses them.
-- **Show HN** is the other post worth making, in a completely different
-  register — plain and factual, where the Reddit one is casual.
+- ~~**Show HN**~~ was the other post considered, and the owner decided
+  against it on 16 September 2026. Do not draft or pitch it.
+
+### Monthly check-in
+
+**Next: 16 October 2026**, then the 16th of each month. The owner brings
+screenshots; read them together and record the numbers here, so each month has
+something to compare against.
+
+**Look in the right places, because two of them mislead.**
+
+- **Web Analytics → the site labelled `what-anime-next.pages.dev`**, not the
+  one labelled with the .com. The beacon token in `index.html` reports into the
+  `pages.dev` one for every hostname; the .com entry was never sent anything and
+  reads zero. This is the real-visitor number.
+- **Search Console → Performance, 3 months.** Impressions and average position
+  lead; clicks follow once pages reach page one.
+- **Not the zone overview's "Unique Visitors".** It counts crawlers. On
+  16 September it said ~400 a day, flat through the night, 86% from the US,
+  against 8 real visits in Web Analytics for the same day.
+
+**Baseline, 16 September 2026:**
+
+| | |
+| --- | --- |
+| Visits, last 30 days | 480 (includes the 27 Aug r/anime spike) |
+| Page views, last 30 days | 1,370 — about 2.9 per visit |
+| Visits, last 24 hours | 8 |
+| Search impressions, 3 months | 310, from ~0 before 5 Sep to 30-47 a day |
+| Search clicks, 3 months | 6 |
+| Average position | 15.4 — page two |
+| LCP good / poor, 30 days | 97% / 0% |
+| Page load | 462 ms |
+
+The comparison worth making each month is the **daily visits outside any
+spike**, and whether impressions keep climbing and position moves toward page
+one. Soft 404s and not-indexed counts in Search Console are worth a glance —
+see the 16 September note in the session history for why one page flagged
+there was not a fault.
 
 ### What the owner found by posting it
 
