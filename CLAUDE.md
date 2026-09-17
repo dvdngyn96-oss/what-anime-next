@@ -56,7 +56,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 398 checks, jsdom against the real app.js and anime.json
+npm test          # 504 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~2.5 hours
 npm run pages     # prerendered pages only, ~30 s
@@ -3592,12 +3592,16 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**All three queued jobs are done**, builds 39 to 41. They are struck through
-below with what shipped, because the reasoning behind each is still the record
-of why it was done that way.
+**As of build 67 (17 September 2026) the live to-do list is in
+`NEXT-SESSION.md`**, which is kept on the owner's machine rather than in the
+repo — it is a handoff prompt, not documentation. In order, it holds: a real
+"page not found" (unknown addresses currently answer 200 with the home page),
+prerendered pages for good genre combinations, whether themes in the picker are
+still wanted now that browsing narrows by theme, and a manga entry point. Show
+HN is off the list. The monthly check-in is below.
 
-**One thing is queued**, below. Everything else outstanding is a decision or a
-thing only a human can do, listed at the end of this section.
+Everything under this line is the older record: struck-through items shipped,
+and the reasoning is kept because it explains why they were done that way.
 
 ### 1. The genre pages need a way in from the site itself
 
@@ -3711,6 +3715,13 @@ Two honest options if this is ever wanted:
 
 The second is more useful and more dangerous. Neither is worth doing before the
 genre pages exist.
+
+**Build 67 changed the question.** "Browse by genre" lets somebody narrow a
+genre by any theme and read an exact ranked list, which covers most of what a
+theme chip in the picker was for. What is left is only the one-click *card*
+for a theme, and its button already runs an anchor search over combinations
+(70% delivery, written up there). Check whether anybody still wants this before
+building either option.
 
 
 ~~**1. A year filter.**~~ Shipped in build 39 — see "The year filter" above.
