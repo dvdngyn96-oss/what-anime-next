@@ -1794,6 +1794,26 @@ console.log('\n--- prerendered pages stay in step with the catalogue ---');
     page.includes(`<link rel="canonical" href="https://whatanimeshouldiwatchnext.com${first}">`),
     /<link rel="canonical"[^>]*>/.exec(page)?.[0]);
 
+  /* Films joined the catalogue in build 52, and these pages kept saying they
+     were left out for another fourteen builds — on 4,956 pages, several of
+     which recommend four films directly underneath the sentence. The same
+     class of mistake as the tagline in build 52: a catalogue change falsifies
+     copy wherever it was written, and the generator was the place nobody
+     grepped. Read from written pages rather than the generator, so a stale
+     page that was never regenerated fails too. A film's page is used because
+     that is where the old description said "each a Film". */
+  const filmRow = withGenres.find((a) => a.ty === 'Film');
+  const filmLoc = filmRow && animeLocs.find((u) => u.includes(`/anime/${filmRow.i}/`));
+  const stale = [];
+  for (const loc of [animeLocs[0], filmLoc].filter(Boolean)) {
+    const text = readFileSync(`${ROOT}${loc.replace('https://whatanimeshouldiwatchnext.com', '')}/index.html`, 'utf8');
+    for (const claim of ['films and recap', 'films or recap', 'no films', 'from episode one', 'each a Film', 'each a series']) {
+      if (text.includes(claim)) stale.push(`${loc.split('/anime/')[1]}: "${claim}"`);
+    }
+  }
+  check('no anime page claims films are left out, or that every pick is one format',
+    filmLoc && stale.length === 0, filmLoc ? stale.join(', ') : 'no film page found to read');
+
   /* Every one of these must be the URL Pages actually serves. A page written
      to anime/<id>/<slug>/index.html answers 200 at the trailing-slash form and
      308s the bare path to it — so without the slash the sitemap would point a

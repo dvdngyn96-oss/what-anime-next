@@ -125,11 +125,10 @@ await w.__seo.ready;
 
 function description(source, picks) {
   const named = picks.slice(0, 3).map((p) => p.title).join(', ');
-  const kind = source.type === 'TV' ? 'series' : source.type;
   const base = `Finished ${source.title}? Here is what to watch next`;
   return named
-    ? `${base} — ${named} and more, each a ${kind} you can start from episode one.`
-    : `${base}: the next ${kind} up the rankings that shares its genres.`;
+    ? `${base} — ${named} and more, each one you can start from the beginning.`
+    : `${base}: the next anime up the rankings that shares its genres.`;
 }
 
 function pageFor(source, picks) {
@@ -182,9 +181,9 @@ function pageFor(source, picks) {
       <ol class="seo-list">
 ${items}
       </ol>
-      <p class="seo-note">Ranked by MyAnimeList position, filtered to shows that share
-      ${esc(source.title)}'s genres. Sequels, films and recap editions are left out, so
-      everything here can be started from episode one.</p>
+      <p class="seo-note">Ranked by MyAnimeList position, filtered to anime that share
+      ${esc(source.title)}'s genres. Sequels, side stories and recap editions are left out, so
+      everything here can be started from the beginning.</p>
     </div>`;
 
   return html
@@ -265,7 +264,7 @@ function genrePageFor(genre, entries, anchor) {
   const lower = genre.toLowerCase();
   const title = `The best ${lower} anime you can start from the beginning`;
   const desc = `${entries.length} ${lower} anime ranked by MyAnimeList, with none of the `
-    + `sequels, films or recap editions you cannot start cold. `
+    + `sequels, side stories or recap editions you cannot start cold. `
     + `Top of the list: ${entries.slice(0, 3).map((e) => e.title).join(', ')}.`;
 
   const rows = entries.map((e, i) => {
