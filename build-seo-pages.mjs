@@ -187,7 +187,7 @@ ${items}
     </div>`;
 
   return html
-    .replace('<title>whatanimeshouldiwatchnext</title>', `<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
+    .replace(/<title>[^<]*<\/title>/,`<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
     .replace(
       /<meta name="description" content="[^"]*">/,
       `<meta name="description" content="${esc(desc)}">`
@@ -343,7 +343,7 @@ ${rows}
     </div>`;
 
   return html
-    .replace('<title>whatanimeshouldiwatchnext</title>', `<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
+    .replace(/<title>[^<]*<\/title>/,`<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
     .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(desc)}">`)
     .replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${esc(url)}">`)
     .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${esc(title)}">`)
@@ -393,7 +393,7 @@ ${items}
     </div>`;
 
   return html
-    .replace('<title>whatanimeshouldiwatchnext</title>', `<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
+    .replace(/<title>[^<]*<\/title>/,`<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
     .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(desc)}">`)
     .replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${esc(url)}">`)
     .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${esc(title)}">`)

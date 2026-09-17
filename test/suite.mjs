@@ -1814,6 +1814,46 @@ console.log('\n--- prerendered pages stay in step with the catalogue ---');
   check('no anime page claims films are left out, or that every pick is one format',
     filmLoc && stale.length === 0, filmLoc ? stale.join(', ') : 'no film page found to read');
 
+  /* The generator swaps the home page's <title> for each page's own. It used
+     to find that title by its exact text, so rewording the home title would
+     have left all 4,956 pages carrying it, silently — the <h1> still names
+     the anime, so the "names its own anime" check above would not notice.
+     This reads the <title> element alone. */
+  const titleOf = (s) => (s.split('<title>')[1] || '').split('</title>')[0];
+  const homeTitle = titleOf(readFileSync(`${ROOT}/index.html`, 'utf8'));
+  check('the home page title carries the words people search for',
+    homeTitle.includes('What Anime Should I Watch Next'), homeTitle);
+  /* The icon. It was an emoji in a data: URL, which Chrome on Windows drew as
+     a blank circle and Google's results ignore, since Google only shows an
+     icon it can fetch. So: real files, absolute paths (a relative one breaks
+     under /anime/<id>/<slug>/, as the stylesheet once did), and an ICO that
+     actually holds a 48px image — Google wants a multiple of 48. The ICO
+     directory is read out of the file rather than trusted, the same way the
+     og.png check reads its IHDR. */
+  const homeHtml = readFileSync(`${ROOT}/index.html`, 'utf8');
+  const iconProblems = [];
+  for (const [file, where] of [['index.html', homeHtml], [first, page], ['privacy.html', readFileSync(`${ROOT}/privacy.html`, 'utf8')]]) {
+    if (where.includes('rel="icon" href="data:')) iconProblems.push(`${file}: data: icon`);
+    for (const href of ['href="/favicon.ico"', 'href="/favicon.svg"', 'href="/apple-touch-icon.png"']) {
+      if (!where.includes(href)) iconProblems.push(`${file}: no ${href}`);
+    }
+  }
+  check('every kind of page points at the real icon files by absolute path',
+    iconProblems.length === 0, iconProblems.join(', '));
+  let icoSizes = [];
+  try {
+    const ico = readFileSync(`${ROOT}/favicon.ico`);
+    const count = ico.readUInt16LE(4);
+    for (let k = 0; k < count; k++) icoSizes.push(ico.readUInt8(6 + 16 * k) || 256);
+  } catch { icoSizes = ['missing']; }
+  check('favicon.ico holds a 48px image, and the touch icon is 180px',
+    icoSizes.includes(48) && readFileSync(`${ROOT}/apple-touch-icon.png`).readUInt32BE(16) === 180,
+    `ico sizes ${icoSizes.join(',')}`);
+
+  const pageTitle = titleOf(page);
+  check('and an anime page has its own title, not the home one',
+    pageTitle.startsWith('What to watch after ') && pageTitle !== homeTitle, pageTitle);
+
   /* Every one of these must be the URL Pages actually serves. A page written
      to anime/<id>/<slug>/index.html answers 200 at the trailing-slash form and
      308s the bare path to it — so without the slash the sitemap would point a

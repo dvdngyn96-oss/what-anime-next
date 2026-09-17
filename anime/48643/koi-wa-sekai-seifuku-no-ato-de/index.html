@@ -42,7 +42,12 @@
   <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
        change, otherwise a stale script keeps running against fresh data. -->
   <link rel="stylesheet" href="/styles.css?v=66">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍥</text></svg>">
+  <!-- Real files rather than an emoji in a data: URL, which Chrome on Windows
+       drew as a blank circle and Google ignores. favicon.svg is the source;
+       regenerate the others with make-icons.mjs. -->
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 </head>
 <body>
   <main id="app">

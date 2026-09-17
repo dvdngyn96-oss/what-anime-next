@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>whatanimeshouldiwatchnext</title>
+  <title>What Anime Should I Watch Next? Recommendations From One You've Seen</title>
   <meta name="description" content="Type an anime you've already watched. Get the next one up the rankings that shares its genres.">
 
   <!-- Link previews. Everything below is deliberately static: every /?id=N URL
@@ -18,7 +18,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="whatanimeshouldiwatchnext">
   <meta property="og:url" content="https://whatanimeshouldiwatchnext.com/">
-  <meta property="og:title" content="whatanimeshouldiwatchnext">
+  <meta property="og:title" content="What Anime Should I Watch Next? Recommendations From One You've Seen">
   <meta property="og:description" content="Type an anime you've already watched. Get the next one up the rankings that shares its genres — no sequels, nothing you need backstory for.">
   <meta property="og:image" content="https://whatanimeshouldiwatchnext.com/og.png">
   <meta property="og:image:type" content="image/png">
@@ -26,7 +26,7 @@
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="whatanimeshouldiwatchnext — a search box over the tagline: type an anime you've already watched, get the next one up the rankings that shares its genres.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="whatanimeshouldiwatchnext">
+  <meta name="twitter:title" content="What Anime Should I Watch Next? Recommendations From One You've Seen">
   <meta name="twitter:description" content="Type an anime you've already watched. Get the next one up the rankings that shares its genres — no sequels, nothing you need backstory for.">
   <meta name="twitter:image" content="https://whatanimeshouldiwatchnext.com/og.png">
   <meta name="twitter:image:alt" content="whatanimeshouldiwatchnext — a search box over the tagline: type an anime you've already watched, get the next one up the rankings that shares its genres.">
@@ -42,7 +42,12 @@
   <!-- ?v= busts the browser cache. Bump it whenever app.js or styles.css
        change, otherwise a stale script keeps running against fresh data. -->
   <link rel="stylesheet" href="/styles.css?v=66">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍥</text></svg>">
+  <!-- Real files rather than an emoji in a data: URL, which Chrome on Windows
+       drew as a blank circle and Google ignores. favicon.svg is the source;
+       regenerate the others with make-icons.mjs. -->
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 </head>
 <body>
   <main id="app">
