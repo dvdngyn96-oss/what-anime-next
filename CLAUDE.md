@@ -3678,13 +3678,14 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**As of build 67 (17 September 2026) the live to-do list is in
+**As of build 69 (18 September 2026) the live to-do list is in
 `NEXT-SESSION.md`**, which is kept on the owner's machine rather than in the
-repo — it is a handoff prompt, not documentation. In order, it holds: a real
-"page not found" (unknown addresses currently answer 200 with the home page),
-prerendered pages for good genre combinations, whether themes in the picker are
-still wanted now that browsing narrows by theme, and a manga entry point. Show
-HN is off the list. The monthly check-in is below.
+repo — it is a handoff prompt, not documentation. The first two items on it
+shipped on 18 September: a real "page not found" (build 68) and the genre
+combination pages (build 69). What is left, in order: whether themes in the
+picker are still wanted now that browsing and the combination pages both cover
+themes, and a manga entry point. Show HN is off the list. The monthly check-in
+is below.
 
 Everything under this line is the older record: struck-through items shipped,
 and the reasoning is kept because it explains why they were done that way.
