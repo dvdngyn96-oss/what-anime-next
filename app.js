@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 68;
+const BUILD = 69;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -3971,8 +3971,9 @@ async function routeFromUrl() {
   /* A prerendered genre page. The block stays exactly where it is: this is the
      one route whose prerendered content is the point rather than a placeholder
      for a card, so `dropPrerendered` must not run. Somebody arriving from a
-     search for "best mystery anime" came for the list. */
-  if (/^\/genre\/([a-z0-9-]+\/?)?$/.test(location.pathname)
+     search for "best mystery anime" came for the list. Up to two segments,
+     so a combination page like /genre/fantasy/isekai/ keeps its list too. */
+  if (/^\/genre\/([a-z0-9-]+\/?){0,2}$/.test(location.pathname)
       && document.getElementById('seo-content')) {
     resultView.hidden = true;
     searchView.hidden = true;

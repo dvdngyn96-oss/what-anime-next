@@ -115,6 +115,7 @@ window.__seo = {
   },
   positionOf,
   genres: () => moodGenres,
+  excluded: () => [...MOOD_EXCLUDED],
   anchorFor: (genre) => pickMoodAnchor(genre),
   verdict: (a) => malVerdict(a),
 };`);
@@ -259,15 +260,8 @@ const thumbAt = (image, size) =>
  * routeFromUrl. Somebody who searched "best mystery anime" came for the list,
  * and swapping it for a single recommendation card would be a bait and switch.
  * The button hands them into the walk if they want it. */
-function genrePageFor(genre, entries, anchor) {
-  const url = `${SITE}${genrePathFor(genre)}`;
-  const lower = genre.toLowerCase();
-  const title = `The best ${lower} anime you can start from the beginning`;
-  const desc = `${entries.length} ${lower} anime ranked by MyAnimeList, with none of the `
-    + `sequels, side stories or recap editions you cannot start cold. `
-    + `Top of the list: ${entries.slice(0, 3).map((e) => e.title).join(', ')}.`;
-
-  const rows = entries.map((e, i) => {
+function artRowsFor(entries) {
+  return entries.map((e, i) => {
     const bits = [e.type, e.year, episodeLabel(e),
       e.studios?.[0]].filter(Boolean).map(esc).join(' · ');
     /* The recommend figure where there is one. It is a better number to read
@@ -316,6 +310,44 @@ function genrePageFor(genre, entries, anchor) {
           </span>
         </li>`;
   }).join('\n');
+}
+
+/* The head of a listing page: index.html with its title, description,
+   canonical and social tags swapped for the page's own, and the block put in
+   front of the app. */
+function listingPage(title, desc, url, block) {
+  return html
+    .replace(/<title>[^<]*<\/title>/,`<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
+    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(desc)}">`)
+    .replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${esc(url)}">`)
+    .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${esc(title)}">`)
+    .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${esc(desc)}">`)
+    .replace(/<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${esc(url)}">`)
+    .replace(/<meta name="twitter:title" content="[^"]*">/, `<meta name="twitter:title" content="${esc(title)}">`)
+    .replace(/<meta name="twitter:description" content="[^"]*">/, `<meta name="twitter:description" content="${esc(desc)}">`)
+    .replace('<main id="app">', `<main id="app">${block}`);
+}
+
+/* The "narrow it down" line on a genre page: a link to every combination page
+   written under it, biggest first. The pages' only route in besides the
+   sitemap, the same job the "More like this" line does for the genre pages. */
+function comboLinksFor(combos) {
+  if (!combos.length) return '';
+  const links = combos
+    .map((c) => `<a href="${esc(c.path)}">${esc(c.other)}</a> <span class="genre-combo-count">${c.count}</span>`)
+    .join(' · ');
+  return `      <p class="genre-combos"><span class="genre-combos-label">Narrow it down:</span> ${links}</p>\n`;
+}
+
+function genrePageFor(genre, entries, anchor, combos = []) {
+  const url = `${SITE}${genrePathFor(genre)}`;
+  const lower = genre.toLowerCase();
+  const title = `The best ${lower} anime you can start from the beginning`;
+  const desc = `${entries.length} ${lower} anime ranked by MyAnimeList, with none of the `
+    + `sequels, side stories or recap editions you cannot start cold. `
+    + `Top of the list: ${entries.slice(0, 3).map((e) => e.title).join(', ')}.`;
+
+  const rows = artRowsFor(entries);
 
   /* A plain link, not a scripted button. It works before app.js has parsed and
      it works with scripting off, where it lands on the home page rather than
@@ -330,7 +362,7 @@ function genrePageFor(genre, entries, anchor) {
       <h1>${esc(title)}</h1>
       <p class="seo-lede">${esc(desc)}</p>
 ${cta}
-      <h2>The list</h2>
+${comboLinksFor(combos)}      <h2>The list</h2>
       <ol class="seo-list genre-list genre-list-art">
 ${rows}
       </ol>
@@ -342,16 +374,87 @@ ${rows}
       rated a title 7 or higher.</p>
     </div>`;
 
-  return html
-    .replace(/<title>[^<]*<\/title>/,`<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
-    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(desc)}">`)
-    .replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${esc(url)}">`)
-    .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${esc(title)}">`)
-    .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${esc(desc)}">`)
-    .replace(/<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${esc(url)}">`)
-    .replace(/<meta name="twitter:title" content="[^"]*">/, `<meta name="twitter:title" content="${esc(title)}">`)
-    .replace(/<meta name="twitter:description" content="[^"]*">/, `<meta name="twitter:description" content="${esc(desc)}">`)
-    .replace('<main id="app">', `<main id="app">${block}`);
+  return listingPage(title, desc, url, block);
+}
+
+/* ---------- combination pages: /genre/<genre>/<label>/ ----------
+ *
+ * "best isekai fantasy anime" is a real query and no single genre page answers
+ * it. Each of these is a genre crossed with one more label -- a theme, or a
+ * second genre -- drawn from the same startable catalogue, in the same artwork
+ * rows as the genre pages.
+ *
+ * **A page must fill the list.** COMBO_MIN is GENRE_SHOWN, so every one of
+ * them prints the full 25 a genre page does. Measured on build 67: 194 pairs
+ * clear it -- 135 genre + theme, 59 genre + genre -- against 388 at the
+ * browse view's floor of 8. Half as many pages, none of them thin. 194 on
+ * top of ~4,970 is a 4% change to what a crawler is asked to fetch.
+ *
+ * **Two genres make one page, not two.** Action + Fantasy lives at
+ * /genre/action/fantasy/ and nowhere else, filed under whichever offered genre
+ * sorts first, and both genre pages link to it. A genre crossed with a theme
+ * is always filed under the genre. */
+const COMBO_MIN = GENRE_SHOWN;
+
+/* How a pair reads in a sentence. The label goes in front -- "isekai fantasy",
+   "psychological mystery", "school romance" -- which is how people say it and
+   how they search for it. A label that already ends in the genre's own word
+   stands alone: "team sports", never "team sports sports". */
+const PHRASE = {
+  CGDCT: 'cute-girls-doing-cute-things',
+  'Award Winning': 'award-winning',
+  'Idols (Female)': 'female idol',
+  'Idols (Male)': 'male idol',
+};
+const phraseOf = (label) => PHRASE[label] || label.toLowerCase();
+function comboPhrase(genre, other) {
+  // Award Winning is an adjective, so it leads whichever side it is on.
+  if (genre === 'Award Winning') return `${phraseOf(genre)} ${phraseOf(other)}`;
+  if (other === 'Award Winning') return `${phraseOf(other)} ${phraseOf(genre)}`;
+  const o = phraseOf(other);
+  const g = phraseOf(genre);
+  return o.endsWith(g) ? o : `${o} ${g}`;
+}
+
+const comboPathFor = (genre, other) => `/genre/${slugify(genre)}/${slugify(other)}/`;
+
+function comboPageFor(combo, entries) {
+  const { genre, other, count, path, otherPath } = combo;
+  const url = `${SITE}${path}`;
+  const phrase = comboPhrase(genre, other);
+  const title = `The best ${phrase} anime you can start from the beginning`;
+  const desc = `${count} anime that are both ${phraseOf(genre)} and ${phraseOf(other)}, ranked by `
+    + `MyAnimeList, with none of the sequels, side stories or recap editions you cannot start cold. `
+    + `Top of the list: ${entries.slice(0, 3).map((e) => e.title).join(', ')}.`;
+
+  /* Up to both parents: the genre it is filed under, and the other label's own
+     page when that is a genre with one. */
+  const parents = [`<a href="${esc(genrePathFor(genre))}">${esc(genre)}</a>`];
+  if (otherPath) parents.push(`<a href="${esc(otherPath)}">${esc(other)}</a>`);
+
+  /* Into the browse view with both labels picked, which is this same list with
+     the format and year filters beside it and a button for a card. A link, so
+     it works before app.js has parsed. */
+  const browseHref = `/?browse=${slugify(genre)},${slugify(other)}`;
+
+  const block = `
+    <div id="seo-content" class="seo-content genre-page">
+      <p class="genre-home"><a href="/">whatanimeshouldiwatchnext</a> · ${parents.join(' · ')}</p>
+      <h1>${esc(title)}</h1>
+      <p class="seo-lede">${esc(desc)}</p>
+      <p class="genre-cta"><a class="btn" href="${esc(browseHref)}">Filter these, or get a recommendation</a></p>
+      <h2>The list</h2>
+      <ol class="seo-list genre-list genre-list-art">
+${artRowsFor(entries)}
+      </ol>
+      <p class="seo-note"><strong>Why this is not a MyAnimeList search.</strong>
+      Every entry here is one you can start from the beginning. Anything with a prequel or a
+      parent story is left out, as are recaps and compilation editions — about half of what
+      MyAnimeList ranks. Ordered by MyAnimeList position. The percentage is the share of
+      MyAnimeList scorers who rated a title 7 or higher.</p>
+    </div>`;
+
+  return listingPage(title, desc, url, block);
 }
 
 /* The index over the fourteen. It exists because the other two doors into the
@@ -414,16 +517,7 @@ ${items}
       about half of what MyAnimeList ranks. Genres too thin to browse are not listed.</p>
     </div>`;
 
-  return html
-    .replace(/<title>[^<]*<\/title>/,`<title>${esc(title)} · whatanimeshouldiwatchnext</title>`)
-    .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc(desc)}">`)
-    .replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${esc(url)}">`)
-    .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${esc(title)}">`)
-    .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${esc(desc)}">`)
-    .replace(/<meta property="og:url" content="[^"]*">/, `<meta property="og:url" content="${esc(url)}">`)
-    .replace(/<meta name="twitter:title" content="[^"]*">/, `<meta name="twitter:title" content="${esc(title)}">`)
-    .replace(/<meta name="twitter:description" content="[^"]*">/, `<meta name="twitter:description" content="${esc(desc)}">`)
-    .replace('<main id="app">', `<main id="app">${block}`);
+  return listingPage(title, desc, url, block);
 }
 
 /* ---------- generate ---------- */
@@ -465,7 +559,47 @@ process.stderr.write('\r');
 const genreUrls = [];
 const indexRows = [];
 let genreCount = 0;
-for (const genre of w.__seo.genres()) {
+
+/* The combination pages, counted before any genre page is written because
+   each genre page links to its own. Ecchi is left out as a second label for
+   the reason it is withheld as a chip: a page is a door in by the side route. */
+const offeredGenres = w.__seo.genres();
+const withheld = new Set(w.__seo.excluded());
+const allGenreNames = new Set(all.flatMap((a) => a.genres));
+const comboCounts = new Map();
+for (const genre of offeredGenres) {
+  for (const a of all) {
+    if (!a.local || !a.genres.includes(genre)) continue;
+    for (const other of [...a.genres, ...a.themes]) {
+      if (other === genre || withheld.has(other)) continue;
+      // Two offered genres make one page, filed under whichever sorts first.
+      if (offeredGenres.includes(other) && other < genre) continue;
+      const key = `${genre}|${other}`;
+      comboCounts.set(key, (comboCounts.get(key) || 0) + 1);
+    }
+  }
+}
+const combos = [...comboCounts]
+  .filter(([, count]) => count >= COMBO_MIN)
+  .map(([key, count]) => {
+    const [genre, other] = key.split('|');
+    return {
+      genre, other, count,
+      path: comboPathFor(genre, other),
+      // Only a genre this generator writes a page for gets linked.
+      otherPath: offeredGenres.includes(other) ? genrePathFor(other) : null,
+      isGenre: allGenreNames.has(other),
+    };
+  })
+  .sort((x, y) => y.count - x.count);
+
+/* What a genre page links to: pairs filed under it, and genre pairs filed
+   under the other genre, named by the label that is not this page's own. */
+const combosFor = (genre) => combos
+  .filter((c) => c.genre === genre || (c.otherPath && c.other === genre))
+  .map((c) => ({ ...c, other: c.genre === genre ? c.other : c.genre }));
+
+for (const genre of offeredGenres) {
   const carrying = all.filter((a) => a.local && a.genres.includes(genre));
   const entries = carrying.slice(0, GENRE_SHOWN);
   if (entries.length < 5) continue;      // too thin to be a page worth having
@@ -474,7 +608,7 @@ for (const genre of w.__seo.genres()) {
   const rel = genrePathFor(genre);
   const file = join(ROOT, rel, 'index.html');
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, genrePageFor(genre, entries, anchor));
+  writeFileSync(file, genrePageFor(genre, entries, anchor, combosFor(genre)));
   genreUrls.push(rel);
   /* The whole count rather than the 25 shown, because the index is describing
      how much there is to browse, not how much one page prints. */
@@ -484,6 +618,21 @@ for (const genre of w.__seo.genres()) {
     entries,
   });
   genreCount += 1;
+}
+
+/* Written after the genre pages, and only under a genre page that was itself
+   written, so no combination page ever links up to a 404. */
+const comboUrls = [];
+for (const combo of combos) {
+  if (!genreUrls.includes(genrePathFor(combo.genre))) continue;
+  const entries = all
+    .filter((a) => a.local && a.genres.includes(combo.genre)
+      && (a.genres.includes(combo.other) || a.themes.includes(combo.other)))
+    .slice(0, GENRE_SHOWN);
+  const file = join(ROOT, combo.path, 'index.html');
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, comboPageFor(combo, entries));
+  comboUrls.push(combo.path);
 }
 
 /* The index over them, written last because it reports what actually got
@@ -545,7 +694,7 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
   not there.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${entry('/', '1.0', 'weekly')}${entry('/privacy', '0.3', 'yearly')}${genreUrls.map((u) => entry(u, '0.8', 'weekly')).join('')}${urls.map((u) => entry(u, '0.6', 'monthly')).join('')}</urlset>
+${entry('/', '1.0', 'weekly')}${entry('/privacy', '0.3', 'yearly')}${genreUrls.map((u) => entry(u, '0.8', 'weekly')).join('')}${comboUrls.map((u) => entry(u, '0.7', 'monthly')).join('')}${urls.map((u) => entry(u, '0.6', 'monthly')).join('')}</urlset>
 `;
 writeFileSync(join(ROOT, 'sitemap.xml'), sitemap);
 
@@ -554,4 +703,5 @@ console.log(`skipped ${targets.length - written} with nothing to recommend`);
 console.log(`wrote ${genreCount} pages under /genre/`);
 console.log(`wrote the /genre/ index over ${indexRows.length}`);
 console.log("wrote 404.html");
-console.log(`sitemap.xml lists ${urls.length + genreUrls.length + 2} URLs`);
+console.log(`wrote ${comboUrls.length} combination pages, at least ${COMBO_MIN} shows each`);
+console.log(`sitemap.xml lists ${urls.length + genreUrls.length + comboUrls.length + 2} URLs`);

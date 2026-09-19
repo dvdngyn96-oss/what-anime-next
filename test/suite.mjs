@@ -2409,7 +2409,7 @@ console.log('\n--- the way into the genre pages ---');
        already shipped a check whose pattern was mangled by escaping and
        silently matched nothing. */
     check('the index keeps its list when the app boots, like the genre pages',
-      appText.includes('/^\\/genre\\/([a-z0-9-]+\\/?)?$/'),
+      appText.includes('/^\\/genre\\/([a-z0-9-]+\\/?){0,2}$/'),
       'routeFromUrl does not match the bare /genre/ path');
   }
 
@@ -4457,6 +4457,102 @@ console.log('\n--- the page make-tiktok.mjs reaches into ---');
     .filter((cls) => !new RegExp(`\\.${cls}\\s*\\{`).test(css));
   check('and the six wordmark colours the end card borrows',
     missing.length === 0, `missing ${missing.join(', ')}`);
+}
+
+console.log('\n--- genre combination pages ---');
+{
+  /* /genre/<genre>/<label>/: a genre crossed with a theme or a second genre,
+     for queries like "best isekai fantasy anime" that no single genre page
+     answers. Build 69. */
+  const sitemap = readFileSync(`${ROOT}/sitemap.xml`, 'utf8');
+  const combos = [...sitemap.matchAll(/<loc>https:\/\/whatanimeshouldiwatchnext\.com(\/genre\/[a-z0-9-]+\/[a-z0-9-]+\/)<\/loc>/g)]
+    .map((m) => m[1]);
+  check('the sitemap lists the combination pages', combos.length >= 100, `${combos.length} combination URLs`);
+
+  const missing = combos.filter((rel) => !existsSync(`${ROOT}${rel}index.html`));
+  check('and every one is a page on disk', missing.length === 0, missing.slice(0, 3).join(', '));
+
+  /* A page exists only if it can fill the list, so none of them is thin. */
+  const short = combos.filter((rel) => {
+    const page = readFileSync(`${ROOT}${rel}index.html`, 'utf8');
+    return (page.match(/<li style="--row-tint:/g) || []).length !== 25;
+  });
+  check('every combination page prints the full 25 rows', short.length === 0, short.slice(0, 3).join(', '));
+
+  /* Two genres make one page. Filing Action + Fantasy under both would be two
+     URLs with the same list on them, which is what duplicate content means. */
+  const pairKey = (rel) => rel.split('/').slice(2, 4).sort().join('+');
+  const seen = new Map();
+  const dupes = [];
+  for (const rel of combos) {
+    const k = pairKey(rel);
+    if (seen.has(k)) dupes.push(`${seen.get(k)} and ${rel}`);
+    seen.set(k, rel);
+  }
+  check('a pair of genres has one page, not one under each', dupes.length === 0, dupes.slice(0, 2).join('; '));
+
+  check('Ecchi is not a way in by this route either',
+    !combos.some((rel) => rel.includes('/ecchi/')), combos.filter((rel) => rel.includes('/ecchi/')).join(', '));
+
+  /* Every /genre/ link on every genre and combination page must resolve, or a
+     page points a crawler at a 404. The up-links, the narrowing links and the
+     index are all covered by walking the lot. */
+  const genrePages = ['/genre/', ...[...sitemap.matchAll(/<loc>https:\/\/whatanimeshouldiwatchnext\.com(\/genre\/[a-z0-9-]+\/(?:[a-z0-9-]+\/)?)<\/loc>/g)].map((m) => m[1])];
+  const dead = new Set();
+  for (const rel of genrePages) {
+    const page = readFileSync(`${ROOT}${rel}index.html`, 'utf8');
+    for (const [, href] of page.matchAll(/href="(\/genre\/[^"]*)"/g)) {
+      if (!existsSync(`${ROOT}${href}index.html`)) dead.add(`${href} on ${rel}`);
+    }
+  }
+  check('every /genre/ link on a genre or combination page is a page on disk',
+    dead.size === 0, [...dead].slice(0, 3).join(', '));
+
+  const mystery = readFileSync(`${ROOT}/genre/mystery/index.html`, 'utf8');
+  const narrowing = [...mystery.matchAll(/class="genre-combos"[\s\S]*?<\/p>/g)][0]?.[0] || '';
+  check('a genre page links down to its combinations',
+    /href="\/genre\/mystery\/psychological\/"/.test(narrowing), narrowing.slice(0, 120) || 'no narrowing line');
+  /* Filed under Action, so it is only reachable from Fantasy if Fantasy links
+     across to it. */
+  const fantasy = readFileSync(`${ROOT}/genre/fantasy/index.html`, 'utf8');
+  check('and a genre pair filed under the other genre is linked from both',
+    fantasy.includes('href="/genre/action/fantasy/"') && readFileSync(`${ROOT}/genre/action/index.html`, 'utf8').includes('href="/genre/action/fantasy/"'),
+    'Action + Fantasy is not linked from both genre pages');
+
+  const isekai = existsSync(`${ROOT}/genre/fantasy/isekai/index.html`)
+    ? readFileSync(`${ROOT}/genre/fantasy/isekai/index.html`, 'utf8') : '';
+  check('a combination reads the way people search for it',
+    isekai.includes('<h1>The best isekai fantasy anime you can start from the beginning</h1>'),
+    /<h1>[^<]*<\/h1>/.exec(isekai)?.[0] || 'no /genre/fantasy/isekai/');
+  check('it links up to its genre and across to the browse view with both picked',
+    isekai.includes('href="/genre/fantasy/"') && isekai.includes('href="/?browse=fantasy,isekai"'),
+    'missing the up-link or the browse link');
+  check('and carries its own canonical',
+    isekai.includes('<link rel="canonical" href="https://whatanimeshouldiwatchnext.com/genre/fantasy/isekai/">'),
+    'wrong or missing canonical');
+  /* "team sports sports" is what a naive label-then-genre phrase produces. */
+  const team = existsSync(`${ROOT}/genre/sports/team-sports/index.html`)
+    ? readFileSync(`${ROOT}/genre/sports/team-sports/index.html`, 'utf8') : '';
+  check('a label that already names the genre is not doubled',
+    !team || (team.includes('best team sports anime') && !team.includes('sports sports')),
+    /<h1>[^<]*<\/h1>/.exec(team)?.[0]);
+
+  /* The app has to leave the list alone on a two-segment path, exactly as it
+     does on a genre page. */
+  const NAMES = ['Broad', 'Other'];
+  const mk = (r, i, t, g) => ({ r, i, t, g, s: 8, m: 1000, th: [], st: 'fin', ty: 'TV', e: 12, y: 2015, im: 'x/y.jpg' });
+  const rows = [];
+  for (let k = 0; k < 30; k++) rows.push(mk(1 + k, 900 + k, 'Both ' + k, [0, 1]));
+  const dom = makeDom({ built: '2026-09-18', count: rows.length, names: NAMES, anime: rows }, {
+    url: 'https://example.com/genre/broad/other/',
+    seedPrerendered: '<div id="seo-content" class="seo-content genre-page"><h1>The best other broad anime</h1></div>',
+  });
+  await sleep(300);
+  const d = dom.window.document;
+  check('a combination page keeps its list when the app boots',
+    !!d.getElementById('seo-content') && d.getElementById('search-view')?.hidden === true
+      && d.getElementById('result-view')?.hidden === true,
+    'the block was dropped or a view was shown over it');
 }
 
 console.log('\n--- the page-not-found page ---');

@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 68.** `anime.json` holds **5,017 entries**
+**Build 69.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-517 checks pass via `npm test`.
+530 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -56,7 +56,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 517 checks, jsdom against the real app.js and anime.json
+npm test          # 530 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~2.5 hours
 npm run pages     # prerendered pages only, ~30 s
@@ -1679,6 +1679,52 @@ copy bugs came from too.
 Fourteen files, about 20 KB each. The sitemap goes from 4,958 URLs to 4,972,
 and the genre pages are listed at a higher priority and a weekly changefreq
 than the per-anime ones, because they are the pages worth recrawling.
+
+### Genre combination pages
+
+Build 69. **194 pages at `/genre/<genre>/<label>/`**, a genre crossed with a
+theme or a second genre — `/genre/fantasy/isekai/`, `/genre/mystery/psychological/`,
+`/genre/action/fantasy/`. They answer queries like *"best isekai fantasy
+anime"*, which no single genre page does. Same artwork rows, same startable
+catalogue, 25 rows each.
+
+**A page must fill the list.** `COMBO_MIN` is `GENRE_SHOWN` (25). Measured on
+build 68: 194 pairs clear it — 135 genre + theme, 59 genre + genre — against
+388 at the browse view's floor of 8. Half as many pages and none of them thin;
+194 on top of ~4,970 is a 4% change to what a crawler is asked to fetch.
+
+**Two genres make one page.** Action + Fantasy lives at `/genre/action/fantasy/`
+only, filed under whichever offered genre sorts first, and **both** genre pages
+link to it. Two URLs carrying the same list is what duplicate content means.
+A theme pair is always filed under its genre. Ecchi is never the second label,
+for the reason it is withheld as a chip.
+
+**The title reads the way people search**: label first — "isekai fantasy",
+"psychological mystery", "school romance". A label that already ends in the
+genre's word stands alone ("team sports", never "team sports sports"), Award
+Winning always leads as "award-winning", and CGDCT is spelt out. `comboPhrase`
+in `build-seo-pages.mjs`.
+
+**Ways in and out.** Each genre page has a quiet **Narrow it down** line under
+its button, linking every combination filed under it or pairing with it,
+biggest first with counts. Each combination page links up to its genre (and to
+the second genre's page, when that is a genre with one), and its button opens
+`/?browse=<genre>,<label>` — the same list in the browse view, with the format
+and year filters and a recommendation button. It does not link to `?genre=`,
+which means a single genre.
+
+**`routeFromUrl` had to learn two segments.** The pattern is now
+`/^\/genre\/([a-z0-9-]+\/?){0,2}$/`; with the old one the app would have
+dropped the list and shown the search view over it. A bogus pair has no file,
+so it gets the build 68 "page not found".
+
+The genre page and index templates now share `listingPage` (the head swap) and
+`artRowsFor` (the rows) rather than three copies.
+
+Thirteen checks, and five mutations broken on purpose — the old route, the
+doubled label (prints `team sports sports`), pairs filed twice, the floor
+lowered to 8 (names the short pages), and the narrowing line removed. All
+caught.
 
 ### The way into the genre pages
 

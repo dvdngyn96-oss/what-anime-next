@@ -1043,6 +1043,20 @@ a { color: inherit; }
   color: var(--fg);
 }
 
+/* "Narrow it down" on a genre page: links to the combination pages filed
+   under it, each with its count. Quiet, like the anime pages' genre line --
+   the list is the page, and this is the way sideways. */
+.genre-combos {
+  margin: 16px 0 0;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--fg-faint);
+}
+.genre-combos-label { font-weight: 600; color: var(--fg-dim); }
+.genre-combos a { color: var(--accent); text-decoration: none; }
+.genre-combos a:hover { text-decoration: underline; }
+.genre-combo-count { font-size: 12px; }
+
 /* The numbers are the point of a ranked list, so they are drawn rather than
    left to the list marker -- an <ol> renders them in the gutter at the body
    colour, which reads as incidental. */
