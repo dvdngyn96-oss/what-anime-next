@@ -4459,5 +4459,88 @@ console.log('\n--- the page make-tiktok.mjs reaches into ---');
     missing.length === 0, `missing ${missing.join(', ')}`);
 }
 
+console.log('\n--- the page-not-found page ---');
+{
+  /* Without a 404.html, Cloudflare Pages answers every unknown address with
+     the home page and a 200 -- a soft 404 to Google, and no explanation to a
+     visitor. With one, Pages serves it with a real 404 status. It is index.html
+     with a marker, so the app still boots and a mistyped slug on a real anime
+     still opens that anime. jsdom cannot see the status code; that is checked
+     against the deployed site with curl. */
+  const notFoundFile = `${ROOT}/404.html`;
+  const page = existsSync(notFoundFile) ? readFileSync(notFoundFile, 'utf8') : '';
+  check('404.html exists at the root, where Pages looks for it', !!page, 'no 404.html');
+
+  const scriptOf = (doc) => /<script src="(\/app\.js[^"]*)"/.exec(doc)?.[1];
+  check('and loads the same app.js as index.html, so a ?v= bump reaches it',
+    scriptOf(page) && scriptOf(page) === scriptOf(html), `${scriptOf(page)} vs ${scriptOf(html)}`);
+  check('it carries the marker app.js looks for', /<html[^>]*\sdata-not-found/.test(page), 'no data-not-found');
+  check('it asks not to be indexed and names no canonical of its own',
+    page.includes('<meta name="robots" content="noindex">') && !page.includes('rel="canonical"'),
+    'robots or canonical wrong');
+  check('the notice is in the markup, so it says something without JavaScript too',
+    page.includes('id="not-found-notice"'), 'no notice in 404.html');
+  check('and index.html carries neither', !/data-not-found|not-found-notice/.test(html),
+    'the home page would say it was not found');
+
+  const mk = (r, i, t) => ({
+    r, i, t, s: 8.5 - r / 10, g: [0, 1], th: [], ty: 'TV', e: 12, y: 2015,
+    m: 200000, im: 'x/y.jpg', st: 'fin', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+  const CAT = {
+    built: '2026-09-18', count: 2, names: ['Action', 'Drama'],
+    anime: [mk(1, 700, 'Higher Show'), mk(2, 701, 'Source Show')],
+  };
+  const boot = async (doc, url) => {
+    const dom = new JSDOM(doc, { runScripts: 'dangerously', url: `https://example.com${url}`, pretendToBeVisual: true });
+    dom.window.scrollTo = () => {};
+    dom.window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CAT) });
+    dom.window.eval(appSource);
+    await sleep(400);
+    return dom;
+  };
+  const noticeShown = (d) => {
+    const n = d.getElementById('not-found-notice');
+    return !!n && !n.hidden && !d.getElementById('search-view').hidden;
+  };
+
+  let dom = await boot(page, '/does-not-exist');
+  let d = dom.window.document;
+  check('an unknown address shows the search view with the notice', noticeShown(d),
+    `search view hidden=${d.getElementById('search-view').hidden}, notice hidden=${d.getElementById('not-found-notice')?.hidden}`);
+
+  /* Leaving has to take the notice with it, and the back button bring it back. */
+  dom.window.history.pushState({}, '', '/');
+  dom.window.dispatchEvent(new dom.window.PopStateEvent('popstate'));
+  await sleep(100);
+  check('the notice goes once the address is the home page', d.getElementById('not-found-notice').hidden,
+    'still showing on /');
+  dom.window.history.replaceState({}, '', '/does-not-exist');
+  dom.window.dispatchEvent(new dom.window.PopStateEvent('popstate'));
+  await sleep(100);
+  check('and comes back with the address that went nowhere', noticeShown(d), 'not shown after back');
+
+  dom = await boot(page, '/anime/701/a-slug-that-was-never-right/');
+  d = dom.window.document;
+  check('a mistyped slug on a real anime still opens that anime',
+    /Because you watched Source Show/.test(d.getElementById('result-body')?.textContent || ''),
+    d.getElementById('result-body')?.textContent?.slice(0, 80));
+  check('and the address bar is corrected to the real page',
+    dom.window.location.pathname === '/anime/701/source-show/', dom.window.location.pathname);
+
+  dom = await boot(page, '/anime/99999/a-dropped-entry/');
+  d = dom.window.document;
+  check('an anime page that no longer exists is a missing page, not an error card', noticeShown(d),
+    d.getElementById('result-body')?.textContent?.slice(0, 80));
+
+  /* The ordinary site is untouched: ?id= for something not in the catalogue
+     still says so on a card, as it always has. */
+  dom = await boot(html, '/?id=99999');
+  d = dom.window.document;
+  check('on the home page, an unknown ?id= still gets its own message',
+    /not in the catalogue/.test(d.getElementById('result-body')?.textContent || ''),
+    d.getElementById('result-body')?.textContent?.slice(0, 80));
+}
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures ? 1 : 0);

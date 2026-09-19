@@ -358,7 +358,8 @@ a { color: inherit; }
 .browsing .browse-genres,
 .browsing .watched-bar,
 .browsing .username-row,
-.browsing .share-offer {
+.browsing .share-offer,
+.browsing .not-found-notice {
   display: none;
 }
 
@@ -1728,6 +1729,14 @@ a.service:hover {
   color: var(--fg-dim);
   font-size: 14px;
   line-height: 1.45;
+}
+
+/* The 404 page's one line. Written into 404.html only, above the tagline,
+   and shown whenever the address is the one that went nowhere. It may move
+   the landing page down, which is allowed here for the reason
+   .catalogue-notice is: there is no card on this screen to keep still. */
+.not-found-notice {
+  margin: 0 auto 18px;
 }
 
 /* The watched-list line on the landing page. Deliberately quiet: it is

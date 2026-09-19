@@ -493,6 +493,32 @@ mkdirSync(GENRE_OUT, { recursive: true });
 writeFileSync(indexFile, genreIndexPageFor(indexRows));
 genreUrls.unshift('/genre/');
 
+/* The "page not found" page. Without a 404.html at the root, Cloudflare Pages
+   answers every unknown address with the home page and a 200, which Google
+   reports as a soft 404 and which tells a visitor nothing. With one, Pages
+   serves it with a real 404 status instead.
+
+   It is index.html rather than a page of its own, so the app still boots on
+   it: /anime/<id>/<wrong-slug>/ has no file behind it, and the app routes on
+   the id alone, so a mistyped or outdated slug on a real anime still opens
+   that anime. A crawler gets the 404; a person gets the show.
+
+   Generated from index.html on every run, like every other page here, so a
+   ?v= bump or a markup change can never leave it serving a stale script. No
+   canonical and no og:url, since this document has no address of its own. */
+const notFoundNotice = `<p id="not-found-notice" class="catalogue-notice not-found-notice"><b>There's no page at that address.</b> The link may be mistyped, or the page has gone. Search for an anime you've watched, or <a href="/genre/">browse by genre</a>.</p>
+      <p class="tagline">`;
+const notFound = html
+  .replace('<html lang="en">', '<html lang="en" data-not-found>')
+  .replace(/<title>[^<]*<\/title>/, '<title>Page not found · whatanimeshouldiwatchnext</title>')
+  .replace(/\s*<link rel="canonical" href="[^"]*">/, '\n  <meta name="robots" content="noindex">')
+  .replace(/\s*<meta property="og:url" content="[^"]*">/, '')
+  .replace('<p class="tagline">', notFoundNotice);
+for (const marker of ['data-not-found', 'Page not found', 'noindex', 'not-found-notice']) {
+  if (!notFound.includes(marker)) throw new Error(`404.html: the ${marker} replacement matched nothing in index.html`);
+}
+writeFileSync(join(ROOT, '404.html'), notFound);
+
 /* The sitemap is written here rather than by hand, because it has to list
    exactly what was generated. It used to hold a single URL, with a comment
    explaining that listing 3,493 identical documents is what duplicate content
@@ -527,4 +553,5 @@ console.log(`wrote ${written} pages under /anime/`);
 console.log(`skipped ${targets.length - written} with nothing to recommend`);
 console.log(`wrote ${genreCount} pages under /genre/`);
 console.log(`wrote the /genre/ index over ${indexRows.length}`);
+console.log("wrote 404.html");
 console.log(`sitemap.xml lists ${urls.length + genreUrls.length + 2} URLs`);

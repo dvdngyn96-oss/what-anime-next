@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 67;
+const BUILD = 68;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -1549,6 +1549,15 @@ const resultBody = $('result-body');
 const searchInput = $('search-input');
 const clearBtn = $('clear-btn');
 
+/* 404.html is index.html with `data-not-found` on the root element, written by
+   build-seo-pages.mjs. Cloudflare Pages serves it, with a 404 status, for any
+   address that has no file behind it. The app still boots on it, so a real
+   anime under a mistyped slug still opens; anything else lands on the search
+   view with a notice saying the address went nowhere. Remembered as the path
+   it arrived on, so the notice goes once somebody navigates away and comes
+   back with the browser's back button. */
+const notFoundPath = document.documentElement.hasAttribute('data-not-found') ? location.pathname : null;
+
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -2234,6 +2243,8 @@ function showSearchView() {
   dropPrerendered();
   resultView.hidden = true;
   searchView.hidden = false;
+  const notFound = $('not-found-notice');
+  if (notFound) notFound.hidden = location.pathname !== notFoundPath;
   /* Not while browsing: the search box is hidden then, and focusing a hidden
      input would pull a phone's keyboard up over the list. */
   if (!browse) searchInput.focus();
@@ -4010,10 +4021,19 @@ async function routeFromUrl() {
 
   const source = byId.get(id);
   if (!source) {
+    /* On the 404 page this is an anime page that no longer exists — an entry
+       a rebuild dropped. That is a missing page, not a broken card. */
+    if (notFoundPath) { showSearchView(); return; }
     showError('That anime is not in the catalogue.');
     return;
   }
   recommendFor(source, dir, { push: false });
+  /* Only reached on the 404 page through a mistyped or outdated slug on a real
+     id. Put the right address in the bar, so a copied or reloaded link lands
+     on the real page rather than on this one again. */
+  if (notFoundPath) {
+    history.replaceState({ id: source.id, dir }, '', urlFor(source, dir));
+  }
 }
 
 wireWatchedBar();

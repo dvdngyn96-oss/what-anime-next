@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 67.** `anime.json` holds **5,017 entries**
+**Build 68.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-504 checks pass via `npm test`.
+517 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -56,7 +56,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 504 checks, jsdom against the real app.js and anime.json
+npm test          # 517 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~2.5 hours
 npm run pages     # prerendered pages only, ~30 s
@@ -2230,6 +2230,46 @@ And **do not use `git stash` to get a before/after measurement** in a tree with
 4,978 generated files in it. The pop silently did not run and the work sat in
 the stash while it looked live. `git show HEAD:<path>` answers the same
 question without touching the working tree.
+
+### A real "page not found"
+
+Build 68. **Until this, every unknown address answered 200 with the home
+page** — `/does-not-exist`, `/anime/`, `/genre/bogus/`, and the pages of
+entries a rebuild dropped. That is Cloudflare Pages' default when there is no
+`404.html`, and Google reports it as a *soft 404*: a page claiming to exist
+that plainly is not what was asked for.
+
+**`404.html` is `index.html` with a marker**, written by
+`build-seo-pages.mjs` on every run so a `?v=` bump can never leave it serving
+a stale script. The marker is `data-not-found` on `<html>`; it also carries
+`noindex`, no canonical, no `og:url`, and a notice above the tagline — in
+the markup, so it says something without JavaScript too.
+
+**The app still boots on it, and that is the point.** The app routes anime
+pages on the id alone, so `/anime/9253/wrong-slug/` has always opened
+Steins;Gate. That only worked because Pages served the home page for
+everything, which this switches off. On the 404 page the app still routes: a
+real id opens its card and `replaceState` corrects the address bar, so a
+copied or reloaded link lands on the real page. A crawler gets the 404; a
+person gets the show. An id no longer in the catalogue shows the notice
+rather than the "not in the catalogue" error card, because it is a missing
+page, not a broken card. `?id=` on the home page is unchanged.
+
+The notice is shown whenever the address is **the one that went nowhere**,
+remembered at load — so leaving takes it away and the back button brings it
+back. Hidden while browsing, with the other `.browsing` rules.
+
+**Checked against a real Pages server, not just jsdom**, because jsdom
+cannot see a status code. `npx wrangler pages dev .` (the `wanx-pages` launch
+config; the Python server does not serve `404.html`) answered 200 for `/`,
+`?id=`, `?browse=`, `?genre=`, `/genre/`, `/genre/mystery/`, `/privacy`, a
+real anime page, `/api/ratings` and the static files; 308 for an anime page
+without its slash; 404 for everything else. **Re-check with curl on the live
+site after the push.**
+
+Thirteen checks, and four mutations broken on purpose — ignoring the marker,
+dropping the address-bar fix, never hiding the notice, and falling back to
+the error card. All four caught.
 
 ### Link previews, crawlers and the preview image
 
