@@ -10,9 +10,9 @@ Static site. No build step, no server, no runtime API calls for the core loop.
 
 ## Current state
 
-**Build 69.** `anime.json` holds **5,017 entries**
+**Build 70.** `anime.json` holds **5,017 entries**
 (TV 3,178 · ONA 766 · OVA 481 · **Film 592**), about 1.74 MB.
-530 checks pass via `npm test`.
+542 checks pass via `npm test`.
 
 | Data | Coverage |
 | --- | --- |
@@ -56,7 +56,7 @@ wasted a session's worth of confusion once already.
 
 ```bash
 npm run serve     # python -m http.server 8777
-npm test          # 530 checks, jsdom against the real app.js and anime.json
+npm test          # 542 checks, jsdom against the real app.js and anime.json
 npm run walks     # prints recommendation chains for 19 known anchors
 npm run build     # full catalogue rebuild + prerendered pages, ~2.5 hours
 npm run pages     # prerendered pages only, ~30 s
@@ -639,6 +639,99 @@ exists to prevent.
 **Since build 67 a chip no longer goes straight to a card.** It opens the
 browse view below, and the picker described here is what that view's
 "Recommend me one from Mystery" button runs — unchanged, one click later.
+
+### The results carry what was picked
+
+Build 70. **"Recommend me one from Mystery + Psychological" now keeps the
+results that actually carry both labels**, by bringing them to the front of the
+list the walk already built. The walk itself is untouched: `npm run walks` came
+out byte-identical apart from the build line, which is the proof that this
+reorders one entry point's output rather than changing how matching works.
+
+#### Measured over every pair somebody can click, not sixteen
+
+The figure this file carried was 90 of 128 across sixteen hand-picked
+combinations. Across all **462** genre-plus-label pairs the browse view offers:
+
+| | Carried both labels |
+| --- | --- |
+| Before | 2,201 of 3,696 — **60%** |
+| After | 3,134 of 3,134 — **100%** |
+
+**A better anchor cannot fix this, which is why the earlier work could not.**
+`pickBrowseAnchor` chooses where to start; the drift happens on the way down.
+
+#### Thin lists are topped up, and the measurement is what decided that
+
+34% of pairs have fewer than 8 carriers in reach, with a median of 5. Left
+short, a card would look broken. **But 120 of those 161 pairs deliver 2 or
+fewer of 8 today**, so the thin cases are the ones whose current answer is
+mostly wrong anyway — a short honest list beats a long wrong one. The carriers
+go first, the rest of the walk's list stays behind them so "show me another"
+has somewhere to go, and a note under the card says which is which:
+
+> Only 3 shows in reach carry Comedy and Music, so the rest are the closest
+> matches to Bocchi the Rock!
+
+Silent at 8 or more, since then nothing else is on screen to explain.
+
+#### Distance was the risk, and it is not there
+
+A reorder that reaches further is how the Arslan Senki failure happened three
+times. It does not happen here:
+
+| | Median distance from the anchor | Worst single |
+| --- | --- | --- |
+| Before | 392 positions | 4,896 |
+| After | 439 positions | 4,917 |
+
+12% further on the median, and the eighth carrier typically sits **27 entries**
+into the walk's own list. Single genres are untouched: no genre's first result
+changes, none runs thin, and delivery goes 111/112 to 112/112 — the filter
+quietly fixes the one miss.
+
+#### The grid quietly undid it, and only the live site showed that
+
+The card was Vampire and so were the first rows, then three shows with no
+vampire in them. `more` selects peers **by match quality**, so carriers sitting
+in a different genre-count tier were skipped in favour of non-carriers in the
+same one. With labels picked the grid now takes the next carriers whatever
+their tier: somebody who asked for vampires is better served by a 2-of-3
+vampire match than a 3-of-3 without one.
+
+**Found by looking at the running site after the suite was green** — the same
+way most real defects here are found.
+
+#### Two checks that could not fail, and one of them twice
+
+All caught by the breaker rather than by reading them, and all the familiar
+shape.
+
+- **The grid guard, asserted in the wrong place.** The bug needs carriers split
+  across two match tiers with non-carriers filling the card's own tier. The
+  browse button's anchor carries **one** genre, so every carrier sits in one
+  tier and the grid is right whether or not it knows about the labels —
+  the check passed with the fix deleted. Widening the fixture did not help,
+  because the anchor is chosen from the carriers and kept coming back with one
+  genre; the second attempt failed the same way. It now runs from a
+  two-genre source, and broken on purpose it prints
+  `Plain 1 (Broad+Other): Plain 2, Plain 3, Plain 4…` — the live bug exactly.
+  **Two rounds went into a guard that was already written correctly and simply
+  pointed at a case that could not produce the fault.**
+- **The punctuation guard.** It rendered a *spread copy* of the anchor with the
+  title `Bocchi the Rock!`. A copy is not in the catalogue, so the walk came
+  back empty and no note was rendered at all — a check asserting the absence of
+  something on a page with nothing on it. It renames the real entry in place
+  now, and asserts the note is present *and* correct.
+
+`stop` drops the full stop after a title that ends in `.`, `!` or `?`.
+**396 titles do**, and "Bocchi the Rock!." is what a reader notices instead of
+the sentence.
+
+Twelve checks, seven mutations broken on purpose: no filter, the rest of the
+list thrown away, labels dropped on a re-walk, a silent top-up, the search box
+filtered too (which fails three unrelated walk checks, as it should), the grid
+ignoring the labels, and the full stop always added.
 
 ### Browse by genre
 

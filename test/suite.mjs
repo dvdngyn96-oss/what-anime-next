@@ -98,7 +98,10 @@ window.__recommendText = recommendText;
 window.__recommendFigure = recommendFigure;
 window.__moodGenres = () => [...moodGenres];
 window.__pickMoodAnchor = pickMoodAnchor;
-window.__moodConstants = () => ({ minShare: MOOD_MIN_SHARE, anchorShare: MOOD_ANCHOR_SHARE, tries: MOOD_ANCHOR_TRIES, excluded: [...MOOD_EXCLUDED] });`);
+window.__moodConstants = () => ({ minShare: MOOD_MIN_SHARE, anchorShare: MOOD_ANCHOR_SHARE, tries: MOOD_ANCHOR_TRIES, excluded: [...MOOD_EXCLUDED] });
+window.__wantLabels = wantLabels;
+window.__recommendFor = recommendFor;
+window.__state = () => state;`);
   return dom;
 }
 
@@ -4457,6 +4460,157 @@ console.log('\n--- the page make-tiktok.mjs reaches into ---');
     .filter((cls) => !new RegExp(`\\.${cls}\\s*\\{`).test(css));
   check('and the six wordmark colours the end card borrows',
     missing.length === 0, `missing ${missing.join(', ')}`);
+}
+
+console.log('\n--- the results carry what was picked ---');
+{
+  /* Build 70. The walk matches on genres, so a theme rides along only as far
+     as the tags pull it: measured across all 462 pairs the browse view offers,
+     60% of served results carried both picked labels. The carriers are now
+     brought to the front of the list the walk already built -- a reorder of
+     one entry point's output, never a change to the walk. */
+  const NAMES = ['Broad', 'Rare', 'Scarce', 'Other'];
+  const mk = (r, i, t, g, th) => ({
+    r, i, t, g, th, s: 9 - r / 50, m: 200000, st: 'fin', ty: 'TV', e: 12, y: 2015,
+    im: 'x/y.jpg', stats: { w: 10, c: 8000, h: 50, d: 500, p: 10 },
+  });
+  const rows = [];
+  for (let r = 1; r <= 100; r++) {
+    const id = 6000 + r;
+    /* Rare on every third show from rank 10 down: plenty below any anchor, so
+       the filtered list can fill the card. Scarce on three, so it cannot.
+
+       The source carries two genres, so a one-genre carrier lands in a
+       different match tier from a two-genre one. That is what makes the grid
+       guard able to fail: tied to the tier, the grid fills with non-carriers
+       while carriers wait a tier away, which is exactly what the live site
+       did with Supernatural + Vampire. */
+    const rare = r >= 10 && r % 3 === 0 && (r === 12 || r % 4 !== 0);
+    const scarce = [22, 34, 46].includes(r);
+    const th = [rare ? 1 : null, scarce ? 2 : null].filter((x) => x !== null);
+    rows.push(mk(r, id, `${rare ? 'Rare' : scarce ? 'Scarce' : 'Plain'} ${r}`,
+      r % 4 === 0 || r <= 3 ? [0, 3] : [0], th));
+  }
+  const CAT = { built: '2026-09-25', count: rows.length, names: NAMES, anime: rows };
+
+  const dom = makeDom(CAT, { url: 'https://example.com/' });
+  const w = dom.window;
+  const d = w.document;
+  const click = (el) => el?.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+  await sleep(300);
+
+  /* The reorder itself, on a list made by hand so the expectation is exact. */
+  const fake = [{ genres: ['Broad'], themes: [] }, { genres: ['Broad'], themes: ['Rare'] },
+    { genres: ['Broad'], themes: [] }, { genres: ['Broad'], themes: ['Rare'] }];
+  const sorted = w.__wantLabels(fake, ['Broad', 'Rare']);
+  check('carriers come first and the rest stay behind them',
+    sorted.carriers === 2 && sorted.list.length === 4
+      && sorted.list.slice(0, 2).every((a) => a.themes.includes('Rare'))
+      && sorted.list.slice(2).every((a) => !a.themes.includes('Rare')),
+    `${sorted.carriers} carriers, order ${sorted.list.map((a) => a.themes.join('')).join('|')}`);
+
+  /* The search box passes no labels, so nothing about its results may move.
+     `npm run walks` says the same thing from the other side. */
+  const untouched = w.__wantLabels(fake, null);
+  check('with nothing picked the list is handed back exactly as the walk built it',
+    untouched.list === fake && untouched.carriers === null,
+    `${untouched.carriers} carriers, ${untouched.list === fake ? 'same list' : 'a new list'}`);
+
+  /* End to end: pick the genre, narrow by the theme, press the button. */
+  click(d.querySelector('.mood-chip[data-genre="Broad"]'));
+  await sleep(250);
+  click(d.querySelector('.narrow-chip[data-narrow="Rare"]'));
+  await sleep(250);
+  click(d.querySelector('[data-action="browse-recommend"]'));
+  await sleep(500);
+
+  /* Read off the list the card is paging through, not the grid: the grid only
+     shows peers sharing the hero's genre count, so it can be empty for reasons
+     that have nothing to do with this. */
+  const served = (n = 8) => w.__state().list.slice(0, n).map((a) => a.title);
+  const shown = served();
+  check('every result carries the theme that was picked',
+    shown.length >= 8 && shown.every((t) => t.startsWith('Rare')), shown.join(', '));
+  const grid = () => [...d.querySelectorAll('.mini-card-title')].map((e) => e.textContent);
+  check('and the card on screen is one of them',
+    (d.querySelector('.hero h2')?.textContent || '').startsWith('Rare'),
+    d.querySelector('.hero h2')?.textContent || 'no card');
+  check('and the card still explains where it started',
+    (d.querySelector('.because')?.textContent || '').includes('Because you picked Broad + Rare'),
+    (d.querySelector('.because')?.textContent || '').trim().slice(0, 80));
+  check('with a full list there is nothing to apologise for',
+    !/carries Broad and Rare|carry Broad and Rare/.test(d.getElementById('result-body')?.textContent || ''),
+    'a top-up note was printed for a full list');
+
+  /* The labels have to survive a re-walk, or flipping direction quietly drops
+     the filter and the results drift back. */
+  const flip = d.querySelector('[data-action="direction"][data-value="up"]')
+    || d.querySelector('.direction [data-value="up"]');
+  if (flip) {
+    click(flip);
+    await sleep(400);
+    const after = served();
+    check('flipping direction keeps the filter',
+      after.length > 0 && after.every((t) => t.startsWith('Rare')), after.join(', '));
+  } else {
+    check('flipping direction keeps the filter', false, 'no direction control found');
+  }
+
+  /* The grid selects peers on match quality, which quietly undid the filter on
+     the live site: a Supernatural + Vampire card sat above three shows with no
+     vampire in them while carriers waited a tier away.
+
+     Run from a source carrying two genres, because that is what the bug needs
+     — carriers split across two tiers, with non-carriers filling the card's
+     own tier. The browse button's own anchor carries one genre, so every
+     carrier sits in one tier and the grid is right either way: the first
+     version of this check was asserted there and passed with the fix removed. */
+  const twoGenre = w.__pickMoodAnchor('Broad');
+  w.__recommendFor(twoGenre, 'down', { mood: 'Broad + Rare', want: ['Broad', 'Rare'] });
+  await sleep(300);
+  check('the grid takes carriers from another tier over non-carriers from this one',
+    twoGenre.genres.length === 2 && grid().length > 0 && grid().every((t) => t.startsWith('Rare')),
+    `${twoGenre.title} (${twoGenre.genres.join('+')}): ${grid().join(', ') || 'no grid'}`);
+
+  /* Too few carriers: the card is filled out with the closest matches, and
+     says so. 34% of real pairs are this shape, and 120 of those 161 deliver
+     2 or fewer of 8 today, so the short honest list beats the long wrong one. */
+  const anchor = w.__pickMoodAnchor('Broad');
+  w.__recommendFor(anchor, 'down', { mood: 'Broad + Scarce', want: ['Broad', 'Scarce'] });
+  await sleep(300);
+  const body = d.getElementById('result-body')?.textContent || '';
+  const thin = served();
+  check('a thin list is topped up rather than left short',
+    thin.length >= 8 && thin.slice(0, 3).every((t) => t.startsWith('Scarce'))
+      && w.__state().carriers === 3,
+    `${thin.length} shown, ${w.__state().carriers} carriers, ${thin.join(', ')}`);
+  /* 396 titles end in their own punctuation, and "Bocchi the Rock!." is what
+     a reader notices instead of the sentence. */
+  /* Renamed in place rather than copied: a spread copy is not in the
+     catalogue, so the walk comes back empty and no note is rendered at all --
+     which is a check that cannot fail. Caught by breaking it on purpose. */
+  const realTitle = anchor.title;
+  anchor.title = 'Bocchi the Rock!';
+  w.__recommendFor(anchor, 'down', { mood: 'Broad + Scarce', want: ['Broad', 'Scarce'] });
+  await sleep(300);
+  const punctBody = d.getElementById('result-body')?.textContent || '';
+  check('a title ending in punctuation does not get a full stop after it',
+    punctBody.includes('closest matches to Bocchi the Rock!') && !punctBody.includes('Rock!.'),
+    punctBody.includes('Rock!.') ? 'the note reads "Bocchi the Rock!."' : 'no note was rendered at all');
+  anchor.title = realTitle;
+  w.__recommendFor(anchor, 'down', { mood: 'Broad + Scarce', want: ['Broad', 'Scarce'] });
+  await sleep(300);
+  check('and the note names how many carried it, and what the rest are',
+    /Only 3 shows in reach carry Broad and Scarce/.test(body) && body.includes('closest matches to'),
+    body.slice(body.indexOf('Only'), body.indexOf('Only') + 110) || 'no top-up note');
+
+  /* Same rule as every other explanatory note: under the card, never above it,
+     because a note that appears above moves the card and every button in it. */
+  const noteEl = [...d.querySelectorAll('.note')].find((n) => n.textContent.includes('closest matches to'));
+  const hero = d.querySelector('.hero');
+  check('the note sits below the card, with the others',
+    !!noteEl && !!hero && (hero.compareDocumentPosition(noteEl) & 4) !== 0,
+    noteEl ? 'the note renders above .hero' : 'no note element');
 }
 
 console.log('\n--- genre combination pages ---');

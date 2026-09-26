@@ -198,7 +198,7 @@ const MOOD_EXCLUDED = new Set(['Ecchi']);
 /* Bump alongside the ?v= markers in index.html. Shown on the page so it's
    obvious at a glance whether the browser is running the current script — a
    stale cached app.js has caused more confusion here than any real bug. */
-const BUILD = 69;
+const BUILD = 70;
 
 /* ------------------------------------------------------------------ *
  * Catalogue
@@ -2414,11 +2414,27 @@ function renderResult() {
   // Peers of what's on screen. The full list runs on into weaker matches so
   // "show me another" has somewhere to go, but the grid shouldn't advertise
   // partial matches while closer ones are still on offer.
-  const more = list
-    .filter((a, i) => i !== index
-      && a.matchShared === hero?.matchShared
-      && a.matchFlipped === flipped)
-    .slice(0, 6);
+  /* Peers, and when labels were picked the ones carrying them go first.
+     Without that last part the grid quietly undoes the filter: it selects on
+     match quality alone, so a Supernatural + Vampire card sat above three
+     shows with no vampire in them while carriers waited further down the
+     list. Found by looking at the running site, not by the suite. */
+  const peers = list.filter((a, i) => i !== index
+    && a.matchShared === hero?.matchShared
+    && a.matchFlipped === flipped);
+  /* With labels picked the grid takes the next carriers from the list whatever
+     their genre count, not just the ones matching the card's own tier. Tying
+     it to the tier left three vampire shows on screen and three without,
+     while carriers a tier away waited: somebody who asked for vampires is
+     better served by a 2-of-3 vampire match than by a 3-of-3 without one.
+     Same-quality peers fill whatever is left. */
+  const more = (state.want?.length
+    ? (() => {
+      const carriers = list.filter((a, i) => i !== index && carriesAll(a, state.want));
+      const taken = new Set(carriers);
+      return carriers.concat(peers.filter((a) => !taken.has(a)));
+    })()
+    : peers).slice(0, 6);
 
   const genreTags = source.genres.map((g) => `<span class="tag">${esc(g)}</span>`).join('')
     + (source.demographic ? `<span class="tag tag-demo">${esc(source.demographic)}</span>` : '')
@@ -2539,6 +2555,25 @@ function renderResult() {
       + ` from here. Try the other direction for something new.`
     : '';
 
+  /* Said whenever the list could not be filled with entries carrying what was
+     picked. The card is full either way — the carriers first, then the closest
+     matches to the anchor — so without this the tail looks like the filter not
+     working. Silent when there are 8 or more, since then nothing else is being
+     shown and there is nothing to explain. */
+  const wanted = state.want?.join(' and ');
+  /* Bocchi the Rock! ends in its own punctuation, and "Bocchi the Rock!." is
+     the kind of thing a reader notices instead of the sentence. 396 titles end
+     this way. */
+  const stop = /[.!?]$/.test(source.title) ? '' : '.';
+  const topUpNote = hero && wanted && state.carriers !== null && state.carriers < WANTED_SHOWN
+    ? (state.carriers
+      ? `${state.carriers === 1
+        ? `Only one show in reach carries ${wanted}`
+        : `Only ${state.carriers} shows in reach carry ${wanted}`}`
+        + `, so the rest are the closest matches to ${source.title}${stop}`
+      : `Nothing in reach carries ${wanted}, so these are the closest matches to ${source.title}${stop}`)
+    : '';
+
   resultBody.innerHTML = `${because}
 
     <!-- hero-has-banner is unconditional: a third of entries have no banner
@@ -2616,6 +2651,7 @@ function renderResult() {
     ${relaxNote ? `<div class="note">${esc(relaxNote)}</div>` : ''}
     ${watchedNote ? `<div class="note">${esc(watchedNote)}</div>` : ''}
     ${restartNote ? `<div class="note">${esc(restartNote)}</div>` : ''}
+    ${topUpNote ? `<div class="note">${esc(topUpNote)}</div>` : ''}
 
     ${more.length ? `
       <p class="section-title">Others further ${shown === 'up' ? 'up' : 'down'} the list</p>
@@ -2735,14 +2771,14 @@ function wireResultControls() {
 
       if (action === 'direction') {
         if (el.dataset.value === state.direction) return;
-        recommendFor(state.source, el.dataset.value, { chain: true, mood: state.mood });
+        recommendFor(state.source, el.dataset.value, { chain: true, mood: state.mood, want: state.want });
         return;
       }
 
       if (action === 'axis') {
         if (el.dataset.value === axis) return;
         axis = el.dataset.value;
-        recommendFor(state.source, state.direction, { chain: true, mood: state.mood });
+        recommendFor(state.source, state.direction, { chain: true, mood: state.mood, want: state.want });
         return;
       }
 
@@ -2754,7 +2790,7 @@ function wireResultControls() {
         if (formats.has(format)) formats.delete(format);
         else formats.add(format);
         saveFormats();
-        recommendFor(state.source, state.direction, { chain: true, mood: state.mood });
+        recommendFor(state.source, state.direction, { chain: true, mood: state.mood, want: state.want });
         return;
       }
 
@@ -2764,7 +2800,7 @@ function wireResultControls() {
         // there is never a state with no way back.
         modernOnly = !modernOnly;
         saveModernOnly();
-        recommendFor(state.source, state.direction, { chain: true, mood: state.mood });
+        recommendFor(state.source, state.direction, { chain: true, mood: state.mood, want: state.want });
         return;
       }
 
@@ -2878,7 +2914,47 @@ function refreshFromAnchor() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function recommendFor(source, direction = 'up', { push = true, chain = false, mood = null } = {}) {
+/* How many of a walk's results the card and its grid actually show. Below this
+   many carriers, `wantLabels` tops the list up rather than leaving it short. */
+const WANTED_SHOWN = 8;
+
+/**
+ * Keep the results that actually carry what somebody picked.
+ *
+ * **The anchor search alone is not enough, and that was measured across all
+ * 462 pairs the browse view offers rather than on a handful.** The walk matches
+ * on genres, so a theme rides along only as far as the tags pull it: today
+ * 2,201 of 3,696 served results carry both picked labels — **60%**, against
+ * 99% for a genre on its own. Choosing a better starting show cannot fix that,
+ * because the drift happens after the start.
+ *
+ * So the carriers are brought to the front of the list the walk already built.
+ * Nothing about the walk changes — this reorders its output for one entry
+ * point, which is why the search box is untouched and `npm run walks` is
+ * byte-identical. The rest of the list stays behind them rather than being
+ * thrown away, so "show me another" still has somewhere to go.
+ *
+ * **The measurement is also what says a top-up is needed rather than a short
+ * list.** 34% of pairs have fewer than 8 carriers in reach — but 120 of those
+ * 161 pairs deliver 2 or fewer of 8 today, so these are the combinations whose
+ * current answer is mostly wrong anyway. The honest version is the carriers
+ * first, the closest matches after them, and a note saying which is which.
+ *
+ * Survivors are no further away than what they replace: the median distance
+ * from the anchor moves 392 positions to 439, and the 8th carrier typically
+ * sits 27 entries into the walk's own list. That was the risk worth measuring —
+ * a reorder that reaches hundreds of places further is the shape that broke
+ * this matcher twice before.
+ */
+function wantLabels(list, labels) {
+  if (!labels?.length) return { list, carriers: null };
+  const carriers = list.filter((anime) => carriesAll(anime, labels));
+  if (!carriers.length) return { list, carriers: 0 };
+  const rest = list.filter((anime) => !carriesAll(anime, labels));
+  return { list: carriers.concat(rest), carriers: carriers.length };
+}
+
+function recommendFor(source, direction = 'up', { push = true, chain = false, mood = null, want = null } = {}) {
   if (!source) return;
 
   if (!source.genres.length) {
@@ -2905,8 +2981,12 @@ function recommendFor(source, direction = 'up', { push = true, chain = false, mo
     }
   }
 
-  const { list, flipped } = walkRankings(source, direction, chainHistory);
-  state = { source, direction, list, index: 0, flipped, axisFellBack, mood };
+  const walked = walkRankings(source, direction, chainHistory);
+  const { list, carriers } = wantLabels(walked.list, want);
+  state = {
+    source, direction, list, index: 0, flipped: walked.flipped, axisFellBack, mood,
+    want, carriers,
+  };
   showResultView();
   renderResult();
   window.scrollTo({ top: 0 });
@@ -3766,7 +3846,7 @@ $('browse')?.addEventListener('click', (event) => {
     const { labels } = browse;
     if (labels.length === 1) { startFromGenre(labels[0]); return; }
     const anchor = pickBrowseAnchor(labels);
-    if (anchor) recommendFor(anchor, 'down', { mood: labels.join(' + ') });
+    if (anchor) recommendFor(anchor, 'down', { mood: labels.join(' + '), want: labels });
     return;
   }
   /* Rows are plain links to MyAnimeList, opening in a new tab, and nothing
@@ -3874,7 +3954,7 @@ async function startFromGenre(genre) {
      tried, by 59% to 58% at worst and 66% to 34% at best. The anchor is
      deliberately near the top of the rankings, so there is nothing above it
      and everything below. */
-  recommendFor(anchor, 'down', { mood: genre });
+  recommendFor(anchor, 'down', { mood: genre, want: [genre] });
 }
 
 $('random-btn').addEventListener('click', rollTheDice);
