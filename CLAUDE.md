@@ -340,7 +340,14 @@ enough to catch a conditional render creeping back.
 
 - **The title wrapped** on 14% of desktop cards and 31% of mobile ones. It now
   reserves two lines (three on mobile) and clamps beyond that — 1% of titles,
-  the worst being 127 characters. The blank line under a short title reads as
+  the worst being 127 characters. The median title is **18
+  characters** and only 11 of 5,017 exceed 100, so the clamp is for a thin
+  tail — but that tail keeps growing: the longest in the catalogue is 186
+  (*Shinjiteita Nakama-tachi ni Dungeon Okuchi de… "Mugen Gacha"…*), and a
+  Fall 2026 show not yet in it runs to **232** (MAL 63431, *Tsuihou sareta
+  Cheat Fuyo Majutsushi…*). Nothing breaks — the card clamps and the slug is
+  cut at 60 characters, which routes on the id anyway — but assume the record
+  moves at every rebuild rather than designing to the current worst case. The blank line under a short title reads as
   padding; a button that moves does not.
 
 - **The genre row wrapped** on roughly 10% of desktop cards, and **the badge
@@ -3747,6 +3754,22 @@ looks like a missing script rather than a crashed one.
 | `node add-mal-scores.mjs` | after a rebuild, or when the figures feel stale | ~19 min |
 | `node backfill-genres.mjs` | after a rebuild only if it reports blanks | ~10 s |
 
+**When to rebuild, decided 25 September 2026 and worth repeating.** "Once a
+season" means *after* a season has settled, not as one starts. Three reasons
+to wait rather than rebuild on a whim:
+
+- A show only enters MyAnimeList's top 10,000 once enough people have scored
+  it, and a fresh premiere's rank swings for months. Rebuilding early adds
+  entries whose position the next rebuild will move again.
+- Rebuilding mid-season costs two rebuilds where one would do.
+- **It fights the indexing.** Every page is regenerated, so every `lastmod` in
+  the sitemap changes. In October 2026 Google still had 2,604 pages
+  "Discovered — currently not indexed", and telling it everything changed is
+  the opposite of what that queue needs.
+
+A specific missing show does not need a rebuild: `node add-one.mjs <mal-id>`
+adds one title in seconds and regenerates its pages.
+
 **A rebuild is one step now.** It used to be two: the builder carried no
 provider data, so `add-watch-providers.mjs` had to run straight afterwards or
 the site shipped with zero listings, and the catalogue was not release-ready
@@ -3771,14 +3794,14 @@ but never corrupts the existing catalogue.
 
 ## Open
 
-**As of build 69 (18 September 2026) the live to-do list is in
+**As of build 70 (25 September 2026) the live to-do list is in
 `NEXT-SESSION.md`**, which is kept on the owner's machine rather than in the
-repo — it is a handoff prompt, not documentation. The first two items on it
-shipped on 18 September: a real "page not found" (build 68) and the genre
-combination pages (build 69). What is left, in order: whether themes in the
-picker are still wanted now that browsing and the combination pages both cover
-themes, and a manga entry point. Show HN is off the list. The monthly check-in
-is below.
+repo — it is a handoff prompt, not documentation. Three of its items shipped
+in late September: a real "page not found" (68), the genre combination pages
+(69), and results that carry the picked labels (70), which answered the theme
+question from the other end. What is left, in order: **fan-voted
+recommendations** from MyAnimeList and AniList (measure coverage first), and a
+**manga entry point**. Show HN is off the list. The monthly check-in is below.
 
 Everything under this line is the older record: struck-through items shipped,
 and the reasoning is kept because it explains why they were done that way.
