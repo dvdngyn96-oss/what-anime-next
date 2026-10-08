@@ -264,6 +264,47 @@ The gain is real: walking down from FMA:B now reaches Berserk (#109) and
 Mo Dao Zu Shi (#195), both nearer and closer in kind than the old first result
 at #385. Roughly half the known-anchor walk lines changed.
 
+### Synopsis keywords were measured and are worse than themes
+
+Checked 7 October 2026 and not built. Kept so nobody tries it again.
+
+**The idea:** the 519 entries with no AniList tags (10%) fall back to counting
+shared themes, so pulling distinctive words out of each synopsis looked like a
+way to give them something closer to tags.
+
+**The test:** every synopsis fetched from AniList (the text the card shows),
+reduced to its distinctive words with common words and character names
+removed. Then, over 3,840 *tagged* sources, each method picked the top five
+genre-sharing neighbours within 150 positions, scored by their tag similarity
+to the source (tags being the best available measure of "close in kind"):
+
+| Picked by | Score |
+| --- | --- |
+| Random | 0.13 |
+| **Shared themes (today's fallback)** | **0.21** |
+| Synopsis keywords | 0.17 |
+| Tags (ceiling) | 0.43 |
+
+**Keywords lose to the fallback they would replace.** They only win on sources
+with no themes at all, and there barely beat random (0.14 against 0.11, with
+a ceiling of 0.41). That is about 235 untagged entries, and only about 100 of
+them have a synopsis of 40 words or more. **The thin data is in the same
+place twice**: untagged entries have a median synopsis of 40 words, against 78
+for tagged ones.
+
+**Why, visibly:** synopses describe a premise and carry marketing and
+broadcast notes. Steins;Gate's top keywords included *critically, acclaimed*;
+Re:Zero's AniList text is about a re-edited rebroadcast, so its keywords were
+*rebroadcast, time-slot, re-edited*. Mushishi's nearest keyword match was
+Moomin. Cowboy Bebop got Made in Abyss and Berserk from keywords and
+Planetes and Yamato 2199 from themes.
+
+**Not tested: embeddings**, meaning a model that compares the meaning of the
+text rather than the exact words. That would get past *critically acclaimed*,
+but it would still be reading 40-word synopses for about 100 obscure entries.
+Not worth a rebuild unless somebody reports a specific untagged show getting
+bad results.
+
 ### Genres backfilled from AniList
 
 **An entry with no genres can never be matched** — the walk skips it, so it is
